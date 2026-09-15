@@ -268,6 +268,10 @@ void tattooColorComponentsPreserveRgbChannelOrder() {
     expect(stui::native::tattooColorValue({1.0F, 128.0F / 255.0F, 0.0F}) ==
             0xFF8000,
         "expected RGB picker components rounded into 0xRRGGBB");
+
+    const auto glow = stui::native::tattooColorComponents(0x102030);
+    expect(stui::native::tattooColorValue(glow) == 0x102030,
+        "expected glow RGB components to round-trip without swapping channels");
 }
 
 void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
@@ -278,9 +282,28 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     };
     const stui::native::AppearanceEditSession changedSession{
         .texturePath = "textures/tattoos/edited.dds",
-        .original = {.color = 0x123456, .alpha = 0.25F},
-        .edited = {.color = 0x804020, .alpha = 0.75F},
+        .glowTexture = "textures/tattoos/edited_g.dds",
+        .bump = "textures/tattoos/edited_n.dds",
+        .original = {
+            .color = 0x123456,
+            .alpha = 0.25F,
+            .glow = 0x102030,
+            .glossiness = 2.5F,
+            .specularStrength = 1.25F,
+            .emissiveMult = 3.0F,
+        },
+        .edited = {
+            .color = 0x804020,
+            .alpha = 0.75F,
+            .glow = 0x102030,
+            .glossiness = 2.5F,
+            .specularStrength = 1.25F,
+            .emissiveMult = 3.0F,
+        },
     };
+    auto materialChangedSession = changedSession;
+    materialChangedSession.edited = materialChangedSession.original;
+    materialChangedSession.edited.glow = 0x203040;
 
     expect(!stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
@@ -290,10 +313,21 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
                stui::native::SlotWorkflowScreen::editAppearance,
                &changedSession),
         "changed appearance must enable Save");
+    expect(stui::native::isAppearanceSaveEnabled(
+               stui::native::SlotWorkflowScreen::editAppearance,
+               &materialChangedSession),
+        "material-only edits must enable Save");
     expect(!stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::savingAppearance,
                &changedSession),
         "saving appearance must disable duplicate Save");
+
+    expect(stui::native::appearanceTextureMetadata(changedSession.glowTexture) ==
+               "textures/tattoos/edited_g.dds" &&
+               stui::native::appearanceTextureMetadata(changedSession.bump) ==
+               "textures/tattoos/edited_n.dds" &&
+               stui::native::appearanceTextureMetadata("") == "None",
+        "expected advanced texture metadata to remain read-only and show None when absent");
 
     const auto thumbnail = stui::native::editAppearanceThumbnailPresentation(&changedSession);
     expect(thumbnail && thumbnail->color.red == 128.0F / 255.0F &&
@@ -367,6 +401,10 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
                 .slot = 0,
                 .color = 0x123456,
                 .alpha = 0.25F,
+                .glow = 0x102030,
+                .glossiness = 2.5F,
+                .specularStrength = 1.25F,
+                .emissiveMult = 3.0F,
             },
         }},
     });
@@ -381,6 +419,10 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
             .appearanceChanged = true,
             .color = 0x204080,
             .alpha = 0.5F,
+            .glow = 0x406080,
+            .glossiness = 3.5F,
+            .specularStrength = 2.25F,
+            .emissiveMult = 4.0F,
         },
         [&events] { events.emplace_back("teardown"); },
         [&events, &thumbnail](const auto& presentation) {
@@ -397,6 +439,12 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
                thumbnail->color.blue == 128.0F / 255.0F &&
                thumbnail->alpha == 0.5F,
         "expected current-frame input applied before thumbnail presentation query");
+    const auto* editedSession = workflow.editAppearance();
+    expect(editedSession && editedSession->edited.glow == 0x406080 &&
+               editedSession->edited.glossiness == 3.5F &&
+               editedSession->edited.specularStrength == 2.25F &&
+               editedSession->edited.emissiveMult == 4.0F,
+        "expected frame interaction to forward every editable material value without mutation");
 
     events.clear();
     thumbnail.reset();

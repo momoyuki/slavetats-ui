@@ -47,14 +47,27 @@ struct PreviewTattooAppearance {
     bool operator==(const PreviewTattooAppearance&) const = default;
 };
 
+struct TattooAppearance {
+    std::int32_t color{0xFFFFFF};
+    float alpha{1.0F};
+    std::int32_t glow{};
+    float glossiness{};
+    float specularStrength{};
+    float emissiveMult{1.0F};
+
+    bool operator==(const TattooAppearance&) const = default;
+};
+
 struct AppearanceEditSession {
     std::uint32_t actorFormId{};
     core::TattooArea area{core::TattooArea::body};
     std::int32_t slot{-1};
     std::int32_t runtimeHandle{};
     std::string texturePath;
-    PreviewTattooAppearance original;
-    PreviewTattooAppearance edited;
+    std::string glowTexture;
+    std::string bump;
+    TattooAppearance original;
+    TattooAppearance edited;
     core::UpdateTattooAppearanceMode mode{
         core::UpdateTattooAppearanceMode::updateAndSynchronize};
 };
@@ -88,6 +101,13 @@ public:
     [[nodiscard]] bool confirmApply();
     [[nodiscard]] bool beginEditAppearance();
     void setEditedAppearance(std::int32_t color, float alpha) noexcept;
+    void setEditedAppearance(
+        std::int32_t color,
+        float alpha,
+        std::int32_t glow,
+        float glossiness,
+        float specularStrength,
+        float emissiveMult) noexcept;
     void cancelEditAppearance();
     [[nodiscard]] bool confirmAppearanceUpdate();
 

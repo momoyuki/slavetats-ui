@@ -208,6 +208,10 @@ struct EditAppearanceFrameInteraction {
     bool appearanceChanged{};
     std::int32_t color{0xFFFFFF};
     float alpha{1.0F};
+    std::int32_t glow{};
+    float glossiness{};
+    float specularStrength{};
+    float emissiveMult{1.0F};
     bool cancelRequested{};
 };
 
@@ -223,6 +227,8 @@ struct SlotColorSwatchPresentation {
     std::int32_t color) noexcept;
 [[nodiscard]] std::int32_t tattooColorValue(
     TattooColorComponents components) noexcept;
+[[nodiscard]] std::string_view appearanceTextureMetadata(
+    std::string_view texturePath) noexcept;
 [[nodiscard]] std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept;
 [[nodiscard]] EditAppearanceFramePresentation editAppearanceFramePresentation(

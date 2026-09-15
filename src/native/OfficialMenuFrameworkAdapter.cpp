@@ -418,6 +418,10 @@ std::int32_t tattooColorValue(TattooColorComponents components) noexcept {
         channel(components.blue));
 }
 
+std::string_view appearanceTextureMetadata(std::string_view texturePath) noexcept {
+    return texturePath.empty() ? "None" : texturePath;
+}
+
 std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept {
     if (!session) {
@@ -451,7 +455,13 @@ void orchestrateEditAppearanceFrame(
     const std::function<void()>& teardown,
     const std::function<void(const AppearanceThumbnailPresentation&)>& continueRendering) {
     if (interaction.appearanceChanged) {
-        workflow.setEditedAppearance(interaction.color, interaction.alpha);
+        workflow.setEditedAppearance(
+            interaction.color,
+            interaction.alpha,
+            interaction.glow,
+            interaction.glossiness,
+            interaction.specularStrength,
+            interaction.emissiveMult);
     }
     if (interaction.cancelRequested) {
         workflow.cancelEditAppearance();
@@ -1336,21 +1346,75 @@ void renderEditAppearance(
         colorComponents.blue,
     };
     float alpha = session ? session->edited.alpha : 1.0F;
+    TattooColorComponents glowComponents =
+        tattooColorComponents(session ? session->edited.glow : 0);
+    float glowValues[3]{
+        glowComponents.red,
+        glowComponents.green,
+        glowComponents.blue,
+    };
+    float emissiveMult = session ? session->edited.emissiveMult : 1.0F;
+    float glossiness = session ? session->edited.glossiness : 0.0F;
+    float specularStrength = session ? session->edited.specularStrength : 0.0F;
     ImGuiMCP::BeginDisabled(!isAppearanceEditingEnabled(workflow.screen(), session));
+    ImGuiMCP::SeparatorText("Basic");
     const bool colorChanged = ImGuiMCP::ColorEdit3(
         "Color", colorValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
     const bool alphaChanged =
         ImGuiMCP::SliderFloat("Alpha", &alpha, 0.0F, 1.0F, "%.2f");
+    ImGuiMCP::SeparatorText("Material / Emission");
+    const bool glowChanged = ImGuiMCP::ColorEdit3(
+        "Glow Color", glowValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
+    const bool emissiveSliderChanged = ImGuiMCP::SliderFloat(
+        "Emission Strength", &emissiveMult, 0.0F, 10.0F, "%.2f");
+    const bool emissiveInputChanged =
+        ImGuiMCP::InputFloat("Emission Strength Value", &emissiveMult, 0.0F, 0.0F, "%.3f");
+    const bool glossinessSliderChanged =
+        ImGuiMCP::SliderFloat("Glossiness", &glossiness, 0.0F, 10.0F, "%.2f");
+    const bool glossinessInputChanged =
+        ImGuiMCP::InputFloat("Glossiness Value", &glossiness, 0.0F, 0.0F, "%.3f");
+    const bool specularSliderChanged = ImGuiMCP::SliderFloat(
+        "Specular Strength", &specularStrength, 0.0F, 10.0F, "%.2f");
+    const bool specularInputChanged = ImGuiMCP::InputFloat(
+        "Specular Strength Value", &specularStrength, 0.0F, 0.0F, "%.3f");
     const EditAppearanceFrameInteraction frameInteraction{
-        .appearanceChanged = colorChanged || alphaChanged,
+        .appearanceChanged = colorChanged || alphaChanged || glowChanged ||
+            emissiveSliderChanged || emissiveInputChanged || glossinessSliderChanged ||
+            glossinessInputChanged || specularSliderChanged || specularInputChanged,
         .color = tattooColorValue({
                 .red = colorValues[0],
                 .green = colorValues[1],
                 .blue = colorValues[2],
             }),
         .alpha = alpha,
+        .glow = tattooColorValue({
+            .red = glowValues[0],
+            .green = glowValues[1],
+            .blue = glowValues[2],
+        }),
+        .glossiness = glossiness,
+        .specularStrength = specularStrength,
+        .emissiveMult = emissiveMult,
     };
     ImGuiMCP::EndDisabled();
+
+    if (session) {
+        if (session->edited.glow != 0 || !session->glowTexture.empty() ||
+            session->edited.emissiveMult != 1.0F) {
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted("Glow");
+        }
+        if (!session->bump.empty()) {
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted("Bump");
+        }
+        ImGuiMCP::TextUnformatted("Glow Texture:");
+        ImGuiMCP::SameLine();
+        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->glowTexture).data());
+        ImGuiMCP::TextUnformatted("Bump Texture:");
+        ImGuiMCP::SameLine();
+        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->bump).data());
+    }
 
     const auto teardown = [] {
         ImGuiMCP::End();

@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -95,6 +96,12 @@ TattooSlots slotsWithEditableOwnedTattoo() {
         .slot = 1,
         .color = 0x2468AC,
         .alpha = 0.42F,
+        .glow = 0x102030,
+        .glossiness = 2.5F,
+        .specularStrength = 1.25F,
+        .bump = "marks/existing_n.dds",
+        .glowTexture = "marks/existing_g.dds",
+        .emissiveMult = 3.0F,
     };
     return result;
 }
@@ -586,10 +593,17 @@ void editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot() {
         "expected Edit Appearance screen with a session");
     expect(session->actorFormId == 0x14 && session->area == TattooArea::body &&
             session->slot == 1 && session->runtimeHandle == 73 &&
-            session->texturePath == "marks/existing.dds",
+            session->texturePath == "marks/existing.dds" &&
+            session->glowTexture == "marks/existing_g.dds" &&
+            session->bump == "marks/existing_n.dds",
         "expected session identity copied from the selected slot snapshot");
     expect(session->original.color == 0x2468AC && session->original.alpha == 0.42F &&
+            session->original.glow == 0x102030 && session->original.glossiness == 2.5F &&
+            session->original.specularStrength == 1.25F &&
+            session->original.emissiveMult == 3.0F &&
             session->edited.color == 0x2468AC && session->edited.alpha == 0.42F &&
+            session->edited.glow == 0x102030 && session->edited.glossiness == 2.5F &&
+            session->edited.specularStrength == 1.25F && session->edited.emissiveMult == 3.0F &&
             session->mode == UpdateTattooAppearanceMode::updateAndSynchronize,
         "expected original and edited appearance initialized from the snapshot");
     expect(!model.canSaveAppearance(), "expected unchanged appearance Save disabled");
@@ -614,11 +628,65 @@ void localAppearanceEditsNormalizeTrackDirtyAndCancelWithoutTicket() {
 
     model.setEditedAppearance(0x2468AC, 0.42F);
     expect(!model.canSaveAppearance(), "expected original appearance to disable Save again");
-    model.setEditedAppearance(0x123456, 0.35F);
+    model.setEditedAppearance(0x123456, 0.35F, 0xABCDEF, 4.0F, 2.0F, 5.0F);
     model.cancelEditAppearance();
     expect(model.screen() == SlotWorkflowScreen::slotActions && !model.editAppearance(),
         "expected Cancel to discard the session and return to Slot Actions");
     expect(!model.takeAppearanceRequest(), "expected Cancel not to create a ticket");
+}
+
+void advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.beginEditAppearance(),
+        "expected edit session opened");
+
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x302010, 2.5F, 1.25F, 3.0F);
+    expect(model.canSaveAppearance(), "expected changing Glow Color to enable Save");
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 1.25F, 3.0F);
+    expect(!model.canSaveAppearance(), "expected restoring Glow Color to disable Save");
+
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 4.0F, 1.25F, 3.0F);
+    expect(model.canSaveAppearance(), "expected changing Glossiness to enable Save");
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 1.25F, 3.0F);
+    expect(!model.canSaveAppearance(), "expected restoring Glossiness to disable Save");
+
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 2.0F, 3.0F);
+    expect(model.canSaveAppearance(), "expected changing Specular Strength to enable Save");
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 1.25F, 3.0F);
+    expect(!model.canSaveAppearance(), "expected restoring Specular Strength to disable Save");
+
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 1.25F, 4.0F);
+    expect(model.canSaveAppearance(), "expected changing Emission Strength to enable Save");
+    model.setEditedAppearance(0x2468AC, 0.42F, 0x102030, 2.5F, 1.25F, 3.0F);
+    expect(!model.canSaveAppearance(), "expected restoring Emission Strength to disable Save");
+
+    model.setEditedAppearance(0x123456, 0.35F, 0xABCDEF, 4.0F, 2.0F, 5.0F);
+    const auto* edited = model.editAppearance();
+    expect(edited && edited->edited.color == 0x123456 && edited->edited.alpha == 0.35F &&
+            edited->edited.glow == 0xABCDEF && edited->edited.glossiness == 4.0F &&
+            edited->edited.specularStrength == 2.0F && edited->edited.emissiveMult == 5.0F,
+        "expected every editable appearance value retained");
+    model.setEditedAppearance(
+        0x123456,
+        0.35F,
+        0xABCDEF,
+        -1.0F,
+        std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::quiet_NaN());
+    edited = model.editAppearance();
+    expect(edited && edited->edited.glossiness == 4.0F && edited->edited.specularStrength == 2.0F &&
+            edited->edited.emissiveMult == 5.0F,
+        "expected invalid material values to retain the prior editable values");
+    expect(model.confirmAppearanceUpdate(), "expected changed advanced appearance Save accepted");
+    const auto ticket = model.takeAppearanceRequest();
+    expect(ticket && ticket->request.color == 0x123456 && ticket->request.alpha == 0.35F &&
+            ticket->request.glow == 0xABCDEF && ticket->request.glossiness == 4.0F &&
+            ticket->request.specularStrength == 2.0F && ticket->request.emissiveMult == 5.0F,
+        "expected full update ticket to forward every editable appearance value");
 }
 
 void appearanceSaveCreatesOneTicketAndSuccessRefreshesOnlyBody() {
@@ -695,7 +763,7 @@ void appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync() {
     completeInitialQuery(model, slotsWithEditableOwnedTattoo());
     expect(model.selectSlot(1) && model.beginEditAppearance(),
         "expected write retry session opened");
-    model.setEditedAppearance(0x123456, 0.35F);
+    model.setEditedAppearance(0x123456, 0.35F, 0xABCDEF, 4.0F, 2.0F, 5.0F);
     expect(model.confirmAppearanceUpdate(), "expected first write attempt accepted");
     const auto first = model.takeAppearanceRequest();
     model.completeAppearanceUpdate(first->generation, std::unexpected(ServiceError{
@@ -707,6 +775,8 @@ void appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync() {
     expect(model.screen() == SlotWorkflowScreen::editAppearance && failedWrite &&
             failedWrite->mode == UpdateTattooAppearanceMode::updateAndSynchronize &&
             failedWrite->edited.color == 0x123456 && failedWrite->edited.alpha == 0.35F &&
+            failedWrite->edited.glow == 0xABCDEF && failedWrite->edited.glossiness == 4.0F &&
+            failedWrite->edited.specularStrength == 2.0F && failedWrite->edited.emissiveMult == 5.0F &&
             model.error() && model.error()->code == ServiceErrorCode::updateFailed,
         "expected write error to retain edited values for a full-update retry");
     expect(model.confirmAppearanceUpdate(), "expected write retry accepted");
@@ -724,18 +794,22 @@ void appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync() {
             failedSync->mode == UpdateTattooAppearanceMode::synchronizeOnly &&
             model.error() && model.error()->code == ServiceErrorCode::synchronizeFailed,
         "expected synchronization error to switch the retained session to Retry Sync");
-    model.setEditedAppearance(0xABCDEF, 0.9F);
+    model.setEditedAppearance(0x102030, 0.9F, 0x010203, 0.5F, 0.75F, 1.0F);
     failedSync = model.editAppearance();
     expect(failedSync && failedSync->edited.color == 0x123456 &&
-            failedSync->edited.alpha == 0.35F,
-        "expected Retry Sync mode to ignore color and alpha edits");
+            failedSync->edited.alpha == 0.35F && failedSync->edited.glow == 0xABCDEF &&
+            failedSync->edited.glossiness == 4.0F && failedSync->edited.specularStrength == 2.0F &&
+            failedSync->edited.emissiveMult == 5.0F,
+        "expected Retry Sync mode to ignore all appearance edits");
     expect(model.confirmAppearanceUpdate(), "expected synchronization-only retry accepted");
     const auto syncRetry = model.takeAppearanceRequest();
     expect(syncRetry && syncRetry->generation > writeRetry->generation &&
             syncRetry->request.mode == UpdateTattooAppearanceMode::synchronizeOnly &&
             syncRetry->request.runtimeHandle == 73 && syncRetry->request.color == 0x123456 &&
-            syncRetry->request.alpha == 0.35F,
-        "expected Retry Sync to preserve identity and values without another full update");
+            syncRetry->request.alpha == 0.35F && syncRetry->request.glow == 0xABCDEF &&
+            syncRetry->request.glossiness == 4.0F && syncRetry->request.specularStrength == 2.0F &&
+            syncRetry->request.emissiveMult == 5.0F,
+        "expected Retry Sync to preserve every edited value without another full update");
 
     model.completeAppearanceUpdate(syncRetry->generation, std::unexpected(ServiceError{
         ServiceErrorCode::updateFailed,
@@ -787,6 +861,7 @@ int main() {
     failures += run("query failure remains retryable", queryFailureRemainsRetryable);
     failures += run("edit appearance requires owned slot with handle and copies snapshot", editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot);
     failures += run("local appearance edits normalize track dirty and Cancel without ticket", localAppearanceEditsNormalizeTrackDirtyAndCancelWithoutTicket);
+    failures += run("advanced appearance edits track dirty normalize and forward all values", advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues);
     failures += run("selecting another area invalidates matching appearance completion", selectingAnotherAreaInvalidatesMatchingAppearanceCompletion);
     failures += run("appearance Save creates one ticket and success refreshes only BODY", appearanceSaveCreatesOneTicketAndSuccessRefreshesOnlyBody);
     failures += run("appearance write failure retries full update and sync failure retries only sync", appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync);
