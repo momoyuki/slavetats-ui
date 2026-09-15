@@ -43,7 +43,7 @@ This baseline is the foundation. Future milestones should extend it instead of c
 
 ## vNext.1 — Full SlaveTatsNG 0.8 Appearance
 
-**Status:** Current priority
+**Status:** Complete
 
 **Design:** `docs/superpowers/specs/2026-09-13-native-advanced-appearance-design.md`
 
@@ -51,24 +51,24 @@ Bring the applied-tattoo appearance model and native editor up to the SlaveTatsN
 
 ### Required fields
 
-- [ ] `glow` — emissive RGB color
-- [ ] `glowTexture` — glow/detail texture metadata
-- [ ] `emissiveMult` — emissive intensity
-- [ ] `glossiness`
-- [ ] `specularStrength`
-- [ ] `bump` — bump/normal texture metadata
+- [x] `glow` — emissive RGB color
+- [x] `glowTexture` — glow/detail texture metadata
+- [x] `emissiveMult` — emissive intensity
+- [x] `glossiness`
+- [x] `specularStrength`
+- [x] `bump` — bump/normal texture metadata
 
 ### Required implementation slices
 
-- [ ] Extend Core tattoo snapshot/model fields.
-- [ ] Extend runtime snapshot/readback from JContainers.
-- [ ] Extend typed appearance update request and validation.
-- [ ] Add verified runtime writes for editable advanced fields.
-- [ ] Preserve synchronization-only retry semantics.
-- [ ] Extend Edit Appearance with Material / Emission controls.
-- [ ] Preserve read-only texture metadata initially for `glowTexture` and `bump`.
-- [ ] Extend local tattoo JSON parsing so 0.8.x metadata is not discarded.
-- [ ] Add Core, Runtime, Workflow, Adapter, parser, and in-game regression coverage.
+- [x] Extend Core tattoo snapshot/model fields.
+- [x] Extend runtime snapshot/readback from JContainers.
+- [x] Extend typed appearance update request and validation.
+- [x] Add verified runtime writes for editable advanced fields.
+- [x] Preserve synchronization-only retry semantics.
+- [x] Extend Edit Appearance with Material / Emission controls.
+- [x] Preserve read-only texture metadata initially for `glowTexture` and `bump`.
+- [x] Extend local tattoo JSON parsing so 0.8.x metadata is not discarded.
+- [x] Add Core, Runtime, Workflow, Adapter, parser, and in-game regression coverage.
 
 ### Acceptance target
 
@@ -90,7 +90,7 @@ The following are not required to complete vNext.1:
 
 ## vNext.2 — Lock and Domain
 
-**Status:** Next
+**Status:** Current priority
 
 Close two important SlaveTats workflow gaps without expanding actor targeting yet.
 
