@@ -1,6 +1,7 @@
 #include "native/NativeSlotWorkflowModel.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string_view>
 #include <utility>
 
@@ -290,9 +291,13 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         return false;
     }
 
-    const PreviewTattooAppearance appearance{
+    const TattooAppearance appearance{
         .color = found->tattoo->color,
         .alpha = found->tattoo->alpha,
+        .glow = found->tattoo->glow,
+        .glossiness = found->tattoo->glossiness,
+        .specularStrength = found->tattoo->specularStrength,
+        .emissiveMult = found->tattoo->emissiveMult,
     };
     m_editAppearance = AppearanceEditSession{
         .actorFormId = currentSlots->actorFormId,
@@ -300,6 +305,8 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .slot = found->index,
         .runtimeHandle = found->tattoo->runtimeHandle,
         .texturePath = found->tattoo->texturePath,
+        .glowTexture = found->tattoo->glowTexture,
+        .bump = found->tattoo->bump,
         .original = appearance,
         .edited = appearance,
     };
@@ -314,8 +321,39 @@ void NativeSlotWorkflowModel::setEditedAppearance(std::int32_t color, float alph
         return;
     }
 
+    setEditedAppearance(
+        color,
+        alpha,
+        m_editAppearance->edited.glow,
+        m_editAppearance->edited.glossiness,
+        m_editAppearance->edited.specularStrength,
+        m_editAppearance->edited.emissiveMult);
+}
+
+void NativeSlotWorkflowModel::setEditedAppearance(
+    std::int32_t color,
+    float alpha,
+    std::int32_t glow,
+    float glossiness,
+    float specularStrength,
+    float emissiveMult) noexcept {
+    if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly) {
+        return;
+    }
+
     m_editAppearance->edited.color = std::clamp(color, 0, 0xFFFFFF);
     m_editAppearance->edited.alpha = std::clamp(alpha, 0.0F, 1.0F);
+    m_editAppearance->edited.glow = std::clamp(glow, 0, 0xFFFFFF);
+    if (std::isfinite(glossiness) && glossiness >= 0.0F) {
+        m_editAppearance->edited.glossiness = glossiness;
+    }
+    if (std::isfinite(specularStrength) && specularStrength >= 0.0F) {
+        m_editAppearance->edited.specularStrength = specularStrength;
+    }
+    if (std::isfinite(emissiveMult) && emissiveMult >= 0.0F) {
+        m_editAppearance->edited.emissiveMult = emissiveMult;
+    }
 }
 
 void NativeSlotWorkflowModel::cancelEditAppearance() {
@@ -341,6 +379,10 @@ bool NativeSlotWorkflowModel::confirmAppearanceUpdate() {
             .runtimeHandle = m_editAppearance->runtimeHandle,
             .color = m_editAppearance->edited.color,
             .alpha = m_editAppearance->edited.alpha,
+            .glow = m_editAppearance->edited.glow,
+            .glossiness = m_editAppearance->edited.glossiness,
+            .specularStrength = m_editAppearance->edited.specularStrength,
+            .emissiveMult = m_editAppearance->edited.emissiveMult,
             .mode = m_editAppearance->mode,
         },
     };
