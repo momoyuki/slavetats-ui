@@ -120,14 +120,15 @@ void archiveFailureIsPreserved() {
 
 void explicitLooseAndArchiveResolutionStaySeparate() {
     TemporaryDirectory directory;
+    directory.write(fs::path("Pack") / ".keep", {});
     TextureResolver resolver(directory.path());
 
-    const auto loose = resolver.resolveLoose("Pack/mark.dds");
+    const auto loose = resolver.resolveLoose("Pack");
     expect(loose == std::unexpected(TextureResolveError::notFound),
         "expected loose miss without archive access");
 
     std::string requestedPath;
-    const auto archive = resolver.resolveArchive("Pack/mark.dds", [&](std::string_view path) {
+    const auto archive = resolver.resolveArchive("Pack", [&](std::string_view path) {
         requestedPath = path;
         return stui::textures::TextureBytesResult(std::vector<std::uint8_t>{7, 8});
     });
@@ -136,7 +137,7 @@ void explicitLooseAndArchiveResolutionStaySeparate() {
     expect(archive->source == TextureSource::archive, "expected archive source");
     expect(archive->bytes == std::vector<std::uint8_t>({7, 8}),
         "expected archive bytes");
-    expect(requestedPath == "textures\\actors\\character\\slavetats\\Pack\\mark.dds",
+    expect(requestedPath == "textures\\actors\\character\\slavetats\\Pack",
         "expected canonical archive resource path");
 }
 
