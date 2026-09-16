@@ -12,6 +12,7 @@ inline constexpr std::size_t kDefaultTattooPageSize = 24;
 
 struct TattooFilter {
     std::string search;
+    std::string domain;
     std::string sourceId;
     std::string section;
     std::string area;
@@ -36,6 +37,7 @@ struct TattooSourceOption {
 };
 
 struct TattooFacets {
+    std::vector<std::string> domains;
     std::vector<TattooSourceOption> sources;
     std::vector<std::string> sections;
     std::vector<std::string> areas;
@@ -53,6 +55,7 @@ private:
     struct IndexedDefinition {
         TattooDefinition definition;
         std::string foldedSearch;
+        std::string foldedDomain;
         std::string foldedSourceId;
         std::string foldedSection;
         std::string foldedArea;

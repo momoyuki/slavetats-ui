@@ -65,6 +65,7 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
         });
         auto& entry = m_entries.back();
         entry.foldedSearch = buildFoldedSearch(entry.definition);
+        entry.foldedDomain = foldASCII(entry.definition.domain);
         entry.foldedSourceId = foldASCII(entry.definition.sourceId);
         entry.foldedSection = foldASCII(entry.definition.section);
         entry.foldedArea = foldASCII(entry.definition.area);
@@ -76,6 +77,7 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
     std::ranges::sort(m_entries, [](const IndexedDefinition& left, const IndexedDefinition& right) {
         return std::tie(
                    left.foldedPackName,
+                   left.foldedDomain,
                    left.foldedSection,
                    left.foldedArea,
                    left.foldedName,
@@ -84,6 +86,7 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
                    left.definition.sourceIndex) <
                std::tie(
                    right.foldedPackName,
+                   right.foldedDomain,
                    right.foldedSection,
                    right.foldedArea,
                    right.foldedName,
@@ -93,8 +96,10 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
     });
 
     std::unordered_set<std::string> seenSources;
+    std::vector<std::pair<std::string, std::string>> domains;
     std::vector<std::pair<std::string, std::string>> sections;
     std::vector<std::pair<std::string, std::string>> areas;
+    domains.reserve(m_entries.size());
     sections.reserve(m_entries.size());
     areas.reserve(m_entries.size());
     for (const auto& entry : m_entries) {
@@ -104,6 +109,7 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
                 .packName = entry.definition.packName,
             });
         }
+        domains.emplace_back(entry.foldedDomain, entry.definition.domain);
         sections.emplace_back(entry.foldedSection, entry.definition.section);
         areas.emplace_back(entry.foldedArea, entry.definition.area);
     }
@@ -113,12 +119,14 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
         return std::tuple(foldASCII(left.packName), foldASCII(left.sourceId), left.sourceId) <
                std::tuple(foldASCII(right.packName), foldASCII(right.sourceId), right.sourceId);
     });
+    m_facets.domains = buildFacetValues(std::move(domains));
     m_facets.sections = buildFacetValues(std::move(sections));
     m_facets.areas = buildFacetValues(std::move(areas));
 }
 
 TattooPage TattooRepository::query(const TattooFilter& filter) const {
     const std::string foldedSearch = foldASCII(filter.search);
+    const std::string foldedDomain = foldASCII(filter.domain);
     const std::string foldedSourceId = foldASCII(filter.sourceId);
     const std::string foldedSection = foldASCII(filter.section);
     const std::string foldedArea = foldASCII(filter.area);
@@ -129,6 +137,7 @@ TattooPage TattooRepository::query(const TattooFilter& filter) const {
         if ((!foldedSearch.empty() &&
                 entry.foldedSearch.find(foldedSearch) == std::string::npos) ||
             (!foldedSourceId.empty() && entry.foldedSourceId != foldedSourceId) ||
+            (!foldedDomain.empty() && entry.foldedDomain != foldedDomain) ||
             (!foldedSection.empty() && entry.foldedSection != foldedSection) ||
             (!foldedArea.empty() && entry.foldedArea != foldedArea)) {
             continue;
@@ -166,8 +175,10 @@ const TattooFacets& TattooRepository::facets() const noexcept {
 
 TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) const {
     const std::string foldedArea = foldASCII(filter.area);
+    const std::string foldedDomain = foldASCII(filter.domain);
     const std::string foldedSourceId = foldASCII(filter.sourceId);
     TattooFacets result{
+        .domains = m_facets.domains,
         .areas = m_facets.areas,
     };
     std::unordered_set<std::string> seenSources;
@@ -175,6 +186,9 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
 
     for (const auto& entry : m_entries) {
         if (!foldedArea.empty() && entry.foldedArea != foldedArea) {
+            continue;
+        }
+        if (!foldedDomain.empty() && entry.foldedDomain != foldedDomain) {
             continue;
         }
         if (seenSources.insert(entry.foldedSourceId).second) {

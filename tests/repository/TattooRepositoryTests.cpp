@@ -198,10 +198,31 @@ void buildsStableSourceAwareFacets() {
         "expected folded duplicate-free areas");
 }
 
+void filtersDomainsAndBuildsDeterministicDomainFacets() {
+    auto custom = definition("custom.json", "Custom", "Marks", "Custom One", "custom.dds", "Body");
+    custom.domain = "Custom";
+    auto customVariant = definition("variant.json", "Variant", "Marks", "Custom Two", "variant.dds", "Body");
+    customVariant.domain = "custom";
+    TattooRepository repository({
+        definition("default.json", "Default", "Marks", "Default", "default.dds", "Body"),
+        std::move(custom),
+        std::move(customVariant),
+    });
+
+    expect(repository.facets().domains == std::vector<std::string>{"Custom", "default"},
+        "expected case-insensitive deterministic domain options");
+    expect(repository.query(TattooFilter{.domain = "CUSTOM"}).matchedEntries == 2,
+        "expected case-insensitive domain filter");
+    expect(repository.query(TattooFilter{}).matchedEntries == 3,
+        "expected empty domain filter to retain all entries");
+}
+
 void contextualFacetsFollowAreaThenSource() {
+    auto customBody = definition("body-b.json", "Body B", "Runes", "B", "b.dds", "BODY");
+    customBody.domain = "custom";
     TattooRepository repository({
         definition("body-a.json", "Body A", "Marks", "A", "a.dds", "Body"),
-        definition("body-b.json", "Body B", "Runes", "B", "b.dds", "BODY"),
+        std::move(customBody),
         definition("face.json", "Face", "Face Marks", "C", "c.dds", "Face"),
     });
 
@@ -224,6 +245,15 @@ void contextualFacetsFollowAreaThenSource() {
         "expected Source options to depend only on Area");
     expect(sourceFacets.sections == std::vector<std::string>{"Marks"},
         "expected Section options narrowed only by Area and Source");
+
+    const auto customFacets = repository.contextualFacets(TattooFilter{
+        .domain = "CUSTOM",
+        .area = "body",
+    });
+    expect(customFacets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "body-b.json", .packName = "Body B"},
+           } && customFacets.sections == std::vector<std::string>{"Runes"},
+        "expected Domain to narrow Source and Section facets after Area");
 }
 
 void emptyRepositoryReturnsEmptyPageAndFacets() {
@@ -296,6 +326,7 @@ int main() {
         combinesSourceSectionAndAreaFilters);
     failures += run("empty match resets paging", emptyMatchResetsPaging);
     failures += run("builds stable source-aware facets", buildsStableSourceAwareFacets);
+    failures += run("filters domains and builds deterministic domain facets", filtersDomainsAndBuildsDeterministicDomainFacets);
     failures += run(
         "contextual facets follow Area then Source",
         contextualFacetsFollowAreaThenSource);
