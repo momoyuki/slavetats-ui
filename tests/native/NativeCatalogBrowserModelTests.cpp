@@ -21,12 +21,14 @@ TattooDefinition tattoo(
     std::string section,
     std::string area,
     std::string name,
-    std::size_t sourceIndex) {
+    std::size_t sourceIndex,
+    std::string domain = "default") {
     return TattooDefinition{
         .sourceId = std::move(sourceId),
         .sourceFile = "fixture.json",
         .packName = "Fixture Pack",
         .sourceIndex = sourceIndex,
+        .domain = std::move(domain),
         .name = std::move(name),
         .section = std::move(section),
         .texturePath = "fixture.dds",
@@ -181,6 +183,35 @@ void clearsFiltersThatAreInvalidInTheNewContext() {
         "expected query to use the reconciled Body Source context");
 }
 
+void domainSelectionReconcilesSourceAndSection() {
+    TattooCatalogSnapshot current = snapshot({
+        tattoo("default-a.json", "Default Marks", "Body", "Default A", 0),
+        tattoo("default-b.json", "Default Runes", "Body", "Default B", 1),
+        tattoo("custom.json", "Custom Marks", "Body", "Custom", 2, "custom"),
+    });
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    model.setDomain("custom");
+    model.setSourceId("custom.json");
+    model.setSection("Custom Marks");
+
+    model.setDomain("default");
+    expect(model.filter().domain == "default" && model.filter().pageIndex == 0,
+        "expected Domain change to reset pagination");
+    expect(model.filter().sourceId.empty() && model.filter().section.empty(),
+        "expected incompatible Source and Section cleared after Domain change");
+    expect(model.page().matchedEntries == 2,
+        "expected default Domain entries after reconciliation");
+
+    model.setDomain("");
+    expect(model.filter().domain.empty() && model.page().matchedEntries == 3,
+        "expected empty Domain to restore All Domains");
+
+    model.setDomain("missing");
+    expect(model.filter().domain.empty() && model.page().matchedEntries == 3,
+        "expected unavailable Domain to reconcile to All Domains");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -206,5 +237,8 @@ int main() {
     failures += run(
         "clears filters invalid in the new context",
         clearsFiltersThatAreInvalidInTheNewContext);
+    failures += run(
+        "domain selection reconciles Source and Section",
+        domainSelectionReconcilesSourceAndSection);
     return failures == 0 ? 0 : 1;
 }

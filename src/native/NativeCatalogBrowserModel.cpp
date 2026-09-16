@@ -50,6 +50,13 @@ void NativeCatalogBrowserModel::setSearch(std::string value) {
     query();
 }
 
+void NativeCatalogBrowserModel::setDomain(std::string value) {
+    m_filter.domain = std::move(value);
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
 void NativeCatalogBrowserModel::setSourceId(std::string value) {
     m_filter.sourceId = std::move(value);
     m_filter.pageIndex = 0;
@@ -118,12 +125,19 @@ void NativeCatalogBrowserModel::resetFilter() {
 
 void NativeCatalogBrowserModel::reconcileContextualFilters() {
     if (!m_snapshot) {
+        m_filter.domain.clear();
         m_filter.sourceId.clear();
         m_filter.section.clear();
         return;
     }
 
     auto facets = m_snapshot->repository.contextualFacets(m_filter);
+    if (!m_filter.domain.empty() &&
+        !containsFolded(facets.domains, m_filter.domain,
+            [](const std::string& domain) -> std::string_view { return domain; })) {
+        m_filter.domain.clear();
+        facets = m_snapshot->repository.contextualFacets(m_filter);
+    }
     if (!m_filter.sourceId.empty() &&
         !containsFolded(facets.sources, m_filter.sourceId,
             [](const repository::TattooSourceOption& source) -> std::string_view {

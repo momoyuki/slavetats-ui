@@ -19,6 +19,7 @@ public:
 
     void refresh();
     void setSearch(std::string value);
+    void setDomain(std::string value);
     void setSourceId(std::string value);
     void setSection(std::string value);
     void setArea(std::string value);
