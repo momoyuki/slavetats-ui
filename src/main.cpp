@@ -41,6 +41,9 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     [](const core::UpdateTattooAppearanceRequest& request) {
         return g_applicationRuntime.service().updateAppearance(request);
     },
+    [](const core::SetTattooLockedRequest& request) {
+        return g_applicationRuntime.service().setTattooLocked(request);
+    },
     [](native::NativeSlotTask task) {
         auto* taskInterface = SKSE::GetTaskInterface();
         if (!taskInterface) {

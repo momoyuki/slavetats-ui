@@ -77,6 +77,11 @@ struct SlotAppearanceTicket {
     core::UpdateTattooAppearanceRequest request;
 };
 
+struct SlotLockTicket {
+    std::uint64_t generation{};
+    core::SetTattooLockedRequest request;
+};
+
 class NativeSlotWorkflowModel {
 public:
     static constexpr std::size_t kPageSize = 6;
@@ -100,6 +105,7 @@ public:
     void cancelPreview();
     [[nodiscard]] bool confirmApply();
     [[nodiscard]] bool beginEditAppearance();
+    [[nodiscard]] bool toggleSelectedSlotLock();
     void setEditedAppearance(std::int32_t color, float alpha) noexcept;
     void setEditedAppearance(
         std::int32_t color,
@@ -115,12 +121,14 @@ public:
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
     [[nodiscard]] std::optional<SlotRemoveTicket> takeRemoveRequest();
     [[nodiscard]] std::optional<SlotAppearanceTicket> takeAppearanceRequest();
+    [[nodiscard]] std::optional<SlotLockTicket> takeLockRequest();
     void completeSlotQuery(std::uint64_t generation, core::TattooSlotsResult result);
     void completeApply(std::uint64_t generation, core::ApplyTattooResult result);
     void completeRemove(std::uint64_t generation, core::RemoveTattooResult result);
     void completeAppearanceUpdate(
         std::uint64_t generation,
         core::UpdateTattooAppearanceResult result);
+    void completeLockStateChange(std::uint64_t generation, core::SetTattooLockedResult result);
 
     [[nodiscard]] SlotWorkflowScreen screen() const noexcept;
     [[nodiscard]] core::TattooArea selectedArea() const noexcept;
@@ -132,6 +140,7 @@ public:
     [[nodiscard]] const PreviewTattooAppearance* previewAppearance() const noexcept;
     [[nodiscard]] const AppearanceEditSession* editAppearance() const noexcept;
     [[nodiscard]] bool canSaveAppearance() const noexcept;
+    [[nodiscard]] bool isLockStateChangeInFlight() const noexcept;
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(
         const repository::TattooDefinition& tattoo) const;
     [[nodiscard]] const core::ServiceError* error() const noexcept;
@@ -162,10 +171,12 @@ private:
     std::optional<SlotApplyTicket> m_pendingApply;
     std::optional<SlotRemoveTicket> m_pendingRemove;
     std::optional<SlotAppearanceTicket> m_pendingAppearance;
+    std::optional<SlotLockTicket> m_pendingLock;
     std::optional<std::uint64_t> m_activeSlotQueryGeneration;
     std::optional<std::uint64_t> m_activeApplyGeneration;
     std::optional<std::uint64_t> m_activeRemoveGeneration;
     std::optional<std::uint64_t> m_activeAppearanceGeneration;
+    std::optional<std::uint64_t> m_activeLockGeneration;
     std::optional<AppearanceEditSession> m_editAppearance;
     std::uint64_t m_generation{};
     bool m_started{false};

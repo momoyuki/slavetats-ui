@@ -708,6 +708,16 @@ void removeHelpersRequireExplicitTargetConfirmation() {
         "expected missing slot target to disable Remove");
 }
 
+void lockActionPresentationKeepsAppearanceEditable() {
+    const auto unlocked = stui::native::slotLockActionPresentation(false);
+    expect(unlocked.toggleLabel == "Lock" && unlocked.mutationsEnabled,
+        "expected unlocked slot to offer Lock and mutations");
+
+    const auto locked = stui::native::slotLockActionPresentation(true);
+    expect(locked.toggleLabel == "Unlock" && !locked.mutationsEnabled,
+        "expected locked slot to offer Unlock and disable Replace and Remove");
+}
+
 void pickerVisiblePathsFollowOnlyTheSixRenderedCards() {
     const stui::repository::TattooPage page{
         .entries = {
@@ -816,6 +826,8 @@ int main() {
         std::cout << "PASS picker and Preview helpers expose exact target intent\n";
         removeHelpersRequireExplicitTargetConfirmation();
         std::cout << "PASS Remove helpers require explicit target confirmation\n";
+        lockActionPresentationKeepsAppearanceEditable();
+        std::cout << "PASS Lock actions preserve Edit Appearance access\n";
         pickerVisiblePathsFollowOnlyTheSixRenderedCards();
         std::cout << "PASS Picker visible paths follow six rendered cards\n";
         nullSnapshotModelHasSafeEmptyPageWithoutImGui();

@@ -16,6 +16,8 @@ using stui::core::ApplyTattooSuccess;
 using stui::core::RemoveTattooRequest;
 using stui::core::RemoveTattooSuccess;
 using stui::core::ServiceErrorCode;
+using stui::core::SetTattooLockedRequest;
+using stui::core::SetTattooLockedSuccess;
 using stui::core::SlotOccupancy;
 using stui::core::TattooArea;
 using stui::core::TattooSlot;
@@ -128,6 +130,15 @@ struct Fixture {
                       .runtimeHandle = request.runtimeHandle,
                   });
               },
+              [this](const SetTattooLockedRequest& request) {
+                  ++lockCount;
+                  lockRequest = request;
+                  return stui::core::SetTattooLockedResult(SetTattooLockedSuccess{
+                      .actorFormId = request.actorFormId,
+                      .runtimeHandle = request.runtimeHandle,
+                      .locked = request.locked,
+                  });
+              },
               [this](NativeSlotTask task) {
                   if (schedulerThrows) {
                       schedulerThrows = false;
@@ -148,11 +159,13 @@ struct Fixture {
     std::size_t applyCount{};
     std::size_t removeCount{};
     std::size_t appearanceCount{};
+    std::size_t lockCount{};
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
     RemoveTattooRequest removedRequest;
     UpdateTattooAppearanceRequest appearanceRequest;
+    SetTattooLockedRequest lockRequest;
     bool returnOwnedSlot{};
     bool queryThrows{};
     bool applyThrows{};
@@ -263,6 +276,27 @@ void removeSchedulesOnlyAfterExplicitConfirmation() {
     fixture.runtime.pump();
     expect(fixture.scheduled.size() == 3,
         "expected successful Remove to schedule a fresh slot query");
+}
+
+void lockSchedulesOneActorScopedMutationAndRefreshes() {
+    Fixture fixture;
+    completeInitialOwnedSlotQuery(fixture);
+    expect(fixture.model.selectSlot(1), "expected owned slot selected");
+    expect(fixture.model.toggleSelectedSlotLock(), "expected Lock action accepted");
+
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2, "expected one scheduled lock mutation");
+    fixture.scheduled.back()();
+
+    expect(fixture.lockCount == 1 && fixture.lockRequest.actorFormId == 0x14 &&
+            fixture.lockRequest.runtimeHandle == 73 && fixture.lockRequest.locked,
+        "expected actor-scoped Lock request forwarded once");
+    expect(fixture.model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected successful Lock to return to Current Slots");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 3,
+        "expected successful Lock to refresh selected slots");
 }
 
 void convertsOperationAndSchedulerExceptionsToModelErrors() {
@@ -483,6 +517,8 @@ int main() {
     failures += run("schedules only one query and completes model", schedulesOnlyOneQueryAndCompletesModel);
     failures += run("apply schedules only after explicit confirmation", applySchedulesOnlyAfterExplicitConfirmation);
     failures += run("remove schedules only after explicit confirmation", removeSchedulesOnlyAfterExplicitConfirmation);
+    failures += run("lock schedules one actor-scoped mutation and refreshes",
+        lockSchedulesOneActorScopedMutationAndRefreshes);
     failures += run("converts operation and scheduler exceptions to model errors", convertsOperationAndSchedulerExceptionsToModelErrors);
     failures += run("converts Apply and scheduler exceptions to model errors", convertsApplyAndApplySchedulerExceptionsToModelErrors);
     failures += run("converts Remove exceptions to retryable model errors", convertsRemoveExceptionsToRetryableModelErrors);

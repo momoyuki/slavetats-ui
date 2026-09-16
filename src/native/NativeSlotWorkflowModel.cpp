@@ -71,6 +71,8 @@ void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
     m_previewAppearance.reset();
     m_pendingAppearance.reset();
     m_activeAppearanceGeneration.reset();
+    m_pendingLock.reset();
+    m_activeLockGeneration.reset();
     m_editAppearance.reset();
     m_error.reset();
     clampSelectedPage();
@@ -147,7 +149,19 @@ bool NativeSlotWorkflowModel::selectSlot(std::int32_t slot) {
 }
 
 bool NativeSlotWorkflowModel::replaceSelectedSlot() {
-    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot) {
+    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
+        m_pendingLock || m_activeLockGeneration) {
+        return false;
+    }
+
+    const auto* current = slots();
+    if (!current) {
+        return false;
+    }
+    const auto found = std::ranges::find_if(current->slots, [this](const core::TattooSlot& slot) {
+        return slot.index == *m_targetSlot;
+    });
+    if (found == current->slots.end() || !found->tattoo || found->tattoo->locked) {
         return false;
     }
 
@@ -156,7 +170,19 @@ bool NativeSlotWorkflowModel::replaceSelectedSlot() {
 }
 
 bool NativeSlotWorkflowModel::requestRemove() {
-    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot) {
+    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
+        m_pendingLock || m_activeLockGeneration) {
+        return false;
+    }
+
+    const auto* current = slots();
+    if (!current) {
+        return false;
+    }
+    const auto found = std::ranges::find_if(current->slots, [this](const core::TattooSlot& slot) {
+        return slot.index == *m_targetSlot;
+    });
+    if (found == current->slots.end() || !found->tattoo || found->tattoo->locked) {
         return false;
     }
 
@@ -274,7 +300,8 @@ bool NativeSlotWorkflowModel::confirmApply() {
 }
 
 bool NativeSlotWorkflowModel::beginEditAppearance() {
-    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot) {
+    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
+        m_pendingLock || m_activeLockGeneration) {
         return false;
     }
 
@@ -312,6 +339,36 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
     };
     m_error.reset();
     m_screen = SlotWorkflowScreen::editAppearance;
+    return true;
+}
+
+bool NativeSlotWorkflowModel::toggleSelectedSlotLock() {
+    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
+        m_pendingLock || m_activeLockGeneration) {
+        return false;
+    }
+    const auto* current = slots();
+    if (!current) {
+        return false;
+    }
+    const auto found = std::ranges::find_if(current->slots, [this](const core::TattooSlot& slot) {
+        return slot.index == *m_targetSlot;
+    });
+    if (found == current->slots.end() || found->occupancy != core::SlotOccupancy::slaveTats ||
+        !found->tattoo || found->tattoo->runtimeHandle == 0) {
+        return false;
+    }
+    const std::uint64_t generation = nextGeneration();
+    m_pendingLock = SlotLockTicket{
+        .generation = generation,
+        .request = core::SetTattooLockedRequest{
+            .actorFormId = current->actorFormId,
+            .runtimeHandle = found->tattoo->runtimeHandle,
+            .locked = !found->tattoo->locked,
+        },
+    };
+    m_activeLockGeneration = generation;
+    m_error.reset();
     return true;
 }
 
@@ -416,6 +473,12 @@ std::optional<SlotAppearanceTicket> NativeSlotWorkflowModel::takeAppearanceReque
     return ticket;
 }
 
+std::optional<SlotLockTicket> NativeSlotWorkflowModel::takeLockRequest() {
+    auto ticket = std::move(m_pendingLock);
+    m_pendingLock.reset();
+    return ticket;
+}
+
 void NativeSlotWorkflowModel::completeSlotQuery(
     std::uint64_t generation,
     core::TattooSlotsResult result) {
@@ -506,6 +569,26 @@ void NativeSlotWorkflowModel::completeAppearanceUpdate(
     scheduleSlotQuery(m_selectedArea);
 }
 
+void NativeSlotWorkflowModel::completeLockStateChange(
+    std::uint64_t generation,
+    core::SetTattooLockedResult result) {
+    if (!m_activeLockGeneration || generation != *m_activeLockGeneration) {
+        return;
+    }
+    m_activeLockGeneration.reset();
+    if (!result) {
+        m_error = std::move(result.error());
+        m_screen = SlotWorkflowScreen::slotActions;
+        return;
+    }
+    m_error.reset();
+    m_targetSlot.reset();
+    m_previewTattoo.reset();
+    m_previewAppearance.reset();
+    m_screen = SlotWorkflowScreen::currentSlots;
+    scheduleSlotQuery(m_selectedArea);
+}
+
 SlotWorkflowScreen NativeSlotWorkflowModel::screen() const noexcept {
     return m_screen;
 }
@@ -551,6 +634,10 @@ const AppearanceEditSession* NativeSlotWorkflowModel::editAppearance() const noe
 bool NativeSlotWorkflowModel::canSaveAppearance() const noexcept {
     return m_screen == SlotWorkflowScreen::editAppearance && m_editAppearance &&
         m_editAppearance->edited != m_editAppearance->original;
+}
+
+bool NativeSlotWorkflowModel::isLockStateChangeInFlight() const noexcept {
+    return m_pendingLock.has_value() || m_activeLockGeneration.has_value();
 }
 
 std::vector<std::int32_t> NativeSlotWorkflowModel::inUseSlots(

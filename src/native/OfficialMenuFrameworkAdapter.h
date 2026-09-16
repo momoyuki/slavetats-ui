@@ -121,6 +121,12 @@ enum class RemoveButtonState {
 [[nodiscard]] bool isRemoveConfirmationEnabled(
     SlotWorkflowScreen screen,
     bool hasTarget) noexcept;
+struct SlotLockActionPresentation {
+    std::string_view toggleLabel;
+    bool mutationsEnabled{};
+};
+
+[[nodiscard]] SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept;
 [[nodiscard]] std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page);
 [[nodiscard]] std::size_t pickerVisibleCardCount(

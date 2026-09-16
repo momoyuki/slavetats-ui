@@ -39,12 +39,14 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     SlotApplyOperation apply,
     SlotRemoveOperation remove,
     SlotAppearanceOperation updateAppearance,
+    SlotLockOperation setLocked,
     NativeSlotScheduler scheduler)
     : m_model(model),
       m_query(std::move(query)),
       m_apply(std::move(apply)),
       m_remove(std::move(remove)),
       m_updateAppearance(std::move(updateAppearance)),
+      m_setLocked(std::move(setLocked)),
       m_scheduler(std::move(scheduler)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
@@ -67,6 +69,10 @@ void NativeSlotWorkflowRuntime::pump() {
     }
     if (auto appearance = m_model.takeAppearanceRequest()) {
         scheduleAppearance(std::move(*appearance));
+        return;
+    }
+    if (auto lock = m_model.takeLockRequest()) {
+        scheduleLock(std::move(*lock));
         return;
     }
 
@@ -173,6 +179,31 @@ void NativeSlotWorkflowRuntime::scheduleAppearance(SlotAppearanceTicket ticket) 
             std::unexpected(operationError(
                 errorCode,
                 "Failed to schedule tattoo appearance update.")));
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleLock(SlotLockTicket ticket) {
+    const std::uint64_t generation = ticket.generation;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        core::SetTattooLockedResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::lockFailed,
+            "Tattoo lock state update failed."));
+        try {
+            result = m_setLocked(ticket.request);
+        } catch (...) {
+        }
+        m_model.completeLockStateChange(ticket.generation, std::move(result));
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        m_model.completeLockStateChange(
+            generation,
+            std::unexpected(operationError(
+                core::ServiceErrorCode::lockFailed,
+                "Failed to schedule tattoo lock state update.")));
         m_inFlight.store(false);
     }
 }

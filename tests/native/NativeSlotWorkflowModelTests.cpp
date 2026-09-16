@@ -17,6 +17,7 @@ using stui::core::RemoveTattooSuccess;
 using stui::core::RemoveTattooMode;
 using stui::core::ServiceError;
 using stui::core::ServiceErrorCode;
+using stui::core::SetTattooLockedSuccess;
 using stui::core::SlotOccupancy;
 using stui::core::TattooArea;
 using stui::core::TattooEntry;
@@ -689,6 +690,73 @@ void advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues() {
         "expected full update ticket to forward every editable appearance value");
 }
 
+void lockTicketRefreshesSnapshotAndGuardsLockedMutations() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+
+    expect(model.selectSlot(1), "expected owned slot selected for lock");
+    expect(model.toggleSelectedSlotLock(), "expected Lock accepted");
+    const auto lock = model.takeLockRequest();
+    expect(lock && lock->request.actorFormId == 0x14 && lock->request.runtimeHandle == 73 &&
+            lock->request.locked && model.isLockStateChangeInFlight(),
+        "expected Lock ticket scoped to selected owned tattoo");
+    expect(!model.replaceSelectedSlot() && !model.requestRemove() && !model.beginEditAppearance(),
+        "expected pending Lock to prevent actions against a stale slot snapshot");
+
+    model.completeLockStateChange(lock->generation, SetTattooLockedSuccess{});
+    const auto refresh = model.takeSlotQuery();
+    expect(refresh && refresh->area == TattooArea::body &&
+            model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected successful Lock to refresh selected area");
+    auto lockedSlots = slotsWithEditableOwnedTattoo();
+    lockedSlots.slots[1].tattoo->locked = true;
+    model.completeSlotQuery(refresh->generation, std::move(lockedSlots));
+
+    expect(model.selectSlot(1), "expected locked owned slot selected");
+    expect(!model.replaceSelectedSlot() && !model.requestRemove(),
+        "expected locked slot to reject Replace and Remove");
+    expect(model.beginEditAppearance(), "expected locked slot to allow Edit Appearance");
+    model.cancelEditAppearance();
+    expect(model.toggleSelectedSlotLock(), "expected Unlock accepted");
+    const auto unlock = model.takeLockRequest();
+    expect(unlock && !unlock->request.locked,
+        "expected Unlock ticket to clear the persisted lock state");
+
+    model.completeLockStateChange(unlock->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::lockFailed,
+        "lock write failed",
+    }));
+    expect(model.screen() == SlotWorkflowScreen::slotActions && model.error() &&
+            model.error()->code == ServiceErrorCode::lockFailed && !model.isLockStateChangeInFlight(),
+        "expected failed Unlock to retain Slot Actions for retry");
+}
+
+void changingAreaInvalidatesLockCompletion() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.toggleSelectedSlotLock(),
+        "expected lock request before area navigation");
+    const auto lock = model.takeLockRequest();
+    expect(lock.has_value(), "expected pending lock ticket");
+
+    model.selectArea(TattooArea::face);
+    const auto faceQuery = model.takeSlotQuery();
+    expect(faceQuery && faceQuery->area == TattooArea::face,
+        "expected FACE query after area navigation");
+    model.completeLockStateChange(lock->generation, SetTattooLockedSuccess{});
+
+    expect(model.selectedArea() == TattooArea::face &&
+            model.screen() == SlotWorkflowScreen::currentSlots && !model.error() &&
+            !model.takeSlotQuery(),
+        "expected obsolete Lock completion to leave navigated workflow unchanged");
+}
+
 void appearanceSaveCreatesOneTicketAndSuccessRefreshesOnlyBody() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(1);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -862,6 +930,8 @@ int main() {
     failures += run("edit appearance requires owned slot with handle and copies snapshot", editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot);
     failures += run("local appearance edits normalize track dirty and Cancel without ticket", localAppearanceEditsNormalizeTrackDirtyAndCancelWithoutTicket);
     failures += run("advanced appearance edits track dirty normalize and forward all values", advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues);
+    failures += run("lock ticket refreshes snapshot and guards locked mutations", lockTicketRefreshesSnapshotAndGuardsLockedMutations);
+    failures += run("changing area invalidates Lock completion", changingAreaInvalidatesLockCompletion);
     failures += run("selecting another area invalidates matching appearance completion", selectingAnotherAreaInvalidatesMatchingAppearanceCompletion);
     failures += run("appearance Save creates one ticket and success refreshes only BODY", appearanceSaveCreatesOneTicketAndSuccessRefreshesOnlyBody);
     failures += run("appearance write failure retries full update and sync failure retries only sync", appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync);

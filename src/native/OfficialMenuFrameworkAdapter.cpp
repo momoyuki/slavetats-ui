@@ -198,6 +198,13 @@ bool isRemoveConfirmationEnabled(
     return screen == SlotWorkflowScreen::removeConfirmation && hasTarget;
 }
 
+SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept {
+    return {
+        .toggleLabel = locked ? "Unlock" : "Lock",
+        .mutationsEnabled = !locked,
+    };
+}
+
 std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page) {
     const std::size_t visibleCount = pickerVisibleCardCount(page);
@@ -1012,6 +1019,10 @@ void renderSlotActions(
         ImGuiMCP::Text("%s / %s",
             slot->tattoo->section.c_str(),
             slot->tattoo->name.c_str());
+        if (slot->tattoo->locked) {
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted("Locked");
+        }
     }
     if (const auto* error = workflow.error()) {
         ImGuiMCP::TextUnformatted(error->message.c_str());
@@ -1082,26 +1093,45 @@ void renderSlotActions(
             }
             ImGuiMCP::EndDisabled();
         } else {
+            const bool locked = slot && slot->tattoo && slot->tattoo->locked;
+            const auto lockPresentation = slotLockActionPresentation(locked);
+            const bool lockStateChangeInFlight = workflow.isLockStateChangeInFlight();
             if (ImGuiMCP::Button("Back")) {
                 workflow.backToSlots();
             }
             ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(!lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Replace")) {
                 (void)workflow.replaceSelectedSlot();
             }
+            ImGuiMCP::EndDisabled();
             const bool canEditAppearance = slot &&
                 slot->occupancy == core::SlotOccupancy::slaveTats && slot->tattoo &&
                 slot->tattoo->runtimeHandle != 0;
             if (canEditAppearance) {
                 ImGuiMCP::SameLine();
+                ImGuiMCP::BeginDisabled(lockStateChangeInFlight);
                 if (ImGuiMCP::Button("Edit Appearance")) {
                     (void)workflow.beginEditAppearance();
                 }
+                ImGuiMCP::EndDisabled();
             }
             ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(!lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Remove")) {
                 (void)workflow.requestRemove();
             }
+            ImGuiMCP::EndDisabled();
+            if (locked) {
+                ImGuiMCP::SameLine();
+                ImGuiMCP::TextUnformatted("Unlock to replace or remove.");
+            }
+            ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(lockStateChangeInFlight);
+            if (ImGuiMCP::Button(lockPresentation.toggleLabel.data())) {
+                (void)workflow.toggleSelectedSlotLock();
+            }
+            ImGuiMCP::EndDisabled();
         }
         ImGuiMCP::TableSetColumnIndex(1);
         if (ImGuiMCP::Button("Close")) {
