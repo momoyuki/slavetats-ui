@@ -50,6 +50,8 @@ public:
     core::RemoveTattooResult removeFromSlot(const core::RemoveTattooRequest& request) override;
     core::UpdateTattooAppearanceResult updateAppearance(
         const core::UpdateTattooAppearanceRequest& request) override;
+    core::SetTattooLockedResult setTattooLocked(
+        const core::SetTattooLockedRequest& request) override;
 
 private:
     const slavetats::interface::Addresses* m_api{nullptr};

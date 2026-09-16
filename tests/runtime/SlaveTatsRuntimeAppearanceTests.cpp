@@ -23,6 +23,7 @@
 namespace {
 
 using stui::core::ServiceErrorCode;
+using stui::core::SetTattooLockedRequest;
 using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceRequest;
 using stui::runtime::SlaveTatsAppearanceBindings;
@@ -359,6 +360,14 @@ UpdateTattooAppearanceRequest request(UpdateTattooAppearanceMode mode =
     };
 }
 
+SetTattooLockedRequest lockRequest(bool locked) {
+    return SetTattooLockedRequest{
+        .actorFormId = 0x14,
+        .runtimeHandle = 73,
+        .locked = locked,
+    };
+}
+
 void seedBaseTattoo(QueryState& state, std::int32_t handle) {
     state.strings[{handle, "domain"}] = "default";
     state.strings[{handle, "section"}] = "Test Section";
@@ -656,6 +665,60 @@ void synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites() {
         "expected synchronize-only path to mark and synchronize exactly once");
 }
 
+void lockStateWritesAndVerifiesWithoutSynchronization() {
+    BindingState lockedState;
+    SlaveTatsRuntime lockedRuntime(bindingsFor(lockedState));
+    const auto lockedResult = lockedRuntime.setTattooLocked(lockRequest(true));
+
+    expect(lockedResult.has_value() && lockedResult->locked,
+        "expected lock state change success");
+    expect(lockedState.queryCount == 1 && lockedState.queriedActor == lockedState.actor,
+        "expected lock mutation to query the requested actor handles");
+    expect(lockedState.integerWriteCount == 1 && lockedState.integers[{73, "locked"}] == 1,
+        "expected Lock to write verified integer one");
+    expect(lockedState.updatedWriteCount == 0 && lockedState.synchronizeCount == 0,
+        "expected Lock not to mark updated or synchronize");
+
+    BindingState unlockedState;
+    SlaveTatsRuntime unlockedRuntime(bindingsFor(unlockedState));
+    const auto unlockedResult = unlockedRuntime.setTattooLocked(lockRequest(false));
+
+    expect(unlockedResult.has_value() && !unlockedResult->locked,
+        "expected unlock state change success");
+    expect(unlockedState.integerWriteCount == 1 && unlockedState.integers[{73, "locked"}] == 0,
+        "expected Unlock to write verified integer zero");
+    expect(unlockedState.updatedWriteCount == 0 && unlockedState.synchronizeCount == 0,
+        "expected Unlock not to mark updated or synchronize");
+}
+
+void staleLockHandlePerformsNoWrite() {
+    BindingState state;
+    state.handles = {74};
+    SlaveTatsRuntime runtime(bindingsFor(state));
+
+    const auto result = runtime.setTattooLocked(lockRequest(true));
+
+    expect(!result && result.error().code == ServiceErrorCode::staleTattooHandle,
+        "expected foreign lock handle rejected as stale");
+    expect(state.integerWriteCount == 0 && state.updatedWriteCount == 0 &&
+            state.synchronizeCount == 0,
+        "expected stale lock handle to perform no mutation");
+}
+
+void failedLockReadbackReturnsLockFailed() {
+    BindingState state;
+    state.ineffectiveReadbackKey = "locked";
+    SlaveTatsRuntime runtime(bindingsFor(state));
+
+    const auto result = runtime.setTattooLocked(lockRequest(true));
+
+    expect(!result && result.error().code == ServiceErrorCode::lockFailed,
+        "expected failed lock readback to return lockFailed");
+    expect(state.integerWriteCount == 1 && state.updatedWriteCount == 0 &&
+            state.synchronizeCount == 0,
+        "expected failed lock readback not to mark or synchronize");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -688,5 +751,9 @@ int main() {
         failedUpdatedReadbackStopsBeforeSynchronization);
     failures += run("synchronize-only preserves no-write and failure polarity",
         synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites);
+    failures += run("lock state writes and verifies without synchronization",
+        lockStateWritesAndVerifiesWithoutSynchronization);
+    failures += run("stale lock handle performs no write", staleLockHandlePerformsNoWrite);
+    failures += run("failed lock readback returns lock failed", failedLockReadbackReturnsLockFailed);
     return failures == 0 ? 0 : 1;
 }

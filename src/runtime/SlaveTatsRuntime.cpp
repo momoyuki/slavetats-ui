@@ -20,6 +20,7 @@ constexpr const char* kApplyExternalPool = "SlaveTatsUI-applyExternal";
 constexpr const char* kApplyAvailablePool = "SlaveTatsUI-applyAvailable";
 constexpr const char* kRemoveExternalPool = "SlaveTatsUI-removeExternal";
 constexpr const char* kUpdateAppearancePool = "SlaveTatsUI-updateAppearance";
+constexpr const char* kSetTattooLockedPool = "SlaveTatsUI-setTattooLocked";
 
 class JContainerPoolGuard {
 public:
@@ -581,6 +582,101 @@ core::UpdateTattooAppearanceResult SlaveTatsRuntime::updateAppearance(
         m_api,
         m_appearanceBindings ? &*m_appearanceBindings : nullptr);
     return updateTattooAppearance(request, backend);
+}
+
+core::SetTattooLockedResult SlaveTatsRuntime::setTattooLocked(
+    const core::SetTattooLockedRequest& request) {
+    const auto lockFailed = [](const char* message) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::lockFailed,
+            message,
+        });
+    };
+    const auto staleHandle = [] {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::staleTattooHandle,
+            "Tattoo handle is stale; refresh the slot snapshot and try again",
+        });
+    };
+
+    void* actorHandle = nullptr;
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->resolveActor) {
+            return lockFailed("Actor resolver binding is unavailable");
+        }
+        actorHandle = m_appearanceBindings->resolveActor(request.actorFormId);
+    } else {
+        actorHandle = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
+    }
+    if (!actorHandle) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::actorNotFound,
+            "Actor not found",
+        });
+    }
+
+    std::vector<std::int32_t> appliedHandles;
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->queryAppliedTattooHandles) {
+            return lockFailed("Applied tattoo query binding is unavailable");
+        }
+        const auto queried = m_appearanceBindings->queryAppliedTattooHandles(actorHandle);
+        if (!queried) {
+            return std::unexpected(queried.error());
+        }
+        appliedHandles = *queried;
+    } else {
+        if (!m_api) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::slaveTatsUnavailable,
+                "SlaveTatsNG not available",
+            });
+        }
+        const int matches = jcmini::JValue::addToPool(
+            jcmini::JArray::object(),
+            kSetTattooLockedPool);
+        const JContainerPoolGuard poolGuard(kSetTattooLockedPool);
+        if (m_api->query_applied_tattoos(
+                static_cast<RE::Actor*>(actorHandle),
+                0,
+                matches,
+                RE::BSFixedString(""),
+                -1)) {
+            return lockFailed("query_applied_tattoos failed");
+        }
+        const int count = jcmini::JArray::count(matches);
+        appliedHandles.reserve(static_cast<std::size_t>(count));
+        for (int index = 0; index < count; ++index) {
+            appliedHandles.push_back(jcmini::JArray::getObj(matches, index));
+        }
+    }
+
+    if (request.runtimeHandle == 0 ||
+        std::ranges::find(appliedHandles, request.runtimeHandle) == appliedHandles.end()) {
+        return staleHandle();
+    }
+
+    const std::int32_t value = request.locked ? 1 : 0;
+    bool wrote = false;
+    if (m_appearanceBindings) {
+        if (m_appearanceBindings->setTattooInt && m_appearanceBindings->getTattooInt) {
+            constexpr auto missing = std::numeric_limits<std::int32_t>::min();
+            m_appearanceBindings->setTattooInt(request.runtimeHandle, "locked", value);
+            wrote = m_appearanceBindings->getTattooInt(
+                        request.runtimeHandle, "locked", missing) == value;
+        }
+    } else {
+        wrote = jcmini::JMap::setIntAndVerify(request.runtimeHandle, "locked", value);
+    }
+    if (!wrote) {
+        return lockFailed("Failed to update tattoo lock state");
+    }
+
+    return core::SetTattooLockedSuccess{
+        .actorFormId = request.actorFormId,
+        .runtimeHandle = request.runtimeHandle,
+        .locked = request.locked,
+    };
 }
 
 }  // namespace stui::runtime

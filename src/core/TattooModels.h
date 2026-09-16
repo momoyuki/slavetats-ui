@@ -118,6 +118,18 @@ struct UpdateTattooAppearanceSuccess {
     std::int32_t runtimeHandle{};
 };
 
+struct SetTattooLockedRequest {
+    std::uint32_t actorFormId{};
+    std::int32_t runtimeHandle{};
+    bool locked{};
+};
+
+struct SetTattooLockedSuccess {
+    std::uint32_t actorFormId{};
+    std::int32_t runtimeHandle{};
+    bool locked{};
+};
+
 enum class ServiceErrorCode {
     slaveTatsUnavailable,
     jContainersUnavailable,
@@ -133,6 +145,7 @@ enum class ServiceErrorCode {
     synchronizeFailed,
     staleTattooHandle,
     updateFailed,
+    lockFailed,
 };
 
 struct ServiceError {
@@ -146,5 +159,6 @@ using ApplyTattooResult = std::expected<ApplyTattooSuccess, ServiceError>;
 using RemoveTattooResult = std::expected<RemoveTattooSuccess, ServiceError>;
 using UpdateTattooAppearanceResult =
     std::expected<UpdateTattooAppearanceSuccess, ServiceError>;
+using SetTattooLockedResult = std::expected<SetTattooLockedSuccess, ServiceError>;
 
 }  // namespace stui::core

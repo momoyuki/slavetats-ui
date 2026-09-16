@@ -243,4 +243,37 @@ UpdateTattooAppearanceResult SlaveTatsService::updateAppearance(
     return m_runtime.updateAppearance(request);
 }
 
+SetTattooLockedResult SlaveTatsService::setTattooLocked(
+    const SetTattooLockedRequest& request) {
+    if (!m_runtime.apiAvailable()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::slaveTatsUnavailable,
+            "SlaveTatsNG not available",
+        });
+    }
+
+    if (!m_runtime.jContainersReady()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::jContainersUnavailable,
+            "JContainers not ready",
+        });
+    }
+
+    if (request.actorFormId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound,
+            "Actor not found",
+        });
+    }
+
+    if (request.runtimeHandle == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::staleTattooHandle,
+            "Tattoo handle is invalid; refresh the slot snapshot and try again",
+        });
+    }
+
+    return m_runtime.setTattooLocked(request);
+}
+
 }  // namespace stui::core
