@@ -116,7 +116,9 @@ Users can manage locked state and browse/apply tattoos outside the default domai
 
 ## vNext.3 — Actor Targeting
 
-**Status:** Planned
+**Status:** Current priority
+
+**Design:** `docs/superpowers/specs/2026-09-17-native-actor-targeting-design.md`
 
 Move the native workflow beyond the hard-coded Player target while preserving the same slot-first model.
 
