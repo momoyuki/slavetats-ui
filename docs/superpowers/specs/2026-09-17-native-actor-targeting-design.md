@@ -269,6 +269,8 @@ unchanged.
 - a focused native Actor target provider seam and production implementation;
 - `src/native/OfficialMenuFrameworkAdapter.*`
 - application composition only for dependency injection;
+- `src/runtime/SlaveTatsRuntime.*` only for loaded-3D revalidation of the
+  explicitly requested Actor before tattoo operations;
 - target-provider, workflow, coordinator, adapter, and regression tests.
 
 Do not add direct Skyrim, JContainers, or SlaveTatsNG access to the adapter or
