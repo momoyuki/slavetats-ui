@@ -713,6 +713,14 @@ void domainPresentationUsesDefaultFallback() {
         "expected explicit domain presentation preserved");
     expect(stui::native::domainPresentationLabel("") == "default",
         "expected empty applied domain presented as default");
+    expect(stui::native::domainThumbnailBadgeLabel("default").empty(),
+        "expected default domain omitted from thumbnail badges");
+    expect(stui::native::domainThumbnailBadgeLabel("Default").empty(),
+        "expected default domain matching to ignore ASCII case");
+    expect(stui::native::domainThumbnailBadgeLabel("").empty(),
+        "expected missing domain omitted from thumbnail badges");
+    expect(stui::native::domainThumbnailBadgeLabel("custom") == "custom",
+        "expected non-default domain retained in thumbnail badges");
 }
 
 void domainOptionsStartWithAllDomains() {
@@ -723,12 +731,14 @@ void domainOptionsStartWithAllDomains() {
 
 void lockActionPresentationKeepsAppearanceEditable() {
     const auto unlocked = stui::native::slotLockActionPresentation(false);
-    expect(unlocked.toggleLabel == "Lock" && unlocked.mutationsEnabled,
-        "expected unlocked slot to offer Lock and mutations");
+    expect(unlocked.iconCodepoint == 0xF09C && unlocked.tooltip == "Lock tattoo" &&
+            unlocked.mutationsEnabled,
+        "expected unlocked slot to offer the Font Awesome unlock icon and Lock action");
 
     const auto locked = stui::native::slotLockActionPresentation(true);
-    expect(locked.toggleLabel == "Unlock" && !locked.mutationsEnabled,
-        "expected locked slot to offer Unlock and disable Replace and Remove");
+    expect(locked.iconCodepoint == 0xF023 && locked.tooltip == "Unlock tattoo" &&
+            !locked.mutationsEnabled,
+        "expected locked slot to offer the Font Awesome lock icon and Unlock action");
 }
 
 void pickerVisiblePathsFollowOnlyTheSixRenderedCards() {

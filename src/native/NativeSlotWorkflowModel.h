@@ -105,6 +105,7 @@ public:
     void cancelPreview();
     [[nodiscard]] bool confirmApply();
     [[nodiscard]] bool beginEditAppearance();
+    [[nodiscard]] bool toggleSlotLock(std::int32_t slot);
     [[nodiscard]] bool toggleSelectedSlotLock();
     void setEditedAppearance(std::int32_t color, float alpha) noexcept;
     void setEditedAppearance(
@@ -158,6 +159,9 @@ private:
     void scheduleSlotQuery(core::TattooArea area);
     void clampSelectedPage() noexcept;
     void openPicker();
+    [[nodiscard]] bool queueSlotLockToggle(
+        std::int32_t slot,
+        SlotWorkflowScreen originScreen);
 
     NativeCatalogBrowserModel& m_catalog;
     std::array<AreaState, 4> m_areaStates;
@@ -177,6 +181,7 @@ private:
     std::optional<std::uint64_t> m_activeRemoveGeneration;
     std::optional<std::uint64_t> m_activeAppearanceGeneration;
     std::optional<std::uint64_t> m_activeLockGeneration;
+    std::optional<SlotWorkflowScreen> m_lockOriginScreen;
     std::optional<AppearanceEditSession> m_editAppearance;
     std::uint64_t m_generation{};
     bool m_started{false};

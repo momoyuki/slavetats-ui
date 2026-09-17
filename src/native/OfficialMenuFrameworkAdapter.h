@@ -122,12 +122,14 @@ enum class RemoveButtonState {
     SlotWorkflowScreen screen,
     bool hasTarget) noexcept;
 struct SlotLockActionPresentation {
-    std::string_view toggleLabel;
+    unsigned int iconCodepoint{};
+    std::string_view tooltip;
     bool mutationsEnabled{};
 };
 
 [[nodiscard]] SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept;
 [[nodiscard]] std::string_view domainPresentationLabel(std::string_view domain) noexcept;
+[[nodiscard]] std::string_view domainThumbnailBadgeLabel(std::string_view domain) noexcept;
 [[nodiscard]] std::vector<std::string> buildCatalogBrowserDomainOptions(
     const std::vector<std::string>& domains);
 [[nodiscard]] std::vector<std::string> collectPickerTexturePaths(

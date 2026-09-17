@@ -73,6 +73,7 @@ void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
     m_activeAppearanceGeneration.reset();
     m_pendingLock.reset();
     m_activeLockGeneration.reset();
+    m_lockOriginScreen.reset();
     m_editAppearance.reset();
     m_error.reset();
     clampSelectedPage();
@@ -342,22 +343,38 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
     return true;
 }
 
+bool NativeSlotWorkflowModel::toggleSlotLock(std::int32_t slot) {
+    if (m_screen != SlotWorkflowScreen::currentSlots) {
+        return false;
+    }
+    return queueSlotLockToggle(slot, SlotWorkflowScreen::currentSlots);
+}
+
 bool NativeSlotWorkflowModel::toggleSelectedSlotLock() {
-    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
-        m_pendingLock || m_activeLockGeneration) {
+    if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot) {
+        return false;
+    }
+    return queueSlotLockToggle(*m_targetSlot, SlotWorkflowScreen::slotActions);
+}
+
+bool NativeSlotWorkflowModel::queueSlotLockToggle(
+    std::int32_t slot,
+    SlotWorkflowScreen originScreen) {
+    if (m_pendingLock || m_activeLockGeneration) {
         return false;
     }
     const auto* current = slots();
     if (!current) {
         return false;
     }
-    const auto found = std::ranges::find_if(current->slots, [this](const core::TattooSlot& slot) {
-        return slot.index == *m_targetSlot;
+    const auto found = std::ranges::find_if(current->slots, [slot](const core::TattooSlot& candidate) {
+        return candidate.index == slot;
     });
     if (found == current->slots.end() || found->occupancy != core::SlotOccupancy::slaveTats ||
         !found->tattoo || found->tattoo->runtimeHandle == 0) {
         return false;
     }
+    m_targetSlot = slot;
     const std::uint64_t generation = nextGeneration();
     m_pendingLock = SlotLockTicket{
         .generation = generation,
@@ -368,6 +385,7 @@ bool NativeSlotWorkflowModel::toggleSelectedSlotLock() {
         },
     };
     m_activeLockGeneration = generation;
+    m_lockOriginScreen = originScreen;
     m_error.reset();
     return true;
 }
@@ -576,9 +594,14 @@ void NativeSlotWorkflowModel::completeLockStateChange(
         return;
     }
     m_activeLockGeneration.reset();
+    const auto originScreen = m_lockOriginScreen.value_or(SlotWorkflowScreen::slotActions);
+    m_lockOriginScreen.reset();
     if (!result) {
         m_error = std::move(result.error());
-        m_screen = SlotWorkflowScreen::slotActions;
+        m_screen = originScreen;
+        if (originScreen == SlotWorkflowScreen::currentSlots) {
+            m_targetSlot.reset();
+        }
         return;
     }
     m_error.reset();

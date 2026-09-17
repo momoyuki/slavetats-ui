@@ -24,6 +24,20 @@ namespace {
 SKSEMenuFramework::Model::AddSectionItemFunction g_addSectionItem{};
 SKSEMenuFramework::Model::AddWindowFunction g_addWindow{};
 
+bool equalsFoldedASCII(std::string_view left, std::string_view right) noexcept {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    return std::ranges::equal(left, right, [](char lhs, char rhs) {
+        const auto fold = [](char value) {
+            return value >= 'A' && value <= 'Z'
+                ? static_cast<char>(value + ('a' - 'A'))
+                : value;
+        };
+        return fold(lhs) == fold(rhs);
+    });
+}
+
 void addOfficialSectionItem(const char* path, MenuCallback callback) {
     g_addSectionItem(
         path, reinterpret_cast<SKSEMenuFramework::Model::RenderFunction>(callback));
@@ -200,13 +214,18 @@ bool isRemoveConfirmationEnabled(
 
 SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept {
     return {
-        .toggleLabel = locked ? "Unlock" : "Lock",
+        .iconCodepoint = locked ? 0xF023U : 0xF09CU,
+        .tooltip = locked ? "Unlock tattoo" : "Lock tattoo",
         .mutationsEnabled = !locked,
     };
 }
 
 std::string_view domainPresentationLabel(std::string_view domain) noexcept {
     return domain.empty() ? "default" : domain;
+}
+
+std::string_view domainThumbnailBadgeLabel(std::string_view domain) noexcept {
+    return domain.empty() || equalsFoldedASCII(domain, "default") ? "" : domain;
 }
 
 std::vector<std::string> buildCatalogBrowserDomainOptions(
@@ -855,6 +874,8 @@ void renderCurrentSlots(
             const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
             const bool disabled = slotCardTreatment(slot.occupancy) ==
                 SlotCardTreatment::disabled;
+            bool lockClicked = false;
+            bool lockHovered = false;
             ImGuiMCP::BeginDisabled(disabled);
             ImGuiMCP::PushStyleColor(
                 ImGuiMCP::ImGuiCol_ChildBg,
@@ -895,11 +916,38 @@ void renderCurrentSlots(
                         0,
                         1.0F);
                 }
+                if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
+                    const auto lockPresentation = slotLockActionPresentation(slot.tattoo->locked);
+                    const auto lockIcon = FontAwesome::UnicodeToUtf8(
+                        lockPresentation.iconCodepoint);
+                    const auto lockWidgetId = lockIcon + "##SlotLock" +
+                        std::to_string(slot.index);
+                    FontAwesome::PushSolid();
+                    const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
+                    const float buttonSize = std::max(
+                        24.0F,
+                        iconSize.y + (style ? style->FramePadding.y * 2.0F : 8.0F));
+                    ImGuiMCP::SetCursorScreenPos({
+                        imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
+                        imageScreenOrigin.y + 6.0F,
+                    });
+                    ImGuiMCP::BeginDisabled(workflow.isLockStateChangeInFlight());
+                    if (ImGuiMCP::Button(lockWidgetId.c_str(), {buttonSize, buttonSize})) {
+                        lockClicked = workflow.toggleSlotLock(slot.index);
+                    }
+                    lockHovered = ImGuiMCP::IsItemHovered(
+                        ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled);
+                    if (lockHovered) {
+                        ImGuiMCP::SetTooltip("%s", lockPresentation.tooltip.data());
+                    }
+                    ImGuiMCP::EndDisabled();
+                    FontAwesome::Pop();
+                }
             }
             ImGuiMCP::EndChild();
             ImGuiMCP::PopStyleColor();
             ImGuiMCP::EndDisabled();
-            if (!disabled && ImGuiMCP::IsItemClicked()) {
+            if (!disabled && !lockClicked && !lockHovered && ImGuiMCP::IsItemClicked()) {
                 (void)workflow.selectSlot(slot.index);
             }
             if (ImGuiMCP::IsItemHovered()) {
@@ -1033,10 +1081,6 @@ void renderSlotActions(
             slot->tattoo->section.c_str(),
             slot->tattoo->name.c_str());
         ImGuiMCP::Text("Domain: %s", domainPresentationLabel(slot->tattoo->domain).data());
-        if (slot->tattoo->locked) {
-            ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted("Locked");
-        }
     }
     if (const auto* error = workflow.error()) {
         ImGuiMCP::TextUnformatted(error->message.c_str());
@@ -1134,16 +1178,6 @@ void renderSlotActions(
             ImGuiMCP::BeginDisabled(!lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Remove")) {
                 (void)workflow.requestRemove();
-            }
-            ImGuiMCP::EndDisabled();
-            if (locked) {
-                ImGuiMCP::SameLine();
-                ImGuiMCP::TextUnformatted("Unlock to replace or remove.");
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::BeginDisabled(lockStateChangeInFlight);
-            if (ImGuiMCP::Button(lockPresentation.toggleLabel.data())) {
-                (void)workflow.toggleSelectedSlotLock();
             }
             ImGuiMCP::EndDisabled();
         }
@@ -1801,7 +1835,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 }
                 ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
                 const auto& tattoo = page.entries[index];
-                const auto domainLabel = domainPresentationLabel(tattoo.domain);
+                const auto domainLabel = domainThumbnailBadgeLabel(tattoo.domain);
                 const auto inUseSlots = workflow.inUseSlots(tattoo);
                 const auto thumbnailIndex = findCatalogThumbnailViewIndex(
                     tattoo.texturePath,
@@ -1881,26 +1915,28 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             0xFFFFFFFF,
                             badgeText);
                     }
-                    const auto domainTextSize = ImGuiMCP::CalcTextSize(domainLabel.data());
-                    auto* drawList = ImGuiMCP::GetWindowDrawList();
-                    ImGuiMCP::ImDrawListManager::AddRectFilled(
-                        drawList,
-                        {
-                            imageScreenOrigin.x + 4.0F,
-                            imageScreenOrigin.y + 4.0F,
-                        },
-                        {
-                            imageScreenOrigin.x + domainTextSize.x + 16.0F,
-                            imageScreenOrigin.y + domainTextSize.y + 14.0F,
-                        },
-                        0xB8000000,
-                        3.0F,
-                        0);
-                    ImGuiMCP::ImDrawListManager::AddText(
-                        drawList,
-                        {imageScreenOrigin.x + 10.0F, imageScreenOrigin.y + 8.0F},
-                        0xFFFFFFFF,
-                        domainLabel.data());
+                    if (!domainLabel.empty()) {
+                        const auto domainTextSize = ImGuiMCP::CalcTextSize(domainLabel.data());
+                        auto* drawList = ImGuiMCP::GetWindowDrawList();
+                        ImGuiMCP::ImDrawListManager::AddRectFilled(
+                            drawList,
+                            {
+                                imageScreenOrigin.x + 4.0F,
+                                imageScreenOrigin.y + 4.0F,
+                            },
+                            {
+                                imageScreenOrigin.x + domainTextSize.x + 16.0F,
+                                imageScreenOrigin.y + domainTextSize.y + 14.0F,
+                            },
+                            0xB8000000,
+                            3.0F,
+                            0);
+                        ImGuiMCP::ImDrawListManager::AddText(
+                            drawList,
+                            {imageScreenOrigin.x + 10.0F, imageScreenOrigin.y + 8.0F},
+                            0xFFFFFFFF,
+                            domainLabel.data());
+                    }
                 }
                 ImGuiMCP::EndChild();
                 ImGuiMCP::PopStyleColor();

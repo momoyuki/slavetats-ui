@@ -736,6 +736,31 @@ void lockTicketRefreshesSnapshotAndGuardsLockedMutations() {
         "expected failed Unlock to retain Slot Actions for retry");
 }
 
+void currentSlotLockToggleDoesNotNavigateToSlotActions() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+
+    expect(model.toggleSlotLock(1), "expected Current Slots lock icon accepted");
+    const auto lock = model.takeLockRequest();
+    expect(lock && lock->request.runtimeHandle == 73 && lock->request.locked,
+        "expected thumbnail Lock action to create the owned-slot request");
+    expect(model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected thumbnail Lock action to stay on Current Slots");
+
+    model.completeLockStateChange(lock->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::lockFailed,
+        "lock write failed",
+    }));
+    expect(model.screen() == SlotWorkflowScreen::currentSlots && model.error() &&
+            model.error()->code == ServiceErrorCode::lockFailed,
+        "expected thumbnail Lock failure to remain retryable on Current Slots");
+    expect(!model.toggleSlotLock(0),
+        "expected empty slot to reject direct Lock action");
+}
+
 void changingAreaInvalidatesLockCompletion() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(1);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -933,6 +958,7 @@ int main() {
     failures += run("local appearance edits normalize track dirty and Cancel without ticket", localAppearanceEditsNormalizeTrackDirtyAndCancelWithoutTicket);
     failures += run("advanced appearance edits track dirty normalize and forward all values", advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues);
     failures += run("lock ticket refreshes snapshot and guards locked mutations", lockTicketRefreshesSnapshotAndGuardsLockedMutations);
+    failures += run("Current Slots lock toggle does not navigate to Slot Actions", currentSlotLockToggleDoesNotNavigateToSlotActions);
     failures += run("changing area invalidates Lock completion", changingAreaInvalidatesLockCompletion);
     failures += run("selecting another area invalidates matching appearance completion", selectingAnotherAreaInvalidatesMatchingAppearanceCompletion);
     failures += run("appearance Save creates one ticket and success refreshes only BODY", appearanceSaveCreatesOneTicketAndSuccessRefreshesOnlyBody);
