@@ -154,6 +154,14 @@ if(BUILD_TESTING)
     target_include_directories(NativeSlotWorkflowModelTests PRIVATE src)
     add_test(NAME NativeSlotWorkflowModelTests COMMAND NativeSlotWorkflowModelTests)
 
+    add_executable(ActorTargetProviderTests
+        src/native/ActorTargetProvider.cpp
+        tests/native/ActorTargetProviderTests.cpp
+    )
+    target_include_directories(ActorTargetProviderTests PRIVATE src)
+    target_link_libraries(ActorTargetProviderTests PRIVATE CommonLibSSE::CommonLibSSE)
+    add_test(NAME ActorTargetProviderTests COMMAND ActorTargetProviderTests)
+
     add_executable(NativeSlotWorkflowRuntimeTests
         src/native/NativeSlotWorkflowRuntime.cpp
         src/native/NativeSlotWorkflowModel.cpp
