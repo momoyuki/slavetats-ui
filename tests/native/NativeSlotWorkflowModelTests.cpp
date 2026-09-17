@@ -25,6 +25,8 @@ using stui::core::TattooSlot;
 using stui::core::TattooSlots;
 using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceSuccess;
+using stui::native::ActorTarget;
+using stui::native::ActorTargetKind;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotWorkflowModel;
 using stui::native::SlotWorkflowScreen;
@@ -922,6 +924,298 @@ void appearanceWriteFailureRetriesFullUpdateAndSyncFailureRetriesOnlySync() {
         "expected a failed Retry Sync never to emit a second full appearance update");
 }
 
+void resolveCrosshair(NativeSlotWorkflowModel& model) {
+    model.start();
+    expect(model.selectCrosshairTarget(), "expected Crosshair selection accepted");
+    const auto target = model.takeActorTargetRequest();
+    expect(target.has_value(), "expected one target-resolution ticket");
+    model.completeActorTargetResolution(target->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0x1234, "Lydia"});
+}
+
+void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
+    resolveCrosshair(model);
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x1234, "expected exact NPC query");
+    auto snapshot = slotsWithEditableOwnedTattoo();
+    snapshot.actorFormId = 0x1234;
+    snapshot.slots[1].tattoo->locked = locked;
+    model.completeSlotQuery(query->generation, std::move(snapshot));
+}
+
+void expectTargetSwitchBlocked(NativeSlotWorkflowModel& model) {
+    expect(model.isMutationInFlight(), "expected pending/active mutation presentation state");
+    expect(!model.selectPlayerTarget() && !model.selectCrosshairTarget() &&
+            !model.refreshCrosshairTarget(),
+        "expected all target intents blocked during pending/active mutation");
+    expect(model.actorTarget() && model.actorTarget()->formId == 0x1234 &&
+            !model.takeActorTargetRequest(),
+        "expected blocked selection to preserve NPC identity without resolution");
+}
+
+void explicitPlayerAndCrosshairResolutionNeverFallback() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    expect(model.actorTarget() && model.actorTarget()->formId == 0x14 &&
+            model.actorTarget()->displayName == "Player" &&
+            model.selectedTargetKind() == ActorTargetKind::player,
+        "expected explicit Player identity at startup");
+    expect(!model.refreshCrosshairTarget(), "expected no Crosshair refresh in Player mode");
+    model.start();
+    expect(model.selectCrosshairTarget(), "expected Crosshair intent accepted");
+    expect(!model.actorTarget() && model.isActorTargetResolutionInFlight() &&
+            model.selectedTargetKind() == ActorTargetKind::crosshair && !model.takeSlotQuery(),
+        "expected resolving Crosshair with old pending Player query removed");
+    const auto target = model.takeActorTargetRequest();
+    expect(target && !model.takeActorTargetRequest(), "expected target ticket consumed once");
+    model.refreshSelectedArea();
+    model.selectArea(TattooArea::face);
+    expect(!model.takeSlotQuery() && !model.selectSlot(0), "expected no work without Actor");
+    model.completeActorTargetResolution(target->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "No valid crosshair Actor"}));
+    expect(!model.actorTarget() && !model.isActorTargetResolutionInFlight() &&
+            model.error() && model.error()->message == "No valid crosshair Actor" &&
+            !model.takeSlotQuery(), "expected provider error without Player fallback");
+    expect(model.refreshCrosshairTarget(), "expected deliberate Crosshair retry");
+    const auto retry = model.takeActorTargetRequest();
+    model.completeActorTargetResolution(retry->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0x1234, "Lydia"});
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x1234 && query->area == TattooArea::face &&
+            model.actorTarget()->displayName == "Lydia" && !model.error(),
+        "expected exact resolved Actor and selected area");
+    expect(model.selectPlayerTarget(), "expected explicit Player selection accepted");
+    const auto player = model.takeSlotQuery();
+    expect(player && player->actorFormId == 0x14 && !model.takeActorTargetRequest(),
+        "expected explicit Player query without resolver");
+
+    for (const auto invalid : {ActorTarget{ActorTargetKind::player, 0x14, "Player"},
+             ActorTarget{ActorTargetKind::crosshair, 0, "Invalid"}}) {
+        expect(model.selectCrosshairTarget(), "expected Crosshair selection for invalid result");
+        const auto request = model.takeActorTargetRequest();
+        model.completeActorTargetResolution(request->generation, invalid);
+        expect(!model.actorTarget() && !model.takeSlotQuery() && model.error(),
+            "expected malformed provider result to reject without fallback");
+        expect(model.selectPlayerTarget(), "expected explicit Player recovery after failure");
+        const auto recovery = model.takeSlotQuery();
+        expect(recovery && recovery->actorFormId == 0x14 && !model.error(),
+            "expected deliberate Player recovery to clear target error");
+    }
+    expect(model.selectCrosshairTarget(), "expected unnamed Crosshair selection");
+    const auto unnamed = model.takeActorTargetRequest();
+    model.completeActorTargetResolution(unnamed->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0x1234, ""});
+    expect(model.actorTarget() && model.actorTarget()->displayName == "Unnamed Actor",
+        "expected nonempty presentation metadata for a valid unnamed Actor");
+}
+
+void targetChangeClearsAllCachesPagesAndTransientState() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slots(TattooArea::body, 12));
+    for (auto area : {TattooArea::body, TattooArea::face, TattooArea::hands, TattooArea::feet}) {
+        model.selectArea(area);
+        if (const auto query = model.takeSlotQuery()) {
+            model.completeSlotQuery(query->generation, slots(area, 12));
+        }
+        model.nextSlotPage();
+        expect(model.slotPageIndex() == 1, "expected populated old Actor page");
+    }
+    expect(model.selectSlot(0), "expected old Actor slot selected");
+    model.selectTattoo(tattoo("Foot", 0, "FEET"));
+    expect(model.previewTattoo(), "expected preview before target change");
+    expect(model.selectCrosshairTarget(), "expected target switch");
+    expect(!model.targetSlot() && !model.previewTattoo() && !model.previewAppearance() &&
+            !model.editAppearance() && !model.error() &&
+            model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected actor-scoped transient state reset");
+    for (auto area : {TattooArea::body, TattooArea::face, TattooArea::hands, TattooArea::feet}) {
+        model.selectArea(area);
+        expect(!model.slots() && model.slotPageIndex() == 0 && !model.takeSlotQuery(),
+            "expected all old Actor caches/pages cleared without Player query");
+    }
+    model.selectArea(TattooArea::body);
+    loadCrosshairSlots(model);
+    expect(model.selectSlot(1) && model.beginEditAppearance(), "expected NPC edit session");
+    model.setEditedAppearance(0x123456, 0.5F);
+    expect(model.confirmAppearanceUpdate(), "expected NPC edit submission");
+    const auto edit = model.takeAppearanceRequest();
+    model.completeAppearanceUpdate(edit->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::synchronizeFailed, "old Actor sync failed"}));
+    expect(model.editAppearance() && model.error(), "expected retained NPC retry state");
+    expect(model.selectPlayerTarget(), "expected deliberate switch out of retry state");
+    expect(!model.editAppearance() && !model.error() && !model.targetSlot() && !model.slots(),
+        "expected target change to clear actual edit session and actor-scoped error");
+}
+
+void obsoleteTargetAndQueryCompletionsCannotAffectNewTarget() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    const auto player = model.takeSlotQuery();
+    expect(model.selectCrosshairTarget(), "expected first Crosshair resolution");
+    const auto oldTarget = model.takeActorTargetRequest();
+    expect(model.refreshCrosshairTarget(), "expected newer Crosshair resolution");
+    const auto newTarget = model.takeActorTargetRequest();
+    model.completeActorTargetResolution(oldTarget->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0x9999, "Old Actor"});
+    model.completeSlotQuery(player->generation, slots(TattooArea::body, 3));
+    expect(!model.actorTarget() && !model.slots() && !model.error() &&
+            model.isActorTargetResolutionInFlight() && !model.takeSlotQuery(),
+        "expected obsolete success completions ignored");
+    model.completeActorTargetResolution(newTarget->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0x1234, "Lydia"});
+    model.completeActorTargetResolution(oldTarget->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "obsolete target failure"}));
+    model.completeSlotQuery(player->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::slotQueryFailed, "obsolete query failure"}));
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x1234 && !model.error(),
+        "expected obsolete errors not to affect resolved NPC");
+}
+
+void mismatchedActorSnapshotIsRejected() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    resolveCrosshair(model);
+    const auto query = model.takeSlotQuery();
+    model.completeSlotQuery(query->generation, slotsWithEditableOwnedTattoo());
+    expect(!model.slots() && model.error() && !model.selectSlot(1) &&
+            !model.toggleSlotLock(1) && !model.confirmApply() && !model.confirmRemove() &&
+            !model.beginEditAppearance() && !model.confirmAppearanceUpdate(),
+        "expected foreign snapshot rejection before selection or mutation");
+    expect(!model.takeApplyRequest() && !model.takeRemoveRequest() &&
+            !model.takeAppearanceRequest() && !model.takeLockRequest(),
+        "expected no mutation for a mismatched Actor snapshot");
+}
+
+void areaNavigationCannotReleaseOutstandingMutationGuard() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    for (bool appearance : {false, true}) {
+        NativeSlotWorkflowModel model(catalog);
+        loadCrosshairSlots(model);
+        expect(model.selectSlot(1), "expected NPC slot selected");
+        std::uint64_t generation{};
+        if (appearance) {
+            expect(model.beginEditAppearance(), "expected appearance session");
+            model.setEditedAppearance(0x123456, 0.5F);
+            expect(model.confirmAppearanceUpdate(), "expected appearance queued");
+            const auto ticket = model.takeAppearanceRequest();
+            expect(ticket.has_value(), "expected appearance ticket");
+            generation = ticket->generation;
+        } else {
+            expect(model.toggleSelectedSlotLock(), "expected lock queued");
+            const auto ticket = model.takeLockRequest();
+            expect(ticket.has_value(), "expected lock ticket");
+            generation = ticket->generation;
+        }
+        model.selectArea(TattooArea::face);
+        expect(model.selectedArea() == TattooArea::face, "expected existing area navigation");
+        expectTargetSwitchBlocked(model);
+        const auto failure = std::unexpected(ServiceError{ServiceErrorCode::updateFailed, "late failure"});
+        if (appearance) {
+            model.completeAppearanceUpdate(generation + 1, failure);
+            expectTargetSwitchBlocked(model);
+            model.completeAppearanceUpdate(generation, failure);
+        } else {
+            model.completeLockStateChange(generation + 1, failure);
+            expectTargetSwitchBlocked(model);
+            model.completeLockStateChange(generation, failure);
+        }
+        expect(!model.error() && !model.isMutationInFlight() && model.selectPlayerTarget(),
+            "expected obsolete UI failure to release only the matching mutation guard");
+    }
+}
+
+void npcMutationPathsPreserveActorAndBlockTargetChanges() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    for (int operation = 0; operation < 6; ++operation) {
+        NativeSlotWorkflowModel model(catalog);
+        loadCrosshairSlots(model, operation == 5);
+        if (operation != 5) {
+            expect(model.selectSlot(operation == 0 ? 0 : 1), "expected NPC slot selected");
+        }
+        std::uint64_t generation{};
+        if (operation <= 1) {
+            if (operation == 1) {
+                expect(model.replaceSelectedSlot(), "expected NPC replacement");
+            }
+            model.selectTattoo(tattoo("New", 0));
+            expect(model.confirmApply(), "expected NPC apply");
+            expectTargetSwitchBlocked(model);
+            const auto ticket = model.takeApplyRequest();
+            expect(ticket && ticket->request.actorFormId == 0x1234, "expected NPC apply identity");
+            generation = ticket->generation;
+            expectTargetSwitchBlocked(model);
+            model.completeApply(generation, ApplyTattooSuccess{});
+        } else if (operation == 2) {
+            expect(model.requestRemove() && model.confirmRemove(), "expected NPC remove");
+            expectTargetSwitchBlocked(model);
+            const auto ticket = model.takeRemoveRequest();
+            expect(ticket && ticket->request.actorFormId == 0x1234, "expected NPC remove identity");
+            expectTargetSwitchBlocked(model);
+            model.completeRemove(ticket->generation, std::unexpected(ServiceError{
+                ServiceErrorCode::synchronizeFailed, "sync failed"}));
+            expect(model.confirmRemove(), "expected NPC remove sync retry");
+            const auto retry = model.takeRemoveRequest();
+            expect(retry && retry->request.actorFormId == 0x1234 &&
+                    retry->request.mode == RemoveTattooMode::synchronizeOnly,
+                "expected remove retry to synchronize only the original NPC");
+            generation = retry->generation;
+            expectTargetSwitchBlocked(model);
+            model.completeRemove(generation, RemoveTattooSuccess{});
+        } else if (operation == 3) {
+            expect(model.beginEditAppearance(), "expected NPC appearance session");
+            model.setEditedAppearance(0x123456, 0.5F);
+            expect(model.confirmAppearanceUpdate(), "expected NPC appearance save");
+            expectTargetSwitchBlocked(model);
+            const auto ticket = model.takeAppearanceRequest();
+            expect(ticket && ticket->request.actorFormId == 0x1234, "expected NPC edit identity");
+            expectTargetSwitchBlocked(model);
+            model.completeAppearanceUpdate(ticket->generation, std::unexpected(ServiceError{
+                ServiceErrorCode::synchronizeFailed, "sync failed"}));
+            expect(model.confirmAppearanceUpdate(), "expected NPC appearance sync retry");
+            const auto retry = model.takeAppearanceRequest();
+            expect(retry && retry->request.actorFormId == 0x1234 &&
+                    retry->request.mode == UpdateTattooAppearanceMode::synchronizeOnly,
+                "expected appearance retry to synchronize only the original NPC");
+            generation = retry->generation;
+            expectTargetSwitchBlocked(model);
+            model.completeAppearanceUpdate(generation, UpdateTattooAppearanceSuccess{});
+        } else {
+            expect(operation == 5 ? model.toggleSlotLock(1) : model.toggleSelectedSlotLock(),
+                "expected NPC Lock or direct Unlock");
+            expectTargetSwitchBlocked(model);
+            const auto ticket = model.takeLockRequest();
+            expect(ticket && ticket->request.actorFormId == 0x1234 &&
+                    ticket->request.locked == (operation != 5),
+                "expected NPC identity and requested Lock/Unlock state");
+            generation = ticket->generation;
+            expectTargetSwitchBlocked(model);
+            model.completeLockStateChange(generation, SetTattooLockedSuccess{});
+        }
+        const auto refresh = model.takeSlotQuery();
+        expect(refresh && refresh->actorFormId == 0x1234, "expected mutation refresh for exact NPC");
+        expect(model.selectPlayerTarget(), "expected switching after completed mutation");
+        const auto player = model.takeSlotQuery();
+        const auto obsolete = std::unexpected(ServiceError{ServiceErrorCode::updateFailed, "obsolete"});
+        model.completeApply(generation, obsolete);
+        model.completeRemove(generation, obsolete);
+        model.completeAppearanceUpdate(generation, obsolete);
+        model.completeLockStateChange(generation, obsolete);
+        expect(player && player->actorFormId == 0x14 && !model.error() &&
+                !model.takeSlotQuery() && model.screen() == SlotWorkflowScreen::currentSlots,
+            "expected old mutation completions ignored after target change");
+    }
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -938,6 +1232,12 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("explicit Player and Crosshair resolution never fallback", explicitPlayerAndCrosshairResolutionNeverFallback);
+    failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
+    failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
+    failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);
+    failures += run("NPC mutation paths preserve Actor and block target changes", npcMutationPathsPreserveActorAndBlockTargetChanges);
+    failures += run("area navigation cannot release outstanding mutation guard", areaNavigationCannotReleaseOutstandingMutationGuard);
     failures += run("start schedules one Player BODY query", startSchedulesOnePlayerBodyQuery);
     failures += run("caches area results and preserves per-area pages", cachesAreaResultsAndPreservesPerAreaPages);
     failures += run("clamps slot pagination", clampsSlotPagination);

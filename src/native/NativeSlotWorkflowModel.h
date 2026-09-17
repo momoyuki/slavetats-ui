@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/TattooModels.h"
+#include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
 
 #include <array>
@@ -22,6 +23,10 @@ enum class SlotWorkflowScreen {
     savingAppearance,
     removeConfirmation,
     removing,
+};
+
+struct ActorTargetResolutionTicket {
+    std::uint64_t generation{};
 };
 
 struct SlotQueryTicket {
@@ -89,6 +94,15 @@ public:
     explicit NativeSlotWorkflowModel(NativeCatalogBrowserModel& catalog) noexcept;
 
     void start();
+    [[nodiscard]] bool selectPlayerTarget();
+    [[nodiscard]] bool selectCrosshairTarget();
+    [[nodiscard]] bool refreshCrosshairTarget();
+    [[nodiscard]] std::optional<ActorTargetResolutionTicket> takeActorTargetRequest();
+    void completeActorTargetResolution(std::uint64_t generation, ActorTargetResult result);
+    [[nodiscard]] ActorTargetKind selectedTargetKind() const noexcept;
+    [[nodiscard]] const ActorTarget* actorTarget() const noexcept;
+    [[nodiscard]] bool isActorTargetResolutionInFlight() const noexcept;
+    [[nodiscard]] bool isMutationInFlight() const noexcept;
     void selectArea(core::TattooArea area);
     void refreshSelectedArea();
     void previousSlotPage();
@@ -156,6 +170,9 @@ private:
     [[nodiscard]] AreaState& selectedState() noexcept;
     [[nodiscard]] const AreaState& selectedState() const noexcept;
     [[nodiscard]] std::uint64_t nextGeneration() noexcept;
+    void invalidateActorState();
+    [[nodiscard]] bool hasActorSnapshot() const noexcept;
+    void finishOutstandingMutation(std::uint64_t generation) noexcept;
     void scheduleSlotQuery(core::TattooArea area);
     void clampSelectedPage() noexcept;
     void openPicker();
@@ -164,6 +181,13 @@ private:
         SlotWorkflowScreen originScreen);
 
     NativeCatalogBrowserModel& m_catalog;
+    ActorTargetKind m_selectedTargetKind{ActorTargetKind::player};
+    std::optional<ActorTarget> m_actorTarget{ActorTarget{}};
+    std::optional<ActorTargetResolutionTicket> m_pendingActorTarget;
+    std::optional<std::uint64_t> m_activeActorTargetGeneration;
+    std::uint64_t m_targetGeneration{};
+    // Runtime work outlives UI navigation that discards its presentation state.
+    std::optional<std::uint64_t> m_outstandingMutationGeneration;
     std::array<AreaState, 4> m_areaStates;
     SlotWorkflowScreen m_screen{SlotWorkflowScreen::currentSlots};
     core::TattooArea m_selectedArea{core::TattooArea::body};

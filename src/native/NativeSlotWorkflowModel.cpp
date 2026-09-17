@@ -8,8 +8,6 @@
 namespace stui::native {
 namespace {
 
-constexpr std::uint32_t kPlayerFormId = 0x14;
-
 std::string_view areaName(core::TattooArea area) noexcept {
     switch (area) {
     case core::TattooArea::body:
@@ -57,6 +55,80 @@ void NativeSlotWorkflowModel::start() {
 
     m_started = true;
     scheduleSlotQuery(m_selectedArea);
+}
+
+bool NativeSlotWorkflowModel::selectPlayerTarget() {
+    if (isMutationInFlight()) {
+        return false;
+    }
+    invalidateActorState();
+    m_selectedTargetKind = ActorTargetKind::player;
+    m_actorTarget = ActorTarget{};
+    if (m_started) {
+        scheduleSlotQuery(m_selectedArea);
+    }
+    return true;
+}
+
+bool NativeSlotWorkflowModel::selectCrosshairTarget() {
+    if (isMutationInFlight()) {
+        return false;
+    }
+    invalidateActorState();
+    m_selectedTargetKind = ActorTargetKind::crosshair;
+    m_pendingActorTarget = ActorTargetResolutionTicket{m_targetGeneration};
+    m_activeActorTargetGeneration = m_targetGeneration;
+    return true;
+}
+
+bool NativeSlotWorkflowModel::refreshCrosshairTarget() {
+    return m_selectedTargetKind == ActorTargetKind::crosshair && selectCrosshairTarget();
+}
+
+std::optional<ActorTargetResolutionTicket> NativeSlotWorkflowModel::takeActorTargetRequest() {
+    auto ticket = std::move(m_pendingActorTarget);
+    m_pendingActorTarget.reset();
+    return ticket;
+}
+
+void NativeSlotWorkflowModel::completeActorTargetResolution(
+    std::uint64_t generation,
+    ActorTargetResult result) {
+    if (!m_activeActorTargetGeneration || generation != *m_activeActorTargetGeneration ||
+        generation != m_targetGeneration) {
+        return;
+    }
+    m_activeActorTargetGeneration.reset();
+    m_pendingActorTarget.reset();
+    if (!result) {
+        m_error = std::move(result.error());
+        return;
+    }
+    if (result->kind != ActorTargetKind::crosshair || result->formId == 0) {
+        m_error = core::ServiceError{
+            core::ServiceErrorCode::actorNotFound, "No valid crosshair Actor"};
+        return;
+    }
+    if (result->displayName.empty()) {
+        result->displayName = "Unnamed Actor";
+    }
+    m_actorTarget = std::move(*result);
+    m_error.reset();
+    if (m_started) {
+        scheduleSlotQuery(m_selectedArea);
+    }
+}
+
+ActorTargetKind NativeSlotWorkflowModel::selectedTargetKind() const noexcept {
+    return m_selectedTargetKind;
+}
+
+const ActorTarget* NativeSlotWorkflowModel::actorTarget() const noexcept {
+    return m_actorTarget ? &*m_actorTarget : nullptr;
+}
+
+bool NativeSlotWorkflowModel::isActorTargetResolutionInFlight() const noexcept {
+    return m_activeActorTargetGeneration.has_value();
 }
 
 void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
@@ -118,7 +190,7 @@ void NativeSlotWorkflowModel::setSlotPageNumber(std::size_t oneBasedPage) {
 
 bool NativeSlotWorkflowModel::selectSlot(std::int32_t slot) {
     const auto* current = slots();
-    if (!current) {
+    if (!hasActorSnapshot() || isMutationInFlight()) {
         return false;
     }
 
@@ -202,7 +274,8 @@ void NativeSlotWorkflowModel::cancelRemove() {
 }
 
 bool NativeSlotWorkflowModel::confirmRemove() {
-    if (m_screen != SlotWorkflowScreen::removeConfirmation || !m_targetSlot) {
+    if (m_screen != SlotWorkflowScreen::removeConfirmation || !m_targetSlot ||
+        !hasActorSnapshot() || isMutationInFlight()) {
         return false;
     }
 
@@ -214,7 +287,7 @@ bool NativeSlotWorkflowModel::confirmRemove() {
     m_pendingRemove = SlotRemoveTicket{
         .generation = generation,
         .request = core::RemoveTattooRequest{
-            .actorFormId = kPlayerFormId,
+            .actorFormId = m_actorTarget->formId,
             .area = m_selectedArea,
             .slot = *m_targetSlot,
             .mode = mode,
@@ -275,7 +348,7 @@ void NativeSlotWorkflowModel::cancelPreview() {
 
 bool NativeSlotWorkflowModel::confirmApply() {
     if (m_screen != SlotWorkflowScreen::preview || !m_targetSlot || !m_previewTattoo ||
-        !m_previewAppearance ||
+        !m_previewAppearance || !hasActorSnapshot() || isMutationInFlight() ||
         !equalsFoldedASCII(m_previewTattoo->area, areaName(m_selectedArea))) {
         return false;
     }
@@ -284,7 +357,7 @@ bool NativeSlotWorkflowModel::confirmApply() {
     m_pendingApply = SlotApplyTicket{
         .generation = generation,
         .request = core::ApplyTattooRequest{
-            .actorFormId = kPlayerFormId,
+            .actorFormId = m_actorTarget->formId,
             .area = m_selectedArea,
             .slot = *m_targetSlot,
             .domain = m_previewTattoo->domain,
@@ -302,7 +375,7 @@ bool NativeSlotWorkflowModel::confirmApply() {
 
 bool NativeSlotWorkflowModel::beginEditAppearance() {
     if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
-        m_pendingLock || m_activeLockGeneration) {
+        !hasActorSnapshot() || isMutationInFlight()) {
         return false;
     }
 
@@ -360,7 +433,7 @@ bool NativeSlotWorkflowModel::toggleSelectedSlotLock() {
 bool NativeSlotWorkflowModel::queueSlotLockToggle(
     std::int32_t slot,
     SlotWorkflowScreen originScreen) {
-    if (m_pendingLock || m_activeLockGeneration) {
+    if (!hasActorSnapshot() || isMutationInFlight()) {
         return false;
     }
     const auto* current = slots();
@@ -476,31 +549,44 @@ std::optional<SlotQueryTicket> NativeSlotWorkflowModel::takeSlotQuery() {
 std::optional<SlotApplyTicket> NativeSlotWorkflowModel::takeApplyRequest() {
     auto ticket = std::move(m_pendingApply);
     m_pendingApply.reset();
+    if (ticket) {
+        m_outstandingMutationGeneration = ticket->generation;
+    }
     return ticket;
 }
 
 std::optional<SlotRemoveTicket> NativeSlotWorkflowModel::takeRemoveRequest() {
     auto ticket = std::move(m_pendingRemove);
     m_pendingRemove.reset();
+    if (ticket) {
+        m_outstandingMutationGeneration = ticket->generation;
+    }
     return ticket;
 }
 
 std::optional<SlotAppearanceTicket> NativeSlotWorkflowModel::takeAppearanceRequest() {
     auto ticket = std::move(m_pendingAppearance);
     m_pendingAppearance.reset();
+    if (ticket) {
+        m_outstandingMutationGeneration = ticket->generation;
+    }
     return ticket;
 }
 
 std::optional<SlotLockTicket> NativeSlotWorkflowModel::takeLockRequest() {
     auto ticket = std::move(m_pendingLock);
     m_pendingLock.reset();
+    if (ticket) {
+        m_outstandingMutationGeneration = ticket->generation;
+    }
     return ticket;
 }
 
 void NativeSlotWorkflowModel::completeSlotQuery(
     std::uint64_t generation,
     core::TattooSlotsResult result) {
-    if (!m_activeSlotQueryGeneration || generation != *m_activeSlotQueryGeneration) {
+    if (!m_activeSlotQueryGeneration || generation != *m_activeSlotQueryGeneration ||
+        generation <= m_targetGeneration || !m_actorTarget) {
         return;
     }
 
@@ -511,6 +597,11 @@ void NativeSlotWorkflowModel::completeSlotQuery(
     }
 
     auto completed = std::move(result.value());
+    if (completed.actorFormId != m_actorTarget->formId) {
+        m_error = core::ServiceError{
+            core::ServiceErrorCode::slotQueryFailed, "Slot snapshot belongs to a different Actor"};
+        return;
+    }
     m_areaStates[areaIndex(completed.area)].slots = std::move(completed);
     m_error.reset();
     clampSelectedPage();
@@ -519,7 +610,9 @@ void NativeSlotWorkflowModel::completeSlotQuery(
 void NativeSlotWorkflowModel::completeApply(
     std::uint64_t generation,
     core::ApplyTattooResult result) {
-    if (!m_activeApplyGeneration || generation != *m_activeApplyGeneration) {
+    finishOutstandingMutation(generation);
+    if (!m_activeApplyGeneration || generation != *m_activeApplyGeneration ||
+        generation <= m_targetGeneration) {
         return;
     }
 
@@ -541,7 +634,9 @@ void NativeSlotWorkflowModel::completeApply(
 void NativeSlotWorkflowModel::completeRemove(
     std::uint64_t generation,
     core::RemoveTattooResult result) {
-    if (!m_activeRemoveGeneration || generation != *m_activeRemoveGeneration) {
+    finishOutstandingMutation(generation);
+    if (!m_activeRemoveGeneration || generation != *m_activeRemoveGeneration ||
+        generation <= m_targetGeneration) {
         return;
     }
 
@@ -561,7 +656,9 @@ void NativeSlotWorkflowModel::completeRemove(
 void NativeSlotWorkflowModel::completeAppearanceUpdate(
     std::uint64_t generation,
     core::UpdateTattooAppearanceResult result) {
-    if (!m_activeAppearanceGeneration || generation != *m_activeAppearanceGeneration) {
+    finishOutstandingMutation(generation);
+    if (!m_activeAppearanceGeneration || generation != *m_activeAppearanceGeneration ||
+        generation <= m_targetGeneration) {
         return;
     }
 
@@ -590,7 +687,9 @@ void NativeSlotWorkflowModel::completeAppearanceUpdate(
 void NativeSlotWorkflowModel::completeLockStateChange(
     std::uint64_t generation,
     core::SetTattooLockedResult result) {
-    if (!m_activeLockGeneration || generation != *m_activeLockGeneration) {
+    finishOutstandingMutation(generation);
+    if (!m_activeLockGeneration || generation != *m_activeLockGeneration ||
+        generation <= m_targetGeneration) {
         return;
     }
     m_activeLockGeneration.reset();
@@ -656,6 +755,8 @@ const AppearanceEditSession* NativeSlotWorkflowModel::editAppearance() const noe
 
 bool NativeSlotWorkflowModel::canSaveAppearance() const noexcept {
     return m_screen == SlotWorkflowScreen::editAppearance && m_editAppearance &&
+        hasActorSnapshot() && !isMutationInFlight() &&
+        m_editAppearance->actorFormId == m_actorTarget->formId &&
         m_editAppearance->edited != m_editAppearance->original;
 }
 
@@ -711,14 +812,62 @@ std::uint64_t NativeSlotWorkflowModel::nextGeneration() noexcept {
 }
 
 void NativeSlotWorkflowModel::scheduleSlotQuery(core::TattooArea area) {
+    if (!m_actorTarget || isActorTargetResolutionInFlight()) {
+        return;
+    }
     const std::uint64_t generation = nextGeneration();
     m_pendingSlotQuery = SlotQueryTicket{
         .generation = generation,
-        .actorFormId = kPlayerFormId,
+        .actorFormId = m_actorTarget->formId,
         .area = area,
     };
     m_activeSlotQueryGeneration = generation;
     m_error.reset();
+}
+
+void NativeSlotWorkflowModel::invalidateActorState() {
+    m_targetGeneration = nextGeneration();
+    m_actorTarget.reset();
+    m_pendingActorTarget.reset();
+    m_activeActorTargetGeneration.reset();
+    m_areaStates = {};
+    m_screen = SlotWorkflowScreen::currentSlots;
+    m_targetSlot.reset();
+    m_previewTattoo.reset();
+    m_previewAppearance.reset();
+    m_editAppearance.reset();
+    m_error.reset();
+    m_pendingSlotQuery.reset();
+    m_activeSlotQueryGeneration.reset();
+    m_pendingApply.reset();
+    m_activeApplyGeneration.reset();
+    m_pendingRemove.reset();
+    m_activeRemoveGeneration.reset();
+    m_pendingAppearance.reset();
+    m_activeAppearanceGeneration.reset();
+    m_pendingLock.reset();
+    m_activeLockGeneration.reset();
+    m_lockOriginScreen.reset();
+}
+
+bool NativeSlotWorkflowModel::isMutationInFlight() const noexcept {
+    return m_outstandingMutationGeneration ||
+        m_pendingApply || m_activeApplyGeneration ||
+        m_pendingRemove || m_activeRemoveGeneration ||
+        m_pendingAppearance || m_activeAppearanceGeneration ||
+        m_pendingLock || m_activeLockGeneration;
+}
+
+bool NativeSlotWorkflowModel::hasActorSnapshot() const noexcept {
+    const auto* current = slots();
+    return m_actorTarget && !isActorTargetResolutionInFlight() && current &&
+        current->actorFormId == m_actorTarget->formId;
+}
+
+void NativeSlotWorkflowModel::finishOutstandingMutation(std::uint64_t generation) noexcept {
+    if (m_outstandingMutationGeneration == generation) {
+        m_outstandingMutationGeneration.reset();
+    }
 }
 
 void NativeSlotWorkflowModel::clampSelectedPage() noexcept {
