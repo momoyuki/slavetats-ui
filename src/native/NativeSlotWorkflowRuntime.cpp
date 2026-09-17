@@ -35,6 +35,7 @@ private:
 
 NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     NativeSlotWorkflowModel& model,
+    ActorTargetOperation resolveActorTarget,
     SlotQueryOperation query,
     SlotApplyOperation apply,
     SlotRemoveOperation remove,
@@ -42,6 +43,7 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     SlotLockOperation setLocked,
     NativeSlotScheduler scheduler)
     : m_model(model),
+      m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
       m_apply(std::move(apply)),
       m_remove(std::move(remove)),
@@ -55,6 +57,10 @@ void NativeSlotWorkflowRuntime::pump() {
         return;
     }
 
+    if (auto target = m_model.takeActorTargetRequest()) {
+        scheduleActorTarget(*target);
+        return;
+    }
     if (auto query = m_model.takeSlotQuery()) {
         scheduleQuery(std::move(*query));
         return;
@@ -77,6 +83,31 @@ void NativeSlotWorkflowRuntime::pump() {
     }
 
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::scheduleActorTarget(ActorTargetResolutionTicket ticket) {
+    NativeSlotTask task = [this, ticket] {
+        InFlightGuard guard(m_inFlight);
+        ActorTargetResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::actorNotFound,
+            "Failed to resolve crosshair Actor."));
+        try {
+            result = m_resolveActorTarget();
+        } catch (...) {
+        }
+        m_model.completeActorTargetResolution(ticket.generation, std::move(result));
+    };
+
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        m_model.completeActorTargetResolution(
+            ticket.generation,
+            std::unexpected(operationError(
+                core::ServiceErrorCode::actorNotFound,
+                "Failed to resolve crosshair Actor.")));
+        m_inFlight.store(false);
+    }
 }
 
 void NativeSlotWorkflowRuntime::scheduleQuery(SlotQueryTicket ticket) {

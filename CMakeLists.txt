@@ -57,6 +57,7 @@ set(sources
     src/native/NativeCatalogBrowserModel.cpp
     src/native/NativeSlotWorkflowModel.cpp
     src/native/NativeSlotWorkflowRuntime.cpp
+    src/native/ActorTargetProvider.cpp
     src/native/NativeThumbnailController.cpp
     src/native/NativeThumbnailRuntime.cpp
     src/native/D3D11NativeThumbnailSource.cpp

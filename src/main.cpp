@@ -5,6 +5,7 @@
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
+#include "native/ActorTargetProvider.h"
 #include "native/D3D11NativeThumbnailSource.h"
 #include "native/NativeThumbnailRuntime.h"
 #include "native/OfficialMenuFrameworkAdapter.h"
@@ -29,6 +30,7 @@ native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
 native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
+    [] { return native::resolveCrosshairActorTarget(); },
     [](std::uint32_t actorFormId, core::TattooArea area) {
         return g_applicationRuntime.service().querySlots(actorFormId, area);
     },

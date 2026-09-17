@@ -10,6 +10,7 @@ namespace stui::native {
 
 using NativeSlotTask = std::function<void()>;
 using NativeSlotScheduler = std::function<void(NativeSlotTask)>;
+using ActorTargetOperation = std::function<ActorTargetResult()>;
 using SlotQueryOperation = std::function<core::TattooSlotsResult(
     std::uint32_t actorFormId,
     core::TattooArea area)>;
@@ -26,6 +27,7 @@ class NativeSlotWorkflowRuntime {
 public:
     NativeSlotWorkflowRuntime(
         NativeSlotWorkflowModel& model,
+        ActorTargetOperation resolveActorTarget,
         SlotQueryOperation query,
         SlotApplyOperation apply,
         SlotRemoveOperation remove,
@@ -36,6 +38,7 @@ public:
     void pump();
 
 private:
+    void scheduleActorTarget(ActorTargetResolutionTicket ticket);
     void scheduleQuery(SlotQueryTicket ticket);
     void scheduleApply(SlotApplyTicket ticket);
     void scheduleRemove(SlotRemoveTicket ticket);
@@ -43,6 +46,7 @@ private:
     void scheduleLock(SlotLockTicket ticket);
 
     NativeSlotWorkflowModel& m_model;
+    ActorTargetOperation m_resolveActorTarget;
     SlotQueryOperation m_query;
     SlotApplyOperation m_apply;
     SlotRemoveOperation m_remove;

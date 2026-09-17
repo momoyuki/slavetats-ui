@@ -26,6 +26,9 @@ using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceRequest;
 using stui::core::UpdateTattooAppearanceResult;
 using stui::core::UpdateTattooAppearanceSuccess;
+using stui::native::ActorTarget;
+using stui::native::ActorTargetKind;
+using stui::native::ActorTargetResult;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotTask;
 using stui::native::NativeSlotWorkflowModel;
@@ -83,6 +86,13 @@ struct Fixture {
           model(catalog),
           runtime(
               model,
+              [this]() -> ActorTargetResult {
+                  ++targetResolutionCount;
+                  if (targetResolutionThrows) {
+                      throw std::runtime_error("resolver failed");
+                  }
+                  return targetResult;
+              },
               [this](std::uint32_t actor, TattooArea area) {
                   ++queryCount;
                   queriedActor = actor;
@@ -90,8 +100,10 @@ struct Fixture {
                   if (queryThrows) {
                       throw std::runtime_error("query failed");
                   }
-                  return stui::core::TattooSlotsResult(
-                      returnOwnedSlot ? bodySlotsWithOwnedTattoo() : bodySlots());
+                  auto result = returnOwnedSlot ? bodySlotsWithOwnedTattoo() : bodySlots();
+                  result.actorFormId = actor;
+                  result.area = area;
+                  return stui::core::TattooSlotsResult(std::move(result));
               },
               [this](const ApplyTattooRequest& request) {
                   ++applyCount;
@@ -155,6 +167,9 @@ struct Fixture {
     NativeCatalogBrowserModel catalog;
     NativeSlotWorkflowModel model;
     std::vector<NativeSlotTask> scheduled;
+    std::size_t targetResolutionCount{};
+    ActorTargetResult targetResult{ActorTarget{
+        .kind = ActorTargetKind::crosshair, .formId = 0x1234, .displayName = "Lydia"}};
     std::size_t queryCount{};
     std::size_t applyCount{};
     std::size_t removeCount{};
@@ -167,6 +182,7 @@ struct Fixture {
     UpdateTattooAppearanceRequest appearanceRequest;
     SetTattooLockedRequest lockRequest;
     bool returnOwnedSlot{};
+    bool targetResolutionThrows{};
     bool queryThrows{};
     bool applyThrows{};
     bool removeThrows{};
@@ -483,6 +499,120 @@ void mapsSynchronizeOnlyExceptionsAndSchedulerRejectionToSynchronizeFailed() {
         "expected synchronization scheduler rejection to release the in-flight guard");
 }
 
+void schedulesOneCrosshairResolutionBeforeQueryingResolvedActor() {
+    Fixture fixture;
+    fixture.model.start();
+    expect(fixture.model.selectCrosshairTarget(), "expected Crosshair selection");
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1 && fixture.targetResolutionCount == 0 &&
+            fixture.queryCount == 0,
+        "expected exactly one deferred target resolution and no early query");
+    fixture.scheduled.front()();
+    expect(fixture.targetResolutionCount == 1 && fixture.model.actorTarget() &&
+            fixture.model.actorTarget()->formId == 0x1234 &&
+            fixture.model.actorTarget()->displayName == "Lydia" &&
+            !fixture.model.isActorTargetResolutionInFlight(),
+        "expected resolved Crosshair target delivered to model");
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2, "expected one query after resolution completes");
+    fixture.scheduled.back()();
+    expect(fixture.queryCount == 1 && fixture.queriedActor == 0x1234 &&
+            fixture.model.slots() && fixture.model.slots()->actorFormId == 0x1234,
+        "expected slots queried for resolved Actor only");
+}
+
+void resolverExceptionFailsWithoutFallbackAndAllowsRefresh() {
+    Fixture fixture;
+    fixture.model.start();
+    fixture.targetResolutionThrows = true;
+    expect(fixture.model.selectCrosshairTarget(), "expected Crosshair selection");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1, "expected scheduled resolver");
+    fixture.scheduled.front()();
+    expect(!fixture.model.isActorTargetResolutionInFlight() &&
+            !fixture.model.actorTarget() && fixture.model.error() &&
+            fixture.model.error()->code == ServiceErrorCode::actorNotFound &&
+            fixture.model.error()->message == "Failed to resolve crosshair Actor.",
+        "expected resolver exception delivered as stable actorNotFound error");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1 && fixture.queryCount == 0 &&
+            fixture.model.selectedTargetKind() == ActorTargetKind::crosshair,
+        "expected failed resolution to retain Crosshair mode without Player query");
+    fixture.targetResolutionThrows = false;
+    expect(fixture.model.refreshCrosshairTarget(), "expected explicit refresh accepted");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2, "expected resolver exception to release guard");
+    fixture.scheduled.back()();
+    expect(fixture.model.actorTarget() && fixture.model.actorTarget()->formId == 0x1234,
+        "expected successful explicit retry");
+}
+
+void schedulerExceptionFailsWithoutFallbackAndAllowsRefresh() {
+    Fixture fixture;
+    fixture.model.start();
+    fixture.schedulerThrows = true;
+    expect(fixture.model.selectCrosshairTarget(), "expected Crosshair selection");
+    fixture.runtime.pump();
+    expect(!fixture.model.isActorTargetResolutionInFlight() &&
+            !fixture.model.actorTarget() && fixture.model.error() &&
+            fixture.model.error()->code == ServiceErrorCode::actorNotFound &&
+            fixture.model.error()->message == "Failed to resolve crosshair Actor.",
+        "expected scheduler exception delivered as stable actorNotFound error");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.empty() && fixture.targetResolutionCount == 0 &&
+            fixture.queryCount == 0 &&
+            fixture.model.selectedTargetKind() == ActorTargetKind::crosshair,
+        "expected scheduling failure to produce no resolution or Player query");
+    expect(fixture.model.refreshCrosshairTarget(), "expected explicit refresh accepted");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1, "expected scheduler exception to release guard");
+    fixture.scheduled.back()();
+    expect(fixture.model.actorTarget() && fixture.model.actorTarget()->formId == 0x1234,
+        "expected successful refresh after scheduler failure");
+}
+
+void deliversResolverFailureWithoutReplacingItsError() {
+    Fixture fixture;
+    fixture.model.start();
+    fixture.targetResult = std::unexpected(stui::core::ServiceError{
+        .code = ServiceErrorCode::actorNotFound, .message = "No valid crosshair Actor"});
+    expect(fixture.model.selectCrosshairTarget(), "expected Crosshair selection");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1, "expected scheduled resolver");
+    fixture.scheduled.front()();
+    fixture.runtime.pump();
+    expect(!fixture.model.actorTarget() && fixture.model.error() &&
+            fixture.model.error()->message == "No valid crosshair Actor" &&
+            fixture.queryCount == 0 && fixture.scheduled.size() == 1,
+        "expected typed provider failure preserved without fallback query");
+}
+
+void ignoresCrosshairCompletionAfterPlayerReselection() {
+    for (bool resolverThrows : {false, true}) {
+        Fixture fixture;
+        fixture.model.start();
+        fixture.targetResolutionThrows = resolverThrows;
+        expect(fixture.model.selectCrosshairTarget(), "expected Crosshair selection");
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 1, "expected scheduled Crosshair resolution");
+        expect(fixture.model.selectPlayerTarget(), "expected explicit Player reselection");
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 1, "expected old resolution to retain runtime guard");
+        fixture.scheduled.front()();
+        expect(fixture.model.actorTarget() && fixture.model.actorTarget()->formId == 0x14 &&
+                !fixture.model.error() && !fixture.model.slots(),
+            "expected stale resolution success or failure ignored after Player reselection");
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 2, "expected Player query after stale completion");
+        fixture.scheduled.back()();
+        expect(fixture.queryCount == 1 && fixture.queriedActor == 0x14 &&
+                fixture.model.slots() && fixture.model.slots()->actorFormId == 0x14,
+            "expected explicit Player query only after reselection");
+    }
+}
+
 void ignoresStaleCompletionAfterAReplacementQuery() {
     Fixture fixture;
     fixture.model.start();
@@ -514,6 +644,16 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("schedules one Crosshair resolution before querying resolved Actor",
+        schedulesOneCrosshairResolutionBeforeQueryingResolvedActor);
+    failures += run("resolver exception fails without fallback and allows refresh",
+        resolverExceptionFailsWithoutFallbackAndAllowsRefresh);
+    failures += run("scheduler exception fails without fallback and allows refresh",
+        schedulerExceptionFailsWithoutFallbackAndAllowsRefresh);
+    failures += run("delivers resolver failure without replacing its error",
+        deliversResolverFailureWithoutReplacingItsError);
+    failures += run("ignores Crosshair completion after Player reselection",
+        ignoresCrosshairCompletionAfterPlayerReselection);
     failures += run("schedules only one query and completes model", schedulesOnlyOneQueryAndCompletesModel);
     failures += run("apply schedules only after explicit confirmation", applySchedulesOnlyAfterExplicitConfirmation);
     failures += run("remove schedules only after explicit confirmation", removeSchedulesOnlyAfterExplicitConfirmation);
