@@ -102,14 +102,13 @@ class SlaveTatsAppearanceBackend final : public IUpdateTattooAppearanceBackend {
 public:
     SlaveTatsAppearanceBackend(
         const slavetats::interface::Addresses* api,
-        const SlaveTatsAppearanceBindings* bindings) noexcept :
-        m_api(api), m_bindings(bindings) {}
+        const SlaveTatsAppearanceBindings* bindings,
+        std::function<void*(std::uint32_t)> resolveLoadedActor) noexcept :
+        m_api(api), m_bindings(bindings),
+        m_resolveLoadedActor(std::move(resolveLoadedActor)) {}
 
     ActorHandle resolveActor(std::uint32_t actorFormId) override {
-        if (m_bindings) {
-            return m_bindings->resolveActor ? m_bindings->resolveActor(actorFormId) : nullptr;
-        }
-        return RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+        return m_resolveLoadedActor(actorFormId);
     }
 
     std::expected<std::vector<std::int32_t>, core::ServiceError>
@@ -236,6 +235,7 @@ public:
 private:
     const slavetats::interface::Addresses* m_api;
     const SlaveTatsAppearanceBindings* m_bindings;
+    std::function<void*(std::uint32_t)> m_resolveLoadedActor;
 };
 
 }  // namespace
@@ -269,6 +269,21 @@ std::uint32_t SlaveTatsRuntime::apiVersion() const noexcept {
 
 const slavetats::interface::Addresses* SlaveTatsRuntime::api() const noexcept {
     return m_api;
+}
+
+void* SlaveTatsRuntime::resolveLoadedActor(std::uint32_t actorFormId) const {
+    if (actorFormId == 0) {
+        return nullptr;
+    }
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->resolveActor || !m_appearanceBindings->isActor3DLoaded) {
+            return nullptr;
+        }
+        auto* actor = m_appearanceBindings->resolveActor(actorFormId);
+        return actor && m_appearanceBindings->isActor3DLoaded(actor) ? actor : nullptr;
+    }
+    auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+    return actor && actor->Is3DLoaded() ? actor : nullptr;
 }
 
 core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain) {
@@ -319,9 +334,7 @@ core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain
 core::TattooSlotsResult SlaveTatsRuntime::querySlots(
     std::uint32_t actorFormId,
     core::TattooArea area) {
-    auto* actor = m_appearanceBindings && m_appearanceBindings->resolveActor
-        ? static_cast<RE::Actor*>(m_appearanceBindings->resolveActor(actorFormId))
-        : RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -405,7 +418,7 @@ core::TattooSlotsResult SlaveTatsRuntime::querySlots(
 }
 
 core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooRequest& request) {
-    auto* actor = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(request.actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -516,7 +529,7 @@ core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooReq
 
 core::RemoveTattooResult SlaveTatsRuntime::removeFromSlot(
     const core::RemoveTattooRequest& request) {
-    auto* actor = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(request.actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -580,7 +593,8 @@ core::UpdateTattooAppearanceResult SlaveTatsRuntime::updateAppearance(
     const core::UpdateTattooAppearanceRequest& request) {
     SlaveTatsAppearanceBackend backend(
         m_api,
-        m_appearanceBindings ? &*m_appearanceBindings : nullptr);
+        m_appearanceBindings ? &*m_appearanceBindings : nullptr,
+        [this](std::uint32_t actorFormId) { return resolveLoadedActor(actorFormId); });
     return updateTattooAppearance(request, backend);
 }
 
@@ -599,15 +613,7 @@ core::SetTattooLockedResult SlaveTatsRuntime::setTattooLocked(
         });
     };
 
-    void* actorHandle = nullptr;
-    if (m_appearanceBindings) {
-        if (!m_appearanceBindings->resolveActor) {
-            return lockFailed("Actor resolver binding is unavailable");
-        }
-        actorHandle = m_appearanceBindings->resolveActor(request.actorFormId);
-    } else {
-        actorHandle = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
-    }
+    auto* actorHandle = resolveLoadedActor(request.actorFormId);
     if (!actorHandle) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,

@@ -51,6 +51,12 @@ struct StringRead {
 
 struct QueryState {
     void* actor{reinterpret_cast<void*>(0x1234)};
+    int queryCount{};
+    int applyCount{};
+    int removeCount{};
+    int synchronizeCount{};
+    int updatedWriteCount{};
+    int arrayCreateCount{};
     std::int32_t nextArrayHandle{900};
     std::int32_t availableTattoo{};
     std::int32_t slotTattoo{};
@@ -131,6 +137,7 @@ private:
 };
 
 std::int32_t arrayObject(void*) {
+    ++g_queryState->arrayCreateCount;
     return g_queryState->nextArrayHandle++;
 }
 
@@ -196,25 +203,50 @@ RE::BSFixedString mapGetString(
 
 bool queryAvailableTattoos(
     std::int32_t, std::int32_t matches, std::int32_t, RE::BSFixedString) {
+    ++g_queryState->queryCount;
     g_queryState->objectArrays[matches] = {g_queryState->availableTattoo};
     return false;
 }
 
 bool queryExternalSlots(RE::Actor*, RE::BSFixedString, std::int32_t matches) {
+    ++g_queryState->queryCount;
     g_queryState->integerArrays[matches] = {};
     return false;
 }
 
 std::int32_t getAppliedTattooInSlot(RE::Actor*, RE::BSFixedString, std::int32_t slot) {
+    ++g_queryState->queryCount;
     return slot == 0 ? g_queryState->slotTattoo : 0;
+}
+
+std::int32_t addAndGetTattoo(RE::Actor*, int, int, bool, bool, bool) {
+    ++g_queryState->applyCount;
+    return 73;
+}
+
+bool removeTattooFromSlot(RE::Actor*, RE::BSFixedString, int, bool, bool) {
+    ++g_queryState->removeCount;
+    return false;
+}
+
+bool synchronizeTattoos(RE::Actor*, bool) {
+    ++g_queryState->synchronizeCount;
+    return false;
+}
+
+void setActorInteger(void*, RE::TESForm*, RE::BSFixedString, std::int32_t) {
+    ++g_queryState->updatedWriteCount;
 }
 
 const slavetats::interface::Addresses& queryApi() {
     static const slavetats::interface::Addresses api{
         .current_version = slavetats::interface::Addresses::version,
+        .synchronize_tattoos = synchronizeTattoos,
         .query_available_tattoos = queryAvailableTattoos,
+        .remove_tattoo_from_slot = removeTattooFromSlot,
         .get_applied_tattoo_in_slot = getAppliedTattooInSlot,
         .external_slots = queryExternalSlots,
+        .add_and_get_tattoo = addAndGetTattoo,
     };
     return api;
 }
@@ -230,6 +262,7 @@ struct JcminiPointerGuard {
     decltype(jcmini::fn_jmap_getFlt) mapGetFloat{jcmini::fn_jmap_getFlt};
     decltype(jcmini::fn_jval_addToPool) addToPool{jcmini::fn_jval_addToPool};
     decltype(jcmini::fn_jval_cleanPool) cleanPool{jcmini::fn_jval_cleanPool};
+    decltype(jcmini::fn_jfdb_setInt) setActorInteger{jcmini::fn_jfdb_setInt};
 
     explicit JcminiPointerGuard(QueryState& state) {
         g_queryState = &state;
@@ -243,6 +276,7 @@ struct JcminiPointerGuard {
         jcmini::fn_jmap_getFlt = ::mapGetFloat;
         jcmini::fn_jval_addToPool = ::addToPool;
         jcmini::fn_jval_cleanPool = ::cleanPool;
+        jcmini::fn_jfdb_setInt = ::setActorInteger;
     }
 
     ~JcminiPointerGuard() {
@@ -256,12 +290,15 @@ struct JcminiPointerGuard {
         jcmini::fn_jmap_getFlt = mapGetFloat;
         jcmini::fn_jval_addToPool = addToPool;
         jcmini::fn_jval_cleanPool = cleanPool;
+        jcmini::fn_jfdb_setInt = setActorInteger;
         g_queryState = nullptr;
     }
 };
 
 struct BindingState {
     void* actor{reinterpret_cast<void*>(0x1234)};
+    std::uint32_t actorFormId{0x14};
+    bool actorLoaded{true};
     void* queriedActor{};
     void* updatedActor{};
     void* synchronizedActor{};
@@ -291,7 +328,10 @@ void expect(bool condition, std::string_view message) {
 SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
     return SlaveTatsAppearanceBindings{
         .resolveActor = [&state](std::uint32_t actorFormId) -> void* {
-            return actorFormId == 0x14 ? state.actor : nullptr;
+            return actorFormId == state.actorFormId ? state.actor : nullptr;
+        },
+        .isActor3DLoaded = [&state](void* actor) {
+            return actor == state.actor && state.actorLoaded;
         },
         .queryAppliedTattooHandles = [&state](void* actor) {
             ++state.queryCount;
@@ -573,6 +613,102 @@ void missingActorStopsBeforeQueryOrMutation() {
         "expected missing actor path not to query, write, mark, or synchronize");
 }
 
+void unloadedActorStopsAppearanceAndRetry() {
+    for (const auto mode : {UpdateTattooAppearanceMode::updateAndSynchronize,
+             UpdateTattooAppearanceMode::synchronizeOnly}) {
+        BindingState state;
+        state.actorLoaded = false;
+        SlaveTatsRuntime runtime(bindingsFor(state));
+        const auto result = runtime.updateAppearance(request(mode));
+        expect(!result && result.error().code == ServiceErrorCode::actorNotFound,
+            "expected unloaded actor to reject appearance and retry");
+        expect(state.queryCount == 0 && state.integerWriteCount == 0 &&
+                state.floatWriteCount == 0 && state.updatedWriteCount == 0 &&
+                state.synchronizeCount == 0,
+            "expected unloaded appearance rejection before any query or mutation");
+    }
+}
+
+void unloadedActorStopsLockAndUnlock() {
+    for (const bool locked : {true, false}) {
+        BindingState state;
+        state.actorLoaded = false;
+        SlaveTatsRuntime runtime(bindingsFor(state));
+        const auto result = runtime.setTattooLocked(lockRequest(locked));
+        expect(!result && result.error().code == ServiceErrorCode::actorNotFound,
+            "expected unloaded actor to reject Lock and Unlock");
+        expect(state.queryCount == 0 && state.integerWriteCount == 0 &&
+                state.updatedWriteCount == 0 && state.synchronizeCount == 0,
+            "expected unloaded Lock rejection before any query or mutation");
+    }
+}
+
+void invalidActorStopsEveryOperationBeforeApiOrJContainers() {
+    CommonLibTestHostGuard hostGuard;
+    enum class InvalidActor { unloaded, missing, zeroId, missingResolver, missingLoadedCheck };
+    for (const auto invalid : {InvalidActor::unloaded, InvalidActor::missing,
+             InvalidActor::zeroId, InvalidActor::missingResolver, InvalidActor::missingLoadedCheck}) {
+        QueryState queryState;
+        JcminiPointerGuard guard(queryState);
+        BindingState state;
+        state.actorFormId = invalid == InvalidActor::zeroId ? 0 : 0x1234;
+        state.actorLoaded = invalid != InvalidActor::unloaded;
+        if (invalid == InvalidActor::missing) {
+            state.actor = nullptr;
+        }
+        auto bindings = bindingsFor(state);
+        if (invalid == InvalidActor::missingResolver) {
+            bindings.resolveActor = {};
+        }
+        if (invalid == InvalidActor::missingLoadedCheck) {
+            bindings.isActor3DLoaded = {};
+        }
+        SlaveTatsRuntime runtime(std::move(bindings));
+        runtime.bindSlaveTats(&queryApi());
+        const auto expectRejected = [&](const auto& result, std::string_view operation) {
+            expect(!result && result.error().code == ServiceErrorCode::actorNotFound,
+                std::string(operation) + " must reject an invalid actor");
+            expect(queryState.queryCount == 0 && queryState.applyCount == 0 &&
+                    queryState.removeCount == 0 && queryState.synchronizeCount == 0 &&
+                    queryState.updatedWriteCount == 0 && queryState.arrayCreateCount == 0,
+                "expected actor rejection before SlaveTatsNG or JContainers work");
+            expect(state.queryCount == 0 && state.integerWriteCount == 0 &&
+                    state.floatWriteCount == 0 && state.updatedWriteCount == 0 &&
+                    state.synchronizeCount == 0,
+                "expected actor rejection before binding query, write, mark, or sync");
+        };
+        expectRejected(runtime.querySlots(state.actorFormId, stui::core::TattooArea::body),
+            "querySlots");
+        auto appearance = request();
+        appearance.actorFormId = state.actorFormId;
+        expectRejected(runtime.updateAppearance(appearance), "updateAppearance");
+        appearance.mode = UpdateTattooAppearanceMode::synchronizeOnly;
+        expectRejected(runtime.updateAppearance(appearance), "appearance retry");
+        for (const bool locked : {true, false}) {
+            auto lock = lockRequest(locked);
+            lock.actorFormId = state.actorFormId;
+            expectRejected(runtime.setTattooLocked(lock), "setTattooLocked");
+        }
+        expectRejected(runtime.applyToSlot(stui::core::ApplyTattooRequest{
+            .actorFormId = state.actorFormId,
+            .area = stui::core::TattooArea::body,
+            .slot = 0,
+            .domain = "default",
+            .section = "Test Section",
+            .name = "Test Tattoo",
+        }), "applyToSlot");
+        for (const auto mode : {stui::core::RemoveTattooMode::removeAndSynchronize,
+                 stui::core::RemoveTattooMode::synchronizeOnly}) {
+            expectRejected(runtime.removeFromSlot(stui::core::RemoveTattooRequest{
+                .actorFormId = state.actorFormId,
+                .area = stui::core::TattooArea::body,
+                .slot = 0,
+                .mode = mode,
+            }), "removeFromSlot");
+        }
+    }
+}
+
 void ineffectiveAppearanceReadbacksStopBeforeUpdatedMarkerAndSynchronization() {
     {
         BindingState state;
@@ -745,6 +881,10 @@ int main() {
         staleHandlesNeverWriteMarkOrSynchronize);
     failures += run("missing actor stops before query or mutation",
         missingActorStopsBeforeQueryOrMutation);
+    failures += run("unloaded actor stops appearance and retry", unloadedActorStopsAppearanceAndRetry);
+    failures += run("unloaded actor stops Lock and Unlock", unloadedActorStopsLockAndUnlock);
+    failures += run("invalid actor stops every operation before API or JContainers",
+        invalidActorStopsEveryOperationBeforeApiOrJContainers);
     failures += run("ineffective appearance readbacks stop before synchronization",
         ineffectiveAppearanceReadbacksStopBeforeUpdatedMarkerAndSynchronization);
     failures += run("failed updated readback stops before synchronization",

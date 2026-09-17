@@ -20,6 +20,7 @@ using AppliedTattooHandleQueryResult =
 
 struct SlaveTatsAppearanceBindings {
     std::function<void*(std::uint32_t)> resolveActor;
+    std::function<bool(void*)> isActor3DLoaded;
     std::function<AppliedTattooHandleQueryResult(void*)> queryAppliedTattooHandles;
     std::function<void(std::int32_t, const char*, std::int32_t)> setTattooInt;
     std::function<std::int32_t(std::int32_t, const char*, std::int32_t)> getTattooInt;
@@ -54,6 +55,8 @@ public:
         const core::SetTattooLockedRequest& request) override;
 
 private:
+    [[nodiscard]] void* resolveLoadedActor(std::uint32_t actorFormId) const;
+
     const slavetats::interface::Addresses* m_api{nullptr};
     std::uint32_t m_apiVersion{0};
     bool m_jContainersReady{false};
