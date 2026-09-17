@@ -90,23 +90,23 @@ The following are not required to complete vNext.1:
 
 ## vNext.2 — Lock and Domain
 
-**Status:** Current priority
+**Status:** Complete
 
 Close two important SlaveTats workflow gaps without expanding actor targeting yet.
 
 ### Lock / Unlock
 
-- [ ] Expose current `locked` state for SlaveTats-managed slots.
-- [ ] Add a safe Lock / Unlock mutation path.
-- [ ] Revalidate tattoo ownership before mutation.
-- [ ] Preserve external-slot read-only behavior.
+- [x] Expose current `locked` state for SlaveTats-managed slots.
+- [x] Add a safe Lock / Unlock mutation path.
+- [x] Revalidate tattoo ownership before mutation.
+- [x] Preserve external-slot read-only behavior.
 
 ### Domain support
 
-- [ ] Stop treating `default` as the only user-facing domain.
-- [ ] Discover or query available domains through the proper runtime boundary.
-- [ ] Add a domain selector/filter where it improves browse/apply behavior.
-- [ ] Preserve the selected/applied tattoo's real domain in slot snapshots.
+- [x] Stop treating `default` as the only user-facing domain.
+- [x] Discover available domains through the MO2-resolved catalog boundary.
+- [x] Add a domain selector/filter where it improves browse/apply behavior.
+- [x] Preserve the selected/applied tattoo's real domain in slot snapshots.
 
 ### Acceptance target
 

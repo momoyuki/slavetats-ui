@@ -48,7 +48,7 @@
 - Produces `TattooFilter::domain`; empty is all domains.
 - Produces deterministic `TattooFacets::domains`.
 
-- [ ] **Step 1: Write failing parser tests**
+- [x] **Step 1: Write failing parser tests**
 
 Add entries with explicit, missing, and empty `domain`, then assert:
 
@@ -58,7 +58,7 @@ expect(report.definitions[1].domain == "default", "expected missing domain fallb
 expect(report.definitions[2].domain == "default", "expected empty domain fallback");
 ```
 
-- [ ] **Step 2: Run the focused parser test and verify failure**
+- [x] **Step 2: Run the focused parser test and verify failure**
 
 Run:
 
@@ -68,11 +68,11 @@ Run:
 
 Expected: compilation failure because `TattooDefinition::domain` is absent.
 
-- [ ] **Step 3: Implement parser normalization**
+- [x] **Step 3: Implement parser normalization**
 
 Add `std::string domain{"default"};` to `TattooDefinition`. Add optional-string parsing for `domain`: missing/empty assigns `default`; non-string reports `field 'domain' must be a string`; valid non-empty content is retained exactly. Parse it before optional material metadata so invalid entries are rejected together.
 
-- [ ] **Step 4: Write failing repository tests**
+- [x] **Step 4: Write failing repository tests**
 
 Extend the test definition helper with domain. Build `default`, `Custom`, and `custom` entries, then assert:
 
@@ -82,11 +82,11 @@ expect(repository.query(TattooFilter{.domain = "CUSTOM"}).matchedEntries == 2, "
 expect(repository.query(TattooFilter{}).matchedEntries == 3, "expected all domains for empty filter");
 ```
 
-- [ ] **Step 5: Implement index, query, and contextual facets**
+- [x] **Step 5: Implement index, query, and contextual facets**
 
 Add `domain` to `TattooFilter`, `domains` to `TattooFacets`, and `foldedDomain` to `IndexedDefinition`. Include folded domain in filtering and deterministic ordering before section. Reuse `buildFacetValues` for global domain facets. In `contextualFacets`, retain all `domains`, but limit Sources and Sections by Area plus Domain plus Source.
 
-- [ ] **Step 6: Run focused parser/repository tests and verify success**
+- [x] **Step 6: Run focused parser/repository tests and verify success**
 
 Run:
 
@@ -96,7 +96,7 @@ Run:
 
 Expected: all focused tests pass.
 
-- [ ] **Step 7: Review Task 1 and request commit approval**
+- [x] **Step 7: Review Task 1 and request commit approval**
 
 Run `git diff --check` and review only the six files above. Proposed commit: `feat: retain tattoo catalog domains`.
 
@@ -111,7 +111,7 @@ Run `git diff --check` and review only the six files above. Proposed commit: `fe
 - Consumes `TattooFilter::domain` and `TattooFacets::domains`.
 - Produces `void setDomain(std::string value)`; empty means All Domains.
 
-- [ ] **Step 1: Write failing browser-model tests**
+- [x] **Step 1: Write failing browser-model tests**
 
 Use a catalog whose custom and default entries have non-overlapping Source/Section values. Select custom Source/Section then call `setDomain("default")`:
 
@@ -124,7 +124,7 @@ expect(model.page().matchedEntries == 3, "expected empty domain to restore All D
 
 Replace the snapshot with one lacking the chosen domain and assert `refresh()` clears it.
 
-- [ ] **Step 2: Run the focused browser test and verify failure**
+- [x] **Step 2: Run the focused browser test and verify failure**
 
 Run:
 
@@ -134,15 +134,15 @@ Run:
 
 Expected: compilation failure because `setDomain` is absent.
 
-- [ ] **Step 3: Implement selection and reconciliation**
+- [x] **Step 3: Implement selection and reconciliation**
 
 Set `m_filter.domain`, reset page index, reconcile, then query. In `reconcileContextualFilters`, validate a non-empty Domain against the folded `contextualFacets().domains`; clear it before validating Source and Section. Preserve Area.
 
-- [ ] **Step 4: Run focused browser test and verify success**
+- [x] **Step 4: Run focused browser test and verify success**
 
 Run the Step 2 command. Expected: every browser-model test passes.
 
-- [ ] **Step 5: Review Task 2 and request commit approval**
+- [x] **Step 5: Review Task 2 and request commit approval**
 
 Run `git diff --check` and review the three files above. Proposed commit: `feat: add contextual domain filtering`.
 
@@ -159,7 +159,7 @@ Run `git diff --check` and review the three files above. Proposed commit: `feat:
 - Consumes selected `TattooDefinition::domain` and `setDomain`.
 - Produces exact-domain apply tickets plus presentation-only labels/badges.
 
-- [ ] **Step 1: Write failing workflow/adapter tests**
+- [x] **Step 1: Write failing workflow/adapter tests**
 
 Set the selected picker tattoo to `.domain = "custom"`, then assert:
 
@@ -169,7 +169,7 @@ expect(ticket->request.domain == "custom", "expected exact selected domain forwa
 
 Add pure adapter-helper tests for `All Domains`, concrete option labels, card/Slot Action domain labels, and fallback to `default` from an empty applied snapshot domain. Assert helpers do not call model/runtime operations.
 
-- [ ] **Step 2: Run focused native tests and verify failure**
+- [x] **Step 2: Run focused native tests and verify failure**
 
 Run:
 
@@ -179,15 +179,15 @@ Run:
 
 Expected: workflow assertion fails because current Apply sends `default`.
 
-- [ ] **Step 3: Implement workflow and UI changes**
+- [x] **Step 3: Implement workflow and UI changes**
 
 In `confirmApply()`, use `.domain = m_previewTattoo->domain`. In Picker filters, render `Domain` before `Source`, use `All Domains` index zero, and call `setDomain(index == 0 ? "" : contextualFacets.domains[index - 1])`. Add a compact visible domain badge to each card and applied Slot Actions. Do not alter thumbnail cache keys/uploads or add runtime/service calls to the adapter.
 
-- [ ] **Step 4: Run focused native tests and verify success**
+- [x] **Step 4: Run focused native tests and verify success**
 
 Run the Step 2 command. Expected: all focused tests pass.
 
-- [ ] **Step 5: Review Task 3 and request commit approval**
+- [x] **Step 5: Review Task 3 and request commit approval**
 
 Run `git diff --check` and review the five files above. Proposed commit: `feat: apply tattoos with selected domain`.
 
@@ -197,7 +197,7 @@ Run `git diff --check` and review the five files above. Proposed commit: `feat: 
 - Modify: `ROADMAP.md` only after automated and in-game acceptance.
 - Modify: this plan during execution.
 
-- [ ] **Step 1: Run full Debug verification**
+- [x] **Step 1: Run full Debug verification**
 
 Run:
 
@@ -207,7 +207,7 @@ Run:
 
 Expected: every Debug CTest test passes.
 
-- [ ] **Step 2: Run full Release verification**
+- [x] **Step 2: Run full Release verification**
 
 Run:
 
@@ -217,14 +217,14 @@ Run:
 
 Expected: every Release CTest test passes.
 
-- [ ] **Step 3: Inspect final scope**
+- [x] **Step 3: Inspect final scope**
 
 Run `git diff --check`, `git status --short`, and `git diff -- src tests docs ROADMAP.md`. Expected: only Domain work, no secrets, no direct cache/JContainers discovery, and no unrelated QoL change.
 
-- [ ] **Step 4: Deploy only after separate approval and complete in-game acceptance**
+- [x] **Step 4: Deploy only after separate approval and complete in-game acceptance**
 
 Verify: All Domains default; custom/default options; contextual Source/Section narrowing; custom-domain apply; Slot Actions domain label; missing-domain legacy JSON as default; external slots still read-only; no cache/JContainers discovery error in log.
 
-- [ ] **Step 5: Record vNext.2 completion after user acceptance**
+- [x] **Step 5: Record vNext.2 completion after user acceptance**
 
 Check the four Domain boxes and vNext.2 status in `ROADMAP.md`, archive this plan after its feature record commits, and only then begin PR #9 QoL work.
