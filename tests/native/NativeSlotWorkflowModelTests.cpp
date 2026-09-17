@@ -429,14 +429,16 @@ void previewDoesNotApplyAndCancelReturnsToSlots() {
         "expected Cancel to preserve picker filters and page for the next target");
 }
 
-void explicitConfirmationCreatesOneFixedPolicyRequest() {
+void explicitConfirmationCreatesOneExactDomainPolicyRequest() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(1);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
     NativeSlotWorkflowModel model(catalog);
     completeInitialQuery(model, slots(TattooArea::body, 3));
     expect(model.selectSlot(2), "expected apply target selected");
-    model.selectTattoo(tattoo("Corruption", 7));
+    auto selected = tattoo("Corruption", 7);
+    selected.domain = "custom";
+    model.selectTattoo(selected);
 
     expect(model.confirmApply(), "expected first Apply confirmation accepted");
     expect(!model.confirmApply(), "expected duplicate Apply confirmation rejected");
@@ -446,9 +448,9 @@ void explicitConfirmationCreatesOneFixedPolicyRequest() {
     expect(ticket->request.actorFormId == 0x14 && ticket->request.area == TattooArea::body &&
             ticket->request.slot == 2,
         "expected Player BODY slot target");
-    expect(ticket->request.domain == "default" && ticket->request.section == "Marks" &&
+    expect(ticket->request.domain == "custom" && ticket->request.section == "Marks" &&
             ticket->request.name == "Corruption",
-        "expected selected tattoo identity with fixed domain");
+        "expected selected tattoo identity with exact domain");
     expect(ticket->request.color == 0xFFFFFF && ticket->request.alpha == 1.0F,
         "expected fixed white opaque apply policy");
     expect(model.screen() == SlotWorkflowScreen::applying,
@@ -922,7 +924,7 @@ int main() {
     failures += run("rejects tattoo outside selected Area", rejectsTattooOutsideTheSelectedArea);
     failures += run("finds In Use slots by Tattoo Identity", findsInUseSlotsBySlaveTatsTattooIdentity);
     failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
-    failures += run("explicit confirmation creates one fixed-policy request", explicitConfirmationCreatesOneFixedPolicyRequest);
+    failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);
     failures += run("apply failure retains Preview for retry", applyFailureRetainsPreviewForRetry);
     failures += run("stale completions are ignored", staleCompletionsAreIgnored);

@@ -127,6 +127,9 @@ struct SlotLockActionPresentation {
 };
 
 [[nodiscard]] SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept;
+[[nodiscard]] std::string_view domainPresentationLabel(std::string_view domain) noexcept;
+[[nodiscard]] std::vector<std::string> buildCatalogBrowserDomainOptions(
+    const std::vector<std::string>& domains);
 [[nodiscard]] std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page);
 [[nodiscard]] std::size_t pickerVisibleCardCount(

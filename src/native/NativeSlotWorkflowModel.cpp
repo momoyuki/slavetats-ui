@@ -286,7 +286,7 @@ bool NativeSlotWorkflowModel::confirmApply() {
             .actorFormId = kPlayerFormId,
             .area = m_selectedArea,
             .slot = *m_targetSlot,
-            .domain = "default",
+            .domain = m_previewTattoo->domain,
             .section = m_previewTattoo->section,
             .name = m_previewTattoo->name,
             .color = m_previewAppearance->color,

@@ -708,6 +708,19 @@ void removeHelpersRequireExplicitTargetConfirmation() {
         "expected missing slot target to disable Remove");
 }
 
+void domainPresentationUsesDefaultFallback() {
+    expect(stui::native::domainPresentationLabel("custom") == "custom",
+        "expected explicit domain presentation preserved");
+    expect(stui::native::domainPresentationLabel("") == "default",
+        "expected empty applied domain presented as default");
+}
+
+void domainOptionsStartWithAllDomains() {
+    const auto options = stui::native::buildCatalogBrowserDomainOptions({"custom", "default"});
+    expect(options == std::vector<std::string>{"All Domains", "custom", "default"},
+        "expected All Domains before discovered domain options");
+}
+
 void lockActionPresentationKeepsAppearanceEditable() {
     const auto unlocked = stui::native::slotLockActionPresentation(false);
     expect(unlocked.toggleLabel == "Lock" && unlocked.mutationsEnabled,
@@ -826,6 +839,10 @@ int main() {
         std::cout << "PASS picker and Preview helpers expose exact target intent\n";
         removeHelpersRequireExplicitTargetConfirmation();
         std::cout << "PASS Remove helpers require explicit target confirmation\n";
+        domainPresentationUsesDefaultFallback();
+        std::cout << "PASS domain presentation uses default fallback\n";
+        domainOptionsStartWithAllDomains();
+        std::cout << "PASS Domain options start with All Domains\n";
         lockActionPresentationKeepsAppearanceEditable();
         std::cout << "PASS Lock actions preserve Edit Appearance access\n";
         pickerVisiblePathsFollowOnlyTheSixRenderedCards();

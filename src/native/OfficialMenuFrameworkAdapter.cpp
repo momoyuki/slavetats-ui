@@ -205,6 +205,19 @@ SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept {
     };
 }
 
+std::string_view domainPresentationLabel(std::string_view domain) noexcept {
+    return domain.empty() ? "default" : domain;
+}
+
+std::vector<std::string> buildCatalogBrowserDomainOptions(
+    const std::vector<std::string>& domains) {
+    std::vector<std::string> options;
+    options.reserve(domains.size() + 1);
+    options.emplace_back("All Domains");
+    options.insert(options.end(), domains.begin(), domains.end());
+    return options;
+}
+
 std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page) {
     const std::size_t visibleCount = pickerVisibleCardCount(page);
@@ -1019,6 +1032,7 @@ void renderSlotActions(
         ImGuiMCP::Text("%s / %s",
             slot->tattoo->section.c_str(),
             slot->tattoo->name.c_str());
+        ImGuiMCP::Text("Domain: %s", domainPresentationLabel(slot->tattoo->domain).data());
         if (slot->tattoo->locked) {
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted("Locked");
@@ -1638,13 +1652,26 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     std::copy_n(filter.search.data(), searchLength, searchBuffer.data());
     const auto snapshot = model.snapshot();
     std::vector<CatalogBrowserSourceOption> sourceOptions;
+    std::vector<std::string> domainOptions;
+    std::vector<const char*> domainLabels;
     std::vector<const char*> sectionLabels{"All sections"};
+    int domainIndex = 0;
     int sourceIndex = 0;
     int sectionIndex = 0;
     const auto contextualFacets = model.contextualFacets();
 
     if (snapshot) {
         sourceOptions = buildCatalogBrowserSourceOptions(contextualFacets.sources);
+        domainOptions = buildCatalogBrowserDomainOptions(contextualFacets.domains);
+        domainLabels.reserve(domainOptions.size());
+        for (const auto& option : domainOptions) {
+            domainLabels.push_back(option.c_str());
+        }
+        for (std::size_t index = 0; index < contextualFacets.domains.size(); ++index) {
+            if (contextualFacets.domains[index] == filter.domain) {
+                domainIndex = static_cast<int>(index + 1);
+            }
+        }
         for (std::size_t index = 0; index < contextualFacets.sources.size(); ++index) {
             if (contextualFacets.sources[index].sourceId == filter.sourceId) {
                 sourceIndex = static_cast<int>(index + 1);
@@ -1656,6 +1683,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 sectionIndex = static_cast<int>(index + 1);
             }
         }
+    }
+    if (domainLabels.empty()) {
+        domainOptions = buildCatalogBrowserDomainOptions({});
+        domainLabels.push_back(domainOptions.front().c_str());
     }
 
     std::vector<const char*> sourceLabels{"All sources"};
@@ -1672,6 +1703,20 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             "FilterLabel", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 72.0F);
         ImGuiMCP::TableSetupColumn(
             "FilterControl", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Domain");
+        ImGuiMCP::TableSetColumnIndex(1);
+        ImGuiMCP::SetNextItemWidth(-1.0F);
+        if (ImGuiMCP::Combo(
+                "##Domain",
+                &domainIndex,
+                domainLabels.data(),
+                static_cast<int>(domainLabels.size()))) {
+            model.setDomain(domainIndex == 0 ? "" : contextualFacets.domains[domainIndex - 1]);
+        }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
@@ -1756,6 +1801,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 }
                 ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
                 const auto& tattoo = page.entries[index];
+                const auto domainLabel = domainPresentationLabel(tattoo.domain);
                 const auto inUseSlots = workflow.inUseSlots(tattoo);
                 const auto thumbnailIndex = findCatalogThumbnailViewIndex(
                     tattoo.texturePath,
@@ -1835,6 +1881,26 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             0xFFFFFFFF,
                             badgeText);
                     }
+                    const auto domainTextSize = ImGuiMCP::CalcTextSize(domainLabel.data());
+                    auto* drawList = ImGuiMCP::GetWindowDrawList();
+                    ImGuiMCP::ImDrawListManager::AddRectFilled(
+                        drawList,
+                        {
+                            imageScreenOrigin.x + 4.0F,
+                            imageScreenOrigin.y + 4.0F,
+                        },
+                        {
+                            imageScreenOrigin.x + domainTextSize.x + 16.0F,
+                            imageScreenOrigin.y + domainTextSize.y + 14.0F,
+                        },
+                        0xB8000000,
+                        3.0F,
+                        0);
+                    ImGuiMCP::ImDrawListManager::AddText(
+                        drawList,
+                        {imageScreenOrigin.x + 10.0F, imageScreenOrigin.y + 8.0F},
+                        0xFFFFFFFF,
+                        domainLabel.data());
                 }
                 ImGuiMCP::EndChild();
                 ImGuiMCP::PopStyleColor();
