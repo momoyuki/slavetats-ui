@@ -98,7 +98,18 @@ bool NativeMenu::handleFrameworkHotkey(
 void NativeMenu::open() noexcept {
     if (port_ && window_ != 0) {
         port_->setWindowOpen(window_, true);
+        if (openCallback_) {
+            try {
+                openCallback_();
+            } catch (...) {
+                lastError_ = MenuRegistrationError::callbackFailed;
+            }
+        }
     }
+}
+
+void NativeMenu::setOpenCallback(OpenFunction callback) {
+    openCallback_ = std::move(callback);
 }
 
 void NativeMenu::close() noexcept {

@@ -94,6 +94,7 @@ public:
     explicit NativeSlotWorkflowModel(NativeCatalogBrowserModel& catalog) noexcept;
 
     void start();
+    void resetSession();
     [[nodiscard]] bool selectPlayerTarget();
     [[nodiscard]] bool selectCrosshairTarget();
     [[nodiscard]] bool refreshCrosshairTarget();
@@ -206,6 +207,7 @@ private:
     std::optional<std::uint64_t> m_activeAppearanceGeneration;
     std::optional<std::uint64_t> m_activeLockGeneration;
     std::optional<SlotWorkflowScreen> m_lockOriginScreen;
+    bool m_removeRequiresSynchronizationOnly{};
     std::optional<AppearanceEditSession> m_editAppearance;
     std::uint64_t m_generation{};
     bool m_started{false};

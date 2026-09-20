@@ -57,6 +57,12 @@ void NativeSlotWorkflowModel::start() {
     scheduleSlotQuery(m_selectedArea);
 }
 
+void NativeSlotWorkflowModel::resetSession() {
+    if (!isMutationInFlight()) {
+        (void)selectPlayerTarget();
+    }
+}
+
 bool NativeSlotWorkflowModel::selectPlayerTarget() {
     if (isMutationInFlight()) {
         return false;
@@ -279,10 +285,11 @@ bool NativeSlotWorkflowModel::confirmRemove() {
         return false;
     }
 
-    const auto mode = m_error &&
-            m_error->code == core::ServiceErrorCode::synchronizeFailed
+    const auto mode = m_removeRequiresSynchronizationOnly || (m_error &&
+            m_error->code == core::ServiceErrorCode::synchronizeFailed)
         ? core::RemoveTattooMode::synchronizeOnly
         : core::RemoveTattooMode::removeAndSynchronize;
+    m_removeRequiresSynchronizationOnly = mode == core::RemoveTattooMode::synchronizeOnly;
     const std::uint64_t generation = nextGeneration();
     m_pendingRemove = SlotRemoveTicket{
         .generation = generation,
@@ -643,11 +650,16 @@ void NativeSlotWorkflowModel::completeRemove(
     m_activeRemoveGeneration.reset();
     if (!result) {
         m_error = std::move(result.error());
+        if (m_error->code == core::ServiceErrorCode::synchronizeFailed ||
+            m_removeRequiresSynchronizationOnly) {
+            m_removeRequiresSynchronizationOnly = true;
+        }
         m_screen = SlotWorkflowScreen::removeConfirmation;
         return;
     }
 
     m_error.reset();
+    m_removeRequiresSynchronizationOnly = false;
     m_targetSlot.reset();
     m_screen = SlotWorkflowScreen::currentSlots;
     scheduleSlotQuery(m_selectedArea);
@@ -843,6 +855,7 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_activeApplyGeneration.reset();
     m_pendingRemove.reset();
     m_activeRemoveGeneration.reset();
+    m_removeRequiresSynchronizationOnly = false;
     m_pendingAppearance.reset();
     m_activeAppearanceGeneration.reset();
     m_pendingLock.reset();
