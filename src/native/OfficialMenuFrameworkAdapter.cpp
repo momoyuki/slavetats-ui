@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -88,6 +89,53 @@ OfficialMenuFrameworkAdapter::OfficialMenuFrameworkAdapter()
 OfficialMenuFrameworkAdapter::OfficialMenuFrameworkAdapter(MenuFrameworkBindings bindings)
     : bindings_(std::move(bindings)) {}
 
+std::string formatActorTargetIdentity(const ActorTarget& target) {
+    return std::format("{} [0x{:08X}]",
+        target.displayName.empty() ? "Unnamed Actor" : target.displayName,
+        target.formId);
+}
+
+std::string currentTattoosTitle(const ActorTarget* target) {
+    if (!target) {
+        return "Current Tattoos";
+    }
+    return "Current Tattoos - " +
+        (target->displayName.empty() ? std::string("Unnamed Actor") : target->displayName);
+}
+
+std::string_view actorTargetStatusLabel(bool resolving, const ActorTarget* target) noexcept {
+    return resolving ? "Resolving target..." : target ? "" : "No valid crosshair Actor";
+}
+
+bool actorTargetActionsEnabled(bool resolving, const ActorTarget* target) noexcept {
+    return target && !resolving;
+}
+
+ActorTargetControlPresentation actorTargetControlPresentation(
+    ActorTargetKind kind, bool resolving, bool mutationInFlight) noexcept {
+    const bool crosshair = kind == ActorTargetKind::crosshair;
+    return {!mutationInFlight, !mutationInFlight, crosshair,
+        crosshair && !resolving && !mutationInFlight};
+}
+
+bool applyActorTargetHeaderIntent(
+    NativeSlotWorkflowModel& workflow, ActorTargetHeaderIntent intent) {
+    const auto controls = actorTargetControlPresentation(
+        workflow.selectedTargetKind(), workflow.isActorTargetResolutionInFlight(),
+        workflow.isMutationInFlight());
+    switch (intent) {
+    case ActorTargetHeaderIntent::player:
+        return controls.playerEnabled && workflow.selectPlayerTarget();
+    case ActorTargetHeaderIntent::crosshair:
+        return controls.crosshairEnabled && workflow.selectCrosshairTarget();
+    case ActorTargetHeaderIntent::refresh:
+        return controls.refreshEnabled && workflow.refreshCrosshairTarget();
+    case ActorTargetHeaderIntent::none:
+        return false;
+    }
+    return false;
+}
+
 SlotCardTreatment slotCardTreatment(core::SlotOccupancy occupancy) noexcept {
     switch (occupancy) {
     case core::SlotOccupancy::empty:
@@ -151,9 +199,11 @@ std::vector<std::string> collectVisibleSlotTexturePaths(
     return paths;
 }
 
-std::string formatSlotTargetLabel(core::TattooArea area, std::int32_t slot) {
-    return "Player / " + std::string(slotAreaLabel(area)) + " / Slot " +
-        std::to_string(slot);
+std::string formatSlotTargetLabel(
+    const ActorTarget* actor, core::TattooArea area, std::int32_t slot) {
+    const std::string_view name = !actor ? "No active Actor" :
+        actor->displayName.empty() ? "Unnamed Actor" : std::string_view(actor->displayName);
+    return std::format("{} / {} / Slot {}", name, slotAreaLabel(area), slot);
 }
 
 std::string previewApplyButtonLabel(std::int32_t slot, bool retry) {
@@ -768,21 +818,43 @@ void renderSlotImage(
     }
 }
 
+bool renderActorTargetHeader(NativeSlotWorkflowModel& workflow) {
+    const auto kind = workflow.selectedTargetKind();
+    const bool resolving = workflow.isActorTargetResolutionInFlight();
+    const auto controls = actorTargetControlPresentation(
+        kind, resolving, workflow.isMutationInFlight());
+    ActorTargetHeaderIntent intent = ActorTargetHeaderIntent::none;
+    ImGuiMCP::BeginDisabled(!controls.playerEnabled);
+    if (ImGuiMCP::RadioButton("Player", kind == ActorTargetKind::player)) {
+        intent = ActorTargetHeaderIntent::player;
+    }
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!controls.crosshairEnabled);
+    if (ImGuiMCP::RadioButton("Crosshair Target", kind == ActorTargetKind::crosshair)) {
+        intent = ActorTargetHeaderIntent::crosshair;
+    }
+    ImGuiMCP::EndDisabled();
+    const auto* target = workflow.actorTarget();
+    const auto status = actorTargetStatusLabel(resolving, target);
+    const auto identity = status.empty() && target ? formatActorTargetIdentity(*target)
+                                                 : std::string(status);
+    ImGuiMCP::TextUnformatted(identity.c_str());
+    if (controls.refreshVisible) {
+        ImGuiMCP::BeginDisabled(!controls.refreshEnabled);
+        if (ImGuiMCP::Button("Refresh Target")) {
+            intent = ActorTargetHeaderIntent::refresh;
+        }
+        ImGuiMCP::EndDisabled();
+    }
+    ImGuiMCP::Separator();
+    return applyActorTargetHeaderIntent(workflow, intent);
+}
+
 void renderCurrentSlots(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* slots = workflow.slots();
-    const auto paths = slots
-        ? collectVisibleSlotTexturePaths(
-              *slots,
-              workflow.slotPageIndex(),
-              NativeSlotWorkflowModel::kPageSize)
-        : std::vector<std::string>{};
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -803,11 +875,31 @@ void renderCurrentSlots(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImGuiMCP::TextUnformatted("Current Tattoos - Player");
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* slots = workflow.slots();
+    const auto paths = slots
+        ? collectVisibleSlotTexturePaths(
+              *slots,
+              workflow.slotPageIndex(),
+              NativeSlotWorkflowModel::kPageSize)
+        : std::vector<std::string>{};
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
+    const auto title = currentTattoosTitle(workflow.actorTarget());
+    ImGuiMCP::TextUnformatted(title.c_str());
     ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled);
     if (ImGuiMCP::Button("Refresh")) {
         workflow.refreshSelectedArea();
     }
+    ImGuiMCP::EndDisabled();
 
     constexpr std::array<core::TattooArea, 4> areas{
         core::TattooArea::body,
@@ -853,7 +945,10 @@ void renderCurrentSlots(
                 ImGuiMCP::ImGuiChildFlags_None,
                 ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                     ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
-            ImGuiMCP::TextUnformatted("Loading Player tattoo slots...");
+            const auto status = actorTargetStatusLabel(
+                workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+            ImGuiMCP::TextUnformatted(
+                status.empty() ? "Loading tattoo slots..." : status.data());
         }
         ImGuiMCP::EndChild();
     } else if (ImGuiMCP::BeginTable(
@@ -872,7 +967,7 @@ void renderCurrentSlots(
             ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
             const auto& slot = slots->slots[index];
             const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
-            const bool disabled = slotCardTreatment(slot.occupancy) ==
+            const bool disabled = !targetActionsEnabled || slotCardTreatment(slot.occupancy) ==
                 SlotCardTreatment::disabled;
             bool lockClicked = false;
             bool lockHovered = false;
@@ -1037,16 +1132,6 @@ void renderSlotActions(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto target = workflow.targetSlot();
-    const auto* slot = selectedWorkflowSlot(workflow);
-    std::vector<std::string> paths;
-    if (slot && slot->tattoo && !slot->tattoo->texturePath.empty()) {
-        paths.push_back(slot->tattoo->texturePath);
-    }
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1067,13 +1152,30 @@ void renderSlotActions(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto target = workflow.targetSlot();
+    const auto* slot = selectedWorkflowSlot(workflow);
+    std::vector<std::string> paths;
+    if (slot && slot->tattoo && !slot->tattoo->texturePath.empty()) {
+        paths.push_back(slot->tattoo->texturePath);
+    }
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const bool confirming =
         workflow.screen() == SlotWorkflowScreen::removeConfirmation;
     const bool removing = workflow.screen() == SlotWorkflowScreen::removing;
     ImGuiMCP::TextUnformatted(
         confirming || removing ? "Remove Tattoo?" : "Tattoo Slot Actions");
     if (target) {
-        const auto targetLabel = formatSlotTargetLabel(workflow.selectedArea(), *target);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), workflow.selectedArea(), *target);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (slot && slot->tattoo) {
@@ -1136,7 +1238,7 @@ void renderSlotActions(
             }
             ImGuiMCP::EndDisabled();
             ImGuiMCP::SameLine();
-            const bool canRemove = isRemoveConfirmationEnabled(
+            const bool canRemove = targetActionsEnabled && isRemoveConfirmationEnabled(
                 workflow.screen(), target.has_value());
             RemoveButtonState buttonState = RemoveButtonState::initial;
             if (const auto* error = workflow.error()) {
@@ -1158,7 +1260,8 @@ void renderSlotActions(
                 workflow.backToSlots();
             }
             ImGuiMCP::SameLine();
-            ImGuiMCP::BeginDisabled(!lockPresentation.mutationsEnabled || lockStateChangeInFlight);
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+                !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Replace")) {
                 (void)workflow.replaceSelectedSlot();
             }
@@ -1168,14 +1271,15 @@ void renderSlotActions(
                 slot->tattoo->runtimeHandle != 0;
             if (canEditAppearance) {
                 ImGuiMCP::SameLine();
-                ImGuiMCP::BeginDisabled(lockStateChangeInFlight);
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled || lockStateChangeInFlight);
                 if (ImGuiMCP::Button("Edit Appearance")) {
                     (void)workflow.beginEditAppearance();
                 }
                 ImGuiMCP::EndDisabled();
             }
             ImGuiMCP::SameLine();
-            ImGuiMCP::BeginDisabled(!lockPresentation.mutationsEnabled || lockStateChangeInFlight);
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+                !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Remove")) {
                 (void)workflow.requestRemove();
             }
@@ -1200,22 +1304,6 @@ void renderPreview(
     NativeCatalogBrowserModel& catalog,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* preview = workflow.previewTattoo();
-    const auto* appearance = workflow.previewAppearance();
-    const auto target = workflow.targetSlot();
-    std::vector<std::string> paths;
-    if (preview && !preview->texturePath.empty()) {
-        paths.push_back(preview->texturePath);
-    }
-    NativeThumbnailEpoch epoch = catalog.snapshot();
-    if (!epoch) {
-        static const NativeThumbnailEpoch fallbackEpoch = std::make_shared<int>(4);
-        epoch = fallbackEpoch;
-    }
-    thumbnails.synchronize(std::move(epoch), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1236,9 +1324,32 @@ void renderPreview(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* preview = workflow.previewTattoo();
+    const auto* appearance = workflow.previewAppearance();
+    const auto target = workflow.targetSlot();
+    std::vector<std::string> paths;
+    if (preview && !preview->texturePath.empty()) {
+        paths.push_back(preview->texturePath);
+    }
+    NativeThumbnailEpoch epoch = catalog.snapshot();
+    if (!epoch) {
+        static const NativeThumbnailEpoch fallbackEpoch = std::make_shared<int>(4);
+        epoch = fallbackEpoch;
+    }
+    thumbnails.synchronize(std::move(epoch), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     ImGuiMCP::TextUnformatted("Preview Tattoo");
     if (target) {
-        const auto targetLabel = formatSlotTargetLabel(workflow.selectedArea(), *target);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), workflow.selectedArea(), *target);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (preview) {
@@ -1259,7 +1370,7 @@ void renderPreview(
         colorComponents.blue,
     };
     float alpha = appearance ? appearance->alpha : 1.0F;
-    ImGuiMCP::BeginDisabled(applying || !appearance);
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled || applying || !appearance);
     const bool colorChanged = ImGuiMCP::ColorEdit3(
         "Color",
         pickerColor,
@@ -1342,7 +1453,7 @@ void renderPreview(
         }
         ImGuiMCP::EndDisabled();
         ImGuiMCP::SameLine();
-        const bool canApply = isPreviewApplyEnabled(
+        const bool canApply = targetActionsEnabled && isPreviewApplyEnabled(
             workflow.screen(), target.has_value(), preview != nullptr);
         const auto applyLabel = previewApplyButtonLabel(
             target.value_or(-1), workflow.error() != nullptr);
@@ -1369,21 +1480,6 @@ void renderEditAppearance(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* session = workflow.editAppearance();
-    const auto initialFramePresentation =
-        editAppearanceFramePresentation(workflow.screen(), session);
-    if (!initialFramePresentation.shouldContinue) {
-        return;
-    }
-    std::vector<std::string> paths;
-    if (initialFramePresentation.thumbnail &&
-        !initialFramePresentation.thumbnail->texturePath.empty()) {
-        paths.emplace_back(initialFramePresentation.thumbnail->texturePath);
-    }
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1404,10 +1500,34 @@ void renderEditAppearance(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* session = workflow.editAppearance();
+    const auto initialFramePresentation =
+        editAppearanceFramePresentation(workflow.screen(), session);
+    if (!initialFramePresentation.shouldContinue) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    std::vector<std::string> paths;
+    if (initialFramePresentation.thumbnail &&
+        !initialFramePresentation.thumbnail->texturePath.empty()) {
+        paths.emplace_back(initialFramePresentation.thumbnail->texturePath);
+    }
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const bool saving = workflow.screen() == SlotWorkflowScreen::savingAppearance;
     ImGuiMCP::TextUnformatted("Edit Appearance");
     if (session) {
-        const auto targetLabel = formatSlotTargetLabel(session->area, session->slot);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), session->area, session->slot);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (const auto* error = workflow.error()) {
@@ -1434,7 +1554,8 @@ void renderEditAppearance(
     float emissiveMult = session ? session->edited.emissiveMult : 1.0F;
     float glossiness = session ? session->edited.glossiness : 0.0F;
     float specularStrength = session ? session->edited.specularStrength : 0.0F;
-    ImGuiMCP::BeginDisabled(!isAppearanceEditingEnabled(workflow.screen(), session));
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+        !isAppearanceEditingEnabled(workflow.screen(), session));
     ImGuiMCP::SeparatorText("Basic");
     const bool colorChanged = ImGuiMCP::ColorEdit3(
         "Color", colorValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
@@ -1564,7 +1685,7 @@ void renderEditAppearance(
                 ImGuiMCP::SameLine();
                 const auto savePresentation = appearanceSavePresentation(
                     workflow.screen(), workflow.editAppearance());
-                ImGuiMCP::BeginDisabled(!savePresentation.enabled);
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled || !savePresentation.enabled);
                 if (ImGuiMCP::Button(savePresentation.label.data())) {
                     (void)workflow.confirmAppearanceUpdate();
                 }
@@ -1641,15 +1762,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         return;
     }
 
-    model.refresh();
-    const auto targetArea = slotAreaLabel(workflow.selectedArea());
-    if (model.filter().area != targetArea) {
-        model.setArea(std::string(targetArea));
-    }
-    thumbnails.synchronize(model.snapshot(), collectPickerTexturePaths(model.page()));
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1670,8 +1782,23 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    model.refresh();
+    const auto targetArea = slotAreaLabel(workflow.selectedArea());
+    if (model.filter().area != targetArea) {
+        model.setArea(std::string(targetArea));
+    }
+    thumbnails.synchronize(model.snapshot(), collectPickerTexturePaths(model.page()));
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const auto targetLabel = formatSlotTargetLabel(
-        workflow.selectedArea(), workflow.targetSlot().value_or(-1));
+        workflow.actorTarget(), workflow.selectedArea(), workflow.targetSlot().value_or(-1));
     ImGuiMCP::Text("Target: %s", targetLabel.c_str());
 
     static bool filtersExpanded = false;
@@ -1806,6 +1933,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         footerHeight,
         metadataHeight,
         3);
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled);
     if (emptyState != CatalogBrowserEmptyState::none) {
         if (ImGuiMCP::BeginChild(
                 "CatalogEmptyState",
@@ -1944,13 +2072,15 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     const auto tooltip = formatCatalogTattooTooltip(tattoo.name, inUseSlots);
                     ImGuiMCP::SetTooltip("%s", tooltip.c_str());
                 }
-                if (ImGuiMCP::IsItemClicked()) {
+                if (targetActionsEnabled && ImGuiMCP::IsItemClicked()) {
                     workflow.selectTattoo(tattoo);
                 }
             }
             ImGuiMCP::EndTable();
         }
     }
+
+    ImGuiMCP::EndDisabled();
 
     const float horizontalButtonPadding =
         style ? style->FramePadding.x * 2.0F : 16.0F;

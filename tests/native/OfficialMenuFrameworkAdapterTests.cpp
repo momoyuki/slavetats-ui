@@ -19,6 +19,119 @@ void expect(bool condition, std::string_view message) {
     }
 }
 
+void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
+    using namespace stui::native;
+    expect(formatActorTargetIdentity({ActorTargetKind::crosshair, 0xA2C8E, "Lydia"}) ==
+               "Lydia [0x000A2C8E]",
+        "expected exact actor name and eight-digit uppercase form ID");
+    expect(formatActorTargetIdentity(ActorTarget{}) == "Player [0x00000014]",
+        "expected Player identity to retain leading zeroes");
+    expect(formatActorTargetIdentity({ActorTargetKind::crosshair, 0xFFFFFFFF, ""}) ==
+               "Unnamed Actor [0xFFFFFFFF]",
+        "expected fallback actor name and full-width form ID");
+    const ActorTarget player;
+    expect(currentTattoosTitle(&player) == "Current Tattoos - Player",
+        "expected Current Slots title to identify Player");
+    const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(currentTattoosTitle(&lydia) == "Current Tattoos - Lydia",
+        "expected Current Slots title to use the selected Actor name");
+    const ActorTarget unnamed{ActorTargetKind::crosshair, 0x1234, ""};
+    expect(currentTattoosTitle(&unnamed) == "Current Tattoos - Unnamed Actor" &&
+               currentTattoosTitle(nullptr) == "Current Tattoos",
+        "expected unnamed and missing targets never to use a Player title");
+}
+
+void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
+    using namespace stui::native;
+    const ActorTarget actor;
+    expect(actorTargetStatusLabel(true, nullptr) == "Resolving target..." &&
+               actorTargetStatusLabel(true, &actor) == "Resolving target...",
+        "expected resolution status to take precedence over an identity");
+    expect(actorTargetStatusLabel(false, nullptr) == "No valid crosshair Actor",
+        "expected explicit missing-target status");
+    expect(actorTargetStatusLabel(false, &actor).empty(),
+        "expected no target error for a resolved Actor");
+    expect(actorTargetActionsEnabled(false, &actor), "expected resolved Actor actions");
+    expect(!actorTargetActionsEnabled(true, &actor) &&
+               !actorTargetActionsEnabled(true, nullptr) &&
+               !actorTargetActionsEnabled(false, nullptr),
+        "expected slot and mutation actions disabled without a resolved Actor");
+}
+
+void actorTargetControlsRespectMutationAndCrosshairMode() {
+    using namespace stui::native;
+    for (const auto kind : {ActorTargetKind::player, ActorTargetKind::crosshair}) {
+        for (const bool resolving : {false, true}) {
+            const auto idle = actorTargetControlPresentation(kind, resolving, false);
+            expect(idle.playerEnabled && idle.crosshairEnabled,
+                "expected explicit target selection while no mutation is in flight");
+            expect(idle.refreshVisible == (kind == ActorTargetKind::crosshair),
+                "expected Refresh only in Crosshair mode");
+            expect(idle.refreshEnabled == (kind == ActorTargetKind::crosshair && !resolving),
+                "expected Refresh to wait for existing target resolution");
+            const auto busy = actorTargetControlPresentation(kind, resolving, true);
+            expect(!busy.playerEnabled && !busy.crosshairEnabled && !busy.refreshEnabled,
+                "expected every target control disabled during mutation");
+            expect(busy.refreshVisible == (kind == ActorTargetKind::crosshair),
+                "expected mutation not to change Refresh visibility");
+        }
+    }
+}
+
+void actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges() {
+    using namespace stui::native;
+    NativeCatalogBrowserModel catalog([] { return nullptr; });
+    NativeSlotWorkflowModel workflow(catalog);
+    workflow.start();
+    const auto initial = workflow.takeSlotQuery();
+    expect(initial.has_value(), "expected initial query");
+    workflow.completeSlotQuery(initial->generation, stui::core::TattooSlots{
+        .actorFormId = 0x14, .area = stui::core::TattooArea::body,
+        .configuredCount = 1,
+        .slots = {{.index = 0, .occupancy = stui::core::SlotOccupancy::slaveTats,
+            .tattoo = stui::core::TattooEntry{.runtimeHandle = 73, .slot = 0}}},
+    });
+    expect(workflow.selectSlot(0) && workflow.beginEditAppearance(),
+        "expected active edit session before target input");
+    expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::none) &&
+               !applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh),
+        "expected no-op and hidden Refresh to keep the current frame");
+    expect(workflow.editAppearance(), "expected no-op header to preserve edit session");
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::crosshair),
+        "expected accepted Crosshair input to end the old frame");
+    expect(!workflow.editAppearance() && !workflow.slots() && !workflow.actorTarget() &&
+               workflow.screen() == SlotWorkflowScreen::currentSlots,
+        "expected accepted target input to invalidate all captured actor presentation");
+    expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh),
+        "expected resolving Refresh input rejected");
+    auto resolution = workflow.takeActorTargetRequest();
+    expect(resolution.has_value(), "expected explicit Crosshair resolution");
+    workflow.completeActorTargetResolution(resolution->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"});
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh) &&
+               !workflow.actorTarget(),
+        "expected Refresh to invalidate the previous NPC identity");
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::player) &&
+               workflow.actorTarget() && workflow.actorTarget()->formId == 0x14,
+        "expected explicit Player input to restore exactly Player");
+    const auto playerQuery = workflow.takeSlotQuery();
+    expect(playerQuery.has_value(), "expected query after explicit Player selection");
+    workflow.completeSlotQuery(playerQuery->generation, stui::core::TattooSlots{
+        .actorFormId = 0x14, .area = stui::core::TattooArea::body,
+        .configuredCount = 1,
+        .slots = {{.index = 0, .occupancy = stui::core::SlotOccupancy::slaveTats,
+            .tattoo = stui::core::TattooEntry{.runtimeHandle = 73, .slot = 0}}},
+    });
+    expect(workflow.toggleSlotLock(0), "expected pending mutation fixture");
+    for (const auto intent : {ActorTargetHeaderIntent::player,
+             ActorTargetHeaderIntent::crosshair, ActorTargetHeaderIntent::refresh}) {
+        expect(!applyActorTargetHeaderIntent(workflow, intent),
+            "expected header input rejected while mutation is pending");
+    }
+    expect(workflow.actorTarget() && workflow.actorTarget()->formId == 0x14 && workflow.slots(),
+        "expected rejected header input to preserve the mutation Actor and snapshot");
+}
+
 float returnVersionThree() {
     return 3.13F;
 }
@@ -668,9 +781,23 @@ void visibleSlotPathsIncludeOnlyOwnedCardsOnTheCurrentPage() {
 }
 
 void pickerAndPreviewHelpersExposeExactTargetIntent() {
+    const stui::native::ActorTarget player;
     expect(stui::native::formatSlotTargetLabel(
-               stui::core::TattooArea::body, 2) == "Player / BODY / Slot 2",
+               &player, stui::core::TattooArea::body, 2) == "Player / BODY / Slot 2",
         "expected exact Player BODY target label");
+    const stui::native::ActorTarget lydia{
+        stui::native::ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(stui::native::formatSlotTargetLabel(
+               &lydia, stui::core::TattooArea::face, 3) == "Lydia / FACE / Slot 3",
+        "expected NPC context to match the active Actor without repeating the form ID");
+    const stui::native::ActorTarget unnamed{
+        stui::native::ActorTargetKind::crosshair, 0x1234, ""};
+    expect(stui::native::formatSlotTargetLabel(
+               &unnamed, stui::core::TattooArea::hands, 1) == "Unnamed Actor / HANDS / Slot 1",
+        "expected empty Actor names normalized consistently with the shared header");
+    expect(stui::native::formatSlotTargetLabel(
+               nullptr, stui::core::TattooArea::feet, 0) == "No active Actor / FEET / Slot 0",
+        "expected absent Actor context never to fall back to Player");
     expect(stui::native::previewApplyButtonLabel(2) == "Apply to Slot 2",
         "expected Apply action to name the target slot");
     expect(stui::native::previewApplyButtonLabel(2, true) == "Retry Slot 2",
@@ -791,6 +918,14 @@ void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
 
 int main() {
     try {
+        actorTargetIdentityUsesFixedWidthUppercaseFormId();
+        std::cout << "PASS actor target identity and Current Slots title\n";
+        actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
+        std::cout << "PASS actor target status and action availability\n";
+        actorTargetControlsRespectMutationAndCrosshairMode();
+        std::cout << "PASS actor target control presentation\n";
+        actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges();
+        std::cout << "PASS actor target header intent frame safety\n";
         rejectsIncompleteExportTable();
         std::cout << "PASS rejects incomplete export table\n";
         translatesSectionAndNonPausingWindowState();

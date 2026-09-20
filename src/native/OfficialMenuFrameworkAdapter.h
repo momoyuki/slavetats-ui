@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native/NativeCatalogBrowserModel.h"
+#include "native/ActorTarget.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 
@@ -24,6 +25,27 @@ struct AppearanceEditSession;
 enum class SlotWorkflowScreen;
 enum class NativeThumbnailStatus;
 struct NativeThumbnailView;
+
+struct ActorTargetControlPresentation {
+    bool playerEnabled{};
+    bool crosshairEnabled{};
+    bool refreshVisible{};
+    bool refreshEnabled{};
+};
+
+enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
+
+[[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
+[[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
+[[nodiscard]] std::string_view actorTargetStatusLabel(
+    bool resolving, const ActorTarget* target) noexcept;
+[[nodiscard]] bool actorTargetActionsEnabled(
+    bool resolving, const ActorTarget* target) noexcept;
+[[nodiscard]] ActorTargetControlPresentation actorTargetControlPresentation(
+    ActorTargetKind kind, bool resolving, bool mutationInFlight) noexcept;
+// True means actor-scoped presentation was invalidated; end the current frame.
+[[nodiscard]] bool applyActorTargetHeaderIntent(
+    NativeSlotWorkflowModel& workflow, ActorTargetHeaderIntent intent);
 
 struct MenuFrameworkBindings {
     using GetVersionFunction = float (*)();
@@ -86,6 +108,7 @@ struct SlotPageRange {
     std::size_t pageIndex,
     std::size_t pageSize);
 [[nodiscard]] std::string formatSlotTargetLabel(
+    const ActorTarget* actor,
     core::TattooArea area,
     std::int32_t slot);
 [[nodiscard]] std::string previewApplyButtonLabel(
