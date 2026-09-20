@@ -116,7 +116,7 @@ Users can manage locked state and browse/apply tattoos outside the default domai
 
 ## vNext.3 — Actor Targeting
 
-**Status:** Current priority
+**Status:** Complete
 
 **Design:** `docs/superpowers/specs/2026-09-17-native-actor-targeting-design.md`
 
@@ -124,18 +124,18 @@ Move the native workflow beyond the hard-coded Player target while preserving th
 
 ### Candidate targets
 
-- [ ] Player
-- [ ] Crosshair target
+- [x] Player
+- [x] Crosshair target
 - [ ] Selected/explicit NPC
 - [ ] Follower-oriented target convenience if it can be implemented without heuristic mutation
 
 ### Required safety work
 
-- [ ] Actor identity must be explicit in every typed request.
-- [ ] Slot snapshots must remain actor-scoped.
-- [ ] Stale completions from a previous actor selection must not update the current view.
-- [ ] Actor 3D/load state and synchronization constraints must be handled deliberately.
-- [ ] Never fall back silently to the Player if a requested NPC cannot be resolved.
+- [x] Actor identity must be explicit in every typed request.
+- [x] Slot snapshots must remain actor-scoped.
+- [x] Stale completions from a previous actor selection must not update the current view.
+- [x] Actor 3D/load state and synchronization constraints must be handled deliberately.
+- [x] Never fall back silently to the Player if a requested NPC cannot be resolved.
 
 ### Acceptance target
 
@@ -145,7 +145,7 @@ The same browse/apply/edit/remove workflow works for a deliberately selected loa
 
 ## vNext.4 — Workflow Quality of Life
 
-**Status:** Later
+**Status:** Current priority
 
 Add convenience features only after the full appearance model and actor-scoped runtime behavior are stable.
 
