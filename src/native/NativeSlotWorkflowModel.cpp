@@ -138,7 +138,7 @@ bool NativeSlotWorkflowModel::isActorTargetResolutionInFlight() const noexcept {
 }
 
 void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
-    if (area == m_selectedArea) {
+    if (area == m_selectedArea || hasAppearanceTransactionWork()) {
         return;
     }
 
@@ -161,13 +161,16 @@ void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
 }
 
 void NativeSlotWorkflowModel::refreshSelectedArea() {
-    if (!m_started) {
+    if (!m_started || m_editAppearance || hasAppearanceTransactionWork()) {
         return;
     }
     scheduleSlotQuery(m_selectedArea);
 }
 
 void NativeSlotWorkflowModel::previousSlotPage() {
+    if (hasAppearanceTransactionWork()) {
+        return;
+    }
     auto& state = selectedState();
     if (state.pageIndex > 0) {
         --state.pageIndex;
@@ -175,6 +178,9 @@ void NativeSlotWorkflowModel::previousSlotPage() {
 }
 
 void NativeSlotWorkflowModel::nextSlotPage() {
+    if (hasAppearanceTransactionWork()) {
+        return;
+    }
     auto& state = selectedState();
     const std::size_t pageCount = slotPageCount();
     if (pageCount > 0 && state.pageIndex + 1 < pageCount) {
@@ -183,6 +189,9 @@ void NativeSlotWorkflowModel::nextSlotPage() {
 }
 
 void NativeSlotWorkflowModel::setSlotPageNumber(std::size_t oneBasedPage) {
+    if (hasAppearanceTransactionWork()) {
+        return;
+    }
     auto& state = selectedState();
     const std::size_t pageCount = slotPageCount();
     if (pageCount == 0) {
@@ -229,7 +238,7 @@ bool NativeSlotWorkflowModel::selectSlot(std::int32_t slot) {
 
 bool NativeSlotWorkflowModel::replaceSelectedSlot() {
     if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
-        m_pendingLock || m_activeLockGeneration) {
+        m_pendingLock || m_activeLockGeneration || hasAppearanceTransactionWork()) {
         return false;
     }
 
@@ -250,7 +259,7 @@ bool NativeSlotWorkflowModel::replaceSelectedSlot() {
 
 bool NativeSlotWorkflowModel::requestRemove() {
     if (m_screen != SlotWorkflowScreen::slotActions || !m_targetSlot ||
-        m_pendingLock || m_activeLockGeneration) {
+        m_pendingLock || m_activeLockGeneration || hasAppearanceTransactionWork()) {
         return false;
     }
 
@@ -315,6 +324,9 @@ void NativeSlotWorkflowModel::openPicker() {
 }
 
 void NativeSlotWorkflowModel::backToSlots() {
+    if (hasAppearanceTransactionWork()) {
+        return;
+    }
     m_screen = SlotWorkflowScreen::currentSlots;
     m_targetSlot.reset();
     m_previewTattoo.reset();
@@ -409,6 +421,7 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
     };
     m_editAppearance = AppearanceEditSession{
         .actorFormId = currentSlots->actorFormId,
+        .targetGeneration = m_targetGeneration,
         .area = m_selectedArea,
         .slot = found->index,
         .runtimeHandle = found->tattoo->runtimeHandle,
@@ -418,6 +431,9 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .original = appearance,
         .edited = appearance,
     };
+    // An older refresh must not replace the snapshot captured by this edit session.
+    m_pendingSlotQuery.reset();
+    m_activeSlotQueryGeneration.reset();
     m_error.reset();
     m_screen = SlotWorkflowScreen::editAppearance;
     return true;
@@ -472,7 +488,8 @@ bool NativeSlotWorkflowModel::queueSlotLockToggle(
 
 void NativeSlotWorkflowModel::setEditedAppearance(std::int32_t color, float alpha) noexcept {
     if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
-        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly) {
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+        m_editAppearance->exitIntent != AppearanceExitIntent::none) {
         return;
     }
 
@@ -493,10 +510,12 @@ void NativeSlotWorkflowModel::setEditedAppearance(
     float specularStrength,
     float emissiveMult) noexcept {
     if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
-        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly) {
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+        m_editAppearance->exitIntent != AppearanceExitIntent::none) {
         return;
     }
 
+    const auto previous = m_editAppearance->edited;
     m_editAppearance->edited.color = std::clamp(color, 0, 0xFFFFFF);
     m_editAppearance->edited.alpha = std::clamp(alpha, 0.0F, 1.0F);
     m_editAppearance->edited.glow = std::clamp(glow, 0, 0xFFFFFF);
@@ -509,41 +528,170 @@ void NativeSlotWorkflowModel::setEditedAppearance(
     if (std::isfinite(emissiveMult) && emissiveMult >= 0.0F) {
         m_editAppearance->edited.emissiveMult = emissiveMult;
     }
+    if (previous != m_editAppearance->edited) {
+        ++m_editAppearance->editRevision;
+        if (!m_activeAppearanceGeneration) {
+            m_error.reset();
+            updateLivePreviewStatus();
+        }
+    }
+}
+
+void NativeSlotWorkflowModel::advanceLivePreview(std::chrono::steady_clock::time_point now) {
+    if (!m_editAppearance) {
+        return;
+    }
+    auto& session = *m_editAppearance;
+    if (session.observedRevision != session.editRevision) {
+        session.observedRevision = session.editRevision;
+        session.latestEditTime = now;
+    }
+    if (m_activeAppearanceGeneration || session.exitIntent != AppearanceExitIntent::none ||
+        session.status != LivePreviewStatus::pending ||
+        !session.latestEditTime || now - *session.latestEditTime < std::chrono::milliseconds(1000)) {
+        return;
+    }
+    (void)queueAppearanceOperation(AppearanceOperationPurpose::preview, session.edited);
+}
+
+LivePreviewStatus NativeSlotWorkflowModel::livePreviewStatus() const noexcept {
+    return m_editAppearance ? m_editAppearance->status : LivePreviewStatus::clean;
+}
+
+void NativeSlotWorkflowModel::updateLivePreviewStatus() noexcept {
+    auto& session = *m_editAppearance;
+    const auto& current = session.lastPreviewed ? *session.lastPreviewed : session.original;
+    session.status = session.edited != current ? LivePreviewStatus::pending
+        : session.lastPreviewed ? LivePreviewStatus::applied : LivePreviewStatus::clean;
 }
 
 void NativeSlotWorkflowModel::cancelEditAppearance() {
-    if (m_screen != SlotWorkflowScreen::editAppearance) {
-        return;
-    }
-
-    m_editAppearance.reset();
-    m_error.reset();
-    m_screen = SlotWorkflowScreen::slotActions;
+    (void)requestAppearanceRollback(AppearanceExitIntent::cancel);
 }
 
 bool NativeSlotWorkflowModel::confirmAppearanceUpdate() {
-    if (!canSaveAppearance() || !m_editAppearance) {
+    if (!m_editAppearance || m_screen != SlotWorkflowScreen::editAppearance ||
+        !hasActorSnapshot() || m_editAppearance->actorFormId != m_actorTarget->formId ||
+        m_editAppearance->targetGeneration != m_targetGeneration ||
+        m_editAppearance->exitIntent == AppearanceExitIntent::cancel ||
+        m_editAppearance->exitIntent == AppearanceExitIntent::close) {
         return false;
     }
+    auto& session = *m_editAppearance;
+    if (session.exitIntent == AppearanceExitIntent::save &&
+        session.status != LivePreviewStatus::previewError) {
+        return false;
+    }
+    session.exitIntent = AppearanceExitIntent::save;
+    if (m_activeAppearanceGeneration) {
+        return true;
+    }
+    if (session.status == LivePreviewStatus::previewError) {
+        return retryLivePreviewOperation();
+    }
+    continueAppearanceExit();
+    return true;
+}
 
+bool NativeSlotWorkflowModel::requestEditAppearanceClose() {
+    return requestAppearanceRollback(AppearanceExitIntent::close);
+}
+
+bool NativeSlotWorkflowModel::takeMenuCloseRequest() {
+    return std::exchange(m_menuCloseRequested, false);
+}
+
+bool NativeSlotWorkflowModel::requestAppearanceRollback(AppearanceExitIntent intent) {
+    if (!m_editAppearance || m_screen != SlotWorkflowScreen::editAppearance ||
+        m_editAppearance->exitIntent == AppearanceExitIntent::cancel ||
+        m_editAppearance->exitIntent == AppearanceExitIntent::close ||
+        (m_activeAppearanceGeneration &&
+            m_editAppearance->exitIntent != AppearanceExitIntent::none)) {
+        return false;
+    }
+    m_editAppearance->exitIntent = intent;
+    if (!m_activeAppearanceGeneration) {
+        continueAppearanceExit();
+    }
+    return true;
+}
+
+void NativeSlotWorkflowModel::continueAppearanceExit() {
+    auto& session = *m_editAppearance;
+    if (session.exitIntent == AppearanceExitIntent::cancel ||
+        session.exitIntent == AppearanceExitIntent::close) {
+        if (!session.appearanceWritten) {
+            finishAppearanceSession(false);
+            return;
+        }
+        session.mode = core::UpdateTattooAppearanceMode::updateAndSynchronize;
+        (void)queueAppearanceOperation(AppearanceOperationPurpose::restore, session.original);
+    } else if (session.exitIntent == AppearanceExitIntent::save) {
+        if ((session.lastPreviewed && session.edited == *session.lastPreviewed) ||
+            (!session.appearanceWritten && session.edited == session.original)) {
+            finishAppearanceSession(true);
+            return;
+        }
+        session.mode = core::UpdateTattooAppearanceMode::updateAndSynchronize;
+        (void)queueAppearanceOperation(AppearanceOperationPurpose::commit, session.edited);
+    }
+}
+
+void NativeSlotWorkflowModel::finishAppearanceSession(bool saved) {
+    const auto area = m_editAppearance->area;
+    m_menuCloseRequested = m_editAppearance->exitIntent == AppearanceExitIntent::close;
+    m_editAppearance.reset();
+    m_pendingAppearance.reset();
+    m_error.reset();
+    m_screen = saved ? SlotWorkflowScreen::currentSlots : SlotWorkflowScreen::slotActions;
+    if (saved) {
+        m_targetSlot.reset();
+        scheduleSlotQuery(area);
+    }
+}
+
+bool NativeSlotWorkflowModel::retryLivePreviewOperation() {
+    if (!m_editAppearance || m_activeAppearanceGeneration ||
+        (m_editAppearance->status != LivePreviewStatus::previewError &&
+            m_editAppearance->status != LivePreviewStatus::restoreError)) {
+        return false;
+    }
+    return queueAppearanceOperation(
+        m_editAppearance->activePurpose, m_editAppearance->operationAppearance);
+}
+
+bool NativeSlotWorkflowModel::queueAppearanceOperation(
+    AppearanceOperationPurpose purpose,
+    const TattooAppearance& appearance) {
+    if (!m_editAppearance || m_activeAppearanceGeneration || m_outstandingMutationGeneration ||
+        !hasActorSnapshot() || m_editAppearance->targetGeneration != m_targetGeneration ||
+        m_editAppearance->actorFormId != m_actorTarget->formId) {
+        return false;
+    }
     const std::uint64_t generation = nextGeneration();
     m_pendingAppearance = SlotAppearanceTicket{
         .generation = generation,
         .request = core::UpdateTattooAppearanceRequest{
             .actorFormId = m_editAppearance->actorFormId,
             .runtimeHandle = m_editAppearance->runtimeHandle,
-            .color = m_editAppearance->edited.color,
-            .alpha = m_editAppearance->edited.alpha,
-            .glow = m_editAppearance->edited.glow,
-            .glossiness = m_editAppearance->edited.glossiness,
-            .specularStrength = m_editAppearance->edited.specularStrength,
-            .emissiveMult = m_editAppearance->edited.emissiveMult,
+            .color = appearance.color,
+            .alpha = appearance.alpha,
+            .glow = appearance.glow,
+            .glossiness = appearance.glossiness,
+            .specularStrength = appearance.specularStrength,
+            .emissiveMult = appearance.emissiveMult,
             .mode = m_editAppearance->mode,
         },
+        .purpose = purpose,
     };
+    m_editAppearance->activePurpose = purpose;
+    m_editAppearance->operationAppearance = appearance;
+    m_editAppearance->status = purpose == AppearanceOperationPurpose::restore
+        ? LivePreviewStatus::restoring : LivePreviewStatus::updating;
     m_activeAppearanceGeneration = generation;
     m_error.reset();
-    m_screen = SlotWorkflowScreen::savingAppearance;
+    m_screen = purpose == AppearanceOperationPurpose::commit
+        ? SlotWorkflowScreen::savingAppearance : SlotWorkflowScreen::editAppearance;
     return true;
 }
 
@@ -670,30 +818,47 @@ void NativeSlotWorkflowModel::completeAppearanceUpdate(
     core::UpdateTattooAppearanceResult result) {
     finishOutstandingMutation(generation);
     if (!m_activeAppearanceGeneration || generation != *m_activeAppearanceGeneration ||
-        generation <= m_targetGeneration) {
+        generation <= m_targetGeneration || !m_editAppearance ||
+        m_editAppearance->targetGeneration != m_targetGeneration || !m_actorTarget ||
+        m_editAppearance->actorFormId != m_actorTarget->formId) {
         return;
     }
 
     m_activeAppearanceGeneration.reset();
+    m_pendingAppearance.reset();
+    auto& session = *m_editAppearance;
+    const auto purpose = session.activePurpose;
     if (!result) {
         m_error = std::move(result.error());
-        if (m_editAppearance) {
-            const bool mustSynchronizeOnly =
-                m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
-                m_error->code == core::ServiceErrorCode::synchronizeFailed;
-            m_editAppearance->mode = mustSynchronizeOnly
-                ? core::UpdateTattooAppearanceMode::synchronizeOnly
-                : core::UpdateTattooAppearanceMode::updateAndSynchronize;
+        if (session.mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+            m_error->code == core::ServiceErrorCode::synchronizeFailed) {
+            session.mode = core::UpdateTattooAppearanceMode::synchronizeOnly;
+            session.appearanceWritten = true;
         }
+        session.status = purpose == AppearanceOperationPurpose::restore
+            ? LivePreviewStatus::restoreError : LivePreviewStatus::previewError;
         m_screen = SlotWorkflowScreen::editAppearance;
+        if (purpose != AppearanceOperationPurpose::restore &&
+            (session.exitIntent == AppearanceExitIntent::cancel ||
+                session.exitIntent == AppearanceExitIntent::close)) {
+            continueAppearanceExit();
+        }
         return;
     }
 
     m_error.reset();
-    m_editAppearance.reset();
-    m_targetSlot.reset();
-    m_screen = SlotWorkflowScreen::currentSlots;
-    scheduleSlotQuery(m_selectedArea);
+    session.mode = core::UpdateTattooAppearanceMode::updateAndSynchronize;
+    session.appearanceWritten = true;
+    if (purpose == AppearanceOperationPurpose::preview) {
+        session.lastPreviewed = session.operationAppearance;
+        if (session.exitIntent == AppearanceExitIntent::none) {
+            updateLivePreviewStatus();
+        } else {
+            continueAppearanceExit();
+        }
+        return;
+    }
+    finishAppearanceSession(purpose == AppearanceOperationPurpose::commit);
 }
 
 void NativeSlotWorkflowModel::completeLockStateChange(
@@ -767,9 +932,15 @@ const AppearanceEditSession* NativeSlotWorkflowModel::editAppearance() const noe
 
 bool NativeSlotWorkflowModel::canSaveAppearance() const noexcept {
     return m_screen == SlotWorkflowScreen::editAppearance && m_editAppearance &&
-        hasActorSnapshot() && !isMutationInFlight() &&
+        hasActorSnapshot() &&
         m_editAppearance->actorFormId == m_actorTarget->formId &&
-        m_editAppearance->edited != m_editAppearance->original;
+        m_editAppearance->targetGeneration == m_targetGeneration &&
+        (m_editAppearance->exitIntent == AppearanceExitIntent::none ||
+            (m_editAppearance->exitIntent == AppearanceExitIntent::save &&
+                m_editAppearance->status == LivePreviewStatus::previewError)) &&
+        (m_editAppearance->edited != m_editAppearance->original ||
+            m_editAppearance->appearanceWritten ||
+            m_editAppearance->status == LivePreviewStatus::previewError);
 }
 
 bool NativeSlotWorkflowModel::isLockStateChangeInFlight() const noexcept {
@@ -864,11 +1035,20 @@ void NativeSlotWorkflowModel::invalidateActorState() {
 }
 
 bool NativeSlotWorkflowModel::isMutationInFlight() const noexcept {
-    return m_outstandingMutationGeneration ||
+    return hasAppearanceTransactionWork() || m_outstandingMutationGeneration ||
         m_pendingApply || m_activeApplyGeneration ||
         m_pendingRemove || m_activeRemoveGeneration ||
         m_pendingAppearance || m_activeAppearanceGeneration ||
         m_pendingLock || m_activeLockGeneration;
+}
+
+bool NativeSlotWorkflowModel::hasAppearanceTransactionWork() const noexcept {
+    return m_menuCloseRequested || (m_editAppearance &&
+        (m_editAppearance->edited != m_editAppearance->original ||
+            m_editAppearance->appearanceWritten || m_activeAppearanceGeneration ||
+            m_editAppearance->status == LivePreviewStatus::previewError ||
+            m_editAppearance->status == LivePreviewStatus::restoreError ||
+            m_editAppearance->exitIntent != AppearanceExitIntent::none));
 }
 
 bool NativeSlotWorkflowModel::hasActorSnapshot() const noexcept {

@@ -5,6 +5,7 @@
 #include "native/NativeCatalogBrowserModel.h"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -63,8 +64,17 @@ struct TattooAppearance {
     bool operator==(const TattooAppearance&) const = default;
 };
 
+enum class AppearanceOperationPurpose { preview, commit, restore };
+
+enum class LivePreviewStatus {
+    clean, pending, updating, applied, restoring, previewError, restoreError
+};
+
+enum class AppearanceExitIntent { none, save, cancel, close };
+
 struct AppearanceEditSession {
     std::uint32_t actorFormId{};
+    std::uint64_t targetGeneration{};
     core::TattooArea area{core::TattooArea::body};
     std::int32_t slot{-1};
     std::int32_t runtimeHandle{};
@@ -73,6 +83,15 @@ struct AppearanceEditSession {
     std::string bump;
     TattooAppearance original;
     TattooAppearance edited;
+    std::optional<TattooAppearance> lastPreviewed;
+    std::uint64_t editRevision{};
+    std::uint64_t observedRevision{};
+    std::optional<std::chrono::steady_clock::time_point> latestEditTime;
+    LivePreviewStatus status{LivePreviewStatus::clean};
+    AppearanceExitIntent exitIntent{AppearanceExitIntent::none};
+    AppearanceOperationPurpose activePurpose{AppearanceOperationPurpose::preview};
+    TattooAppearance operationAppearance;
+    bool appearanceWritten{};
     core::UpdateTattooAppearanceMode mode{
         core::UpdateTattooAppearanceMode::updateAndSynchronize};
 };
@@ -80,6 +99,7 @@ struct AppearanceEditSession {
 struct SlotAppearanceTicket {
     std::uint64_t generation{};
     core::UpdateTattooAppearanceRequest request;
+    AppearanceOperationPurpose purpose{AppearanceOperationPurpose::commit};
 };
 
 struct SlotLockTicket {
@@ -132,6 +152,11 @@ public:
         float emissiveMult) noexcept;
     void cancelEditAppearance();
     [[nodiscard]] bool confirmAppearanceUpdate();
+    void advanceLivePreview(std::chrono::steady_clock::time_point now);
+    [[nodiscard]] LivePreviewStatus livePreviewStatus() const noexcept;
+    [[nodiscard]] bool requestEditAppearanceClose();
+    [[nodiscard]] bool takeMenuCloseRequest();
+    [[nodiscard]] bool retryLivePreviewOperation();
 
     [[nodiscard]] std::optional<SlotQueryTicket> takeSlotQuery();
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
@@ -177,6 +202,14 @@ private:
     void scheduleSlotQuery(core::TattooArea area);
     void clampSelectedPage() noexcept;
     void openPicker();
+    [[nodiscard]] bool queueAppearanceOperation(
+        AppearanceOperationPurpose purpose,
+        const TattooAppearance& appearance);
+    void updateLivePreviewStatus() noexcept;
+    [[nodiscard]] bool hasAppearanceTransactionWork() const noexcept;
+    [[nodiscard]] bool requestAppearanceRollback(AppearanceExitIntent intent);
+    void continueAppearanceExit();
+    void finishAppearanceSession(bool saved);
     [[nodiscard]] bool queueSlotLockToggle(
         std::int32_t slot,
         SlotWorkflowScreen originScreen);
@@ -209,6 +242,7 @@ private:
     std::optional<SlotWorkflowScreen> m_lockOriginScreen;
     bool m_removeRequiresSynchronizationOnly{};
     std::optional<AppearanceEditSession> m_editAppearance;
+    bool m_menuCloseRequested{};
     std::uint64_t m_generation{};
     bool m_started{false};
 };
