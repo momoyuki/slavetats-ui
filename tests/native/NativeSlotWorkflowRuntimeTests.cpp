@@ -1,5 +1,6 @@
 #include "native/NativeSlotWorkflowRuntime.h"
 
+#include <chrono>
 #include <expected>
 #include <exception>
 #include <iostream>
@@ -29,6 +30,7 @@ using stui::core::UpdateTattooAppearanceSuccess;
 using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
 using stui::native::ActorTargetResult;
+using stui::native::LivePreviewStatus;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotTask;
 using stui::native::NativeSlotWorkflowModel;
@@ -36,6 +38,7 @@ using stui::native::NativeSlotWorkflowRuntime;
 using stui::native::SlotWorkflowScreen;
 using stui::repository::TattooCatalog;
 using stui::repository::TattooDefinition;
+using namespace std::chrono_literals;
 
 void expect(bool condition, std::string_view message) {
     if (!condition) {
@@ -137,6 +140,12 @@ struct Fixture {
                   if (appearanceThrows) {
                       throw std::runtime_error("appearance update failed");
                   }
+                  if (appearanceSyncFails) {
+                      return UpdateTattooAppearanceResult(std::unexpected(stui::core::ServiceError{
+                          .code = ServiceErrorCode::synchronizeFailed,
+                          .message = "appearance synchronization failed",
+                      }));
+                  }
                   return UpdateTattooAppearanceResult(UpdateTattooAppearanceSuccess{
                       .actorFormId = request.actorFormId,
                       .runtimeHandle = request.runtimeHandle,
@@ -157,7 +166,8 @@ struct Fixture {
                       throw std::runtime_error("scheduler failed");
                   }
                   scheduled.push_back(std::move(task));
-              }) {}
+              },
+              [this] { return now; }) {}
 
     stui::repository::TattooCatalogSnapshot snapshot =
         std::make_shared<const TattooCatalog>(TattooCatalog{
@@ -187,7 +197,9 @@ struct Fixture {
     bool applyThrows{};
     bool removeThrows{};
     bool appearanceThrows{};
+    bool appearanceSyncFails{};
     bool schedulerThrows{};
+    std::chrono::steady_clock::time_point now{};
     NativeSlotWorkflowRuntime runtime;
 };
 
@@ -216,6 +228,220 @@ void prepareSynchronizeOnlyRetry(Fixture& fixture) {
             .message = "appearance synchronization failed",
         }));
     expect(fixture.model.confirmAppearanceUpdate(), "expected synchronization retry request");
+}
+
+void previewSchedulesOnceAtTheExactDebounceDeadline() {
+    Fixture fixture;
+    beginAppearanceEdit(fixture);
+    fixture.model.setEditedAppearance(0x123456, 0.35F, 0x654321, 0.25F, 0.75F, 2.0F);
+    fixture.runtime.pump();
+    for (const auto elapsed : {0ms, 500ms, 999ms}) {
+        fixture.now = std::chrono::steady_clock::time_point{} + elapsed;
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 1 && fixture.appearanceCount == 0,
+            "expected no appearance work before 1000ms");
+    }
+    fixture.now += 1ms;
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2 && fixture.appearanceCount == 0,
+        "expected exactly one deferred appearance operation at 1000ms");
+    fixture.scheduled.back()();
+    expect(fixture.appearanceCount == 1 && fixture.appearanceRequest.actorFormId == 0x14 &&
+            fixture.appearanceRequest.runtimeHandle == 73 &&
+            fixture.appearanceRequest.color == 0x123456 && fixture.appearanceRequest.alpha == 0.35F &&
+            fixture.appearanceRequest.glow == 0x654321 && fixture.appearanceRequest.glossiness == 0.25F &&
+            fixture.appearanceRequest.specularStrength == 0.75F && fixture.appearanceRequest.emissiveMult == 2.0F &&
+            fixture.appearanceRequest.mode == UpdateTattooAppearanceMode::updateAndSynchronize,
+        "expected exact preview identity and all editable values forwarded once");
+    fixture.now += 5000ms;
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2 && fixture.model.editAppearance() &&
+            fixture.model.livePreviewStatus() == LivePreviewStatus::applied,
+        "expected successful preview to keep editor open without repeat writes or refresh");
+}
+
+void previewObservesLatestEditsBeforeTheInFlightGuard() {
+    for (const bool deadlineElapsed : {false, true}) {
+        Fixture fixture;
+        beginAppearanceEdit(fixture);
+        fixture.runtime.pump();
+        fixture.now += 1000ms;
+        fixture.runtime.pump();
+        fixture.now += 100ms;
+        fixture.model.setEditedAppearance(0x222222, 0.2F);
+        fixture.runtime.pump();
+        fixture.now += 500ms;
+        fixture.model.setEditedAppearance(0x333333, 0.3F, 0, 0, 0, 0);
+        fixture.runtime.pump();
+        if (deadlineElapsed) {
+            fixture.now += 1400ms;
+            fixture.runtime.pump();
+        }
+        expect(fixture.scheduled.size() == 2,
+            "expected later edits to coalesce while the first preview is scheduled");
+        fixture.scheduled.back()();
+        expect(fixture.appearanceRequest.color == 0x123456 &&
+                fixture.model.livePreviewStatus() == LivePreviewStatus::pending,
+            "expected queued request immutable and latest local edit retained");
+        if (!deadlineElapsed) {
+            fixture.now += 999ms;
+            fixture.runtime.pump();
+            expect(fixture.scheduled.size() == 2, "expected latest edit to restart debounce");
+            fixture.now += 1ms;
+        }
+        fixture.runtime.pump();
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 3,
+            "expected latest observed edit scheduled once after completion and deadline");
+        fixture.scheduled.back()();
+        expect(fixture.appearanceCount == 2 && fixture.appearanceRequest.color == 0x333333 &&
+                fixture.appearanceRequest.alpha == 0.3F && fixture.appearanceRequest.glow == 0 &&
+                fixture.appearanceRequest.emissiveMult == 0,
+            "expected only newest appearance after in-flight completion");
+    }
+}
+
+void saveFlushesPendingPreviewWithoutWaitingForClock() {
+    Fixture fixture;
+    beginAppearanceEdit(fixture);
+    fixture.runtime.pump();
+    fixture.now += 400ms;
+    fixture.model.setEditedAppearance(0xABCDEF, 0.8F);
+    expect(fixture.model.confirmAppearanceUpdate(), "expected immediate Save intent");
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2, "expected Save to bypass debounce exactly once");
+    fixture.scheduled.back()();
+    expect(fixture.appearanceCount == 1 && fixture.appearanceRequest.color == 0xABCDEF &&
+            fixture.model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected Save to commit latest edit before its preview deadline");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 3, "expected Save completion to release guard for refresh");
+}
+
+void previewExceptionsRemainRetryableAndReleaseTheGuard() {
+    for (const bool rejectScheduler : {false, true}) {
+        Fixture fixture;
+        beginAppearanceEdit(fixture);
+        fixture.runtime.pump();
+        fixture.now += 1000ms;
+        fixture.schedulerThrows = rejectScheduler;
+        fixture.appearanceThrows = !rejectScheduler;
+        fixture.runtime.pump();
+        if (!rejectScheduler) {
+            fixture.scheduled.back()();
+        }
+        expect(fixture.model.editAppearance() && fixture.model.error() &&
+                fixture.model.error()->code == ServiceErrorCode::updateFailed &&
+                fixture.model.livePreviewStatus() == LivePreviewStatus::previewError,
+            "expected preview exception reported as retryable updateFailed");
+        const auto beforeRetry = fixture.scheduled.size();
+        fixture.now += 5000ms;
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == beforeRetry, "expected no automatic retry after failure");
+        fixture.appearanceThrows = false;
+        expect(fixture.model.retryLivePreviewOperation(), "expected explicit preview retry accepted");
+        fixture.runtime.pump();
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == beforeRetry + 1, "expected failed task to release runtime guard");
+        fixture.scheduled.back()();
+        expect(fixture.appearanceRequest.mode == UpdateTattooAppearanceMode::updateAndSynchronize &&
+                fixture.model.livePreviewStatus() == LivePreviewStatus::applied && !fixture.model.error(),
+            "expected successful full retry to retain preview purpose");
+    }
+}
+
+void previewSynchronizationRetryNeverRequestsAnotherWrite() {
+    for (const bool rejectScheduler : {false, true}) {
+        Fixture fixture;
+        beginAppearanceEdit(fixture);
+        fixture.runtime.pump();
+        fixture.now += 1000ms;
+        fixture.appearanceSyncFails = true;
+        fixture.runtime.pump();
+        fixture.scheduled.back()();
+        expect(fixture.appearanceCount == 1 &&
+                fixture.appearanceRequest.mode == UpdateTattooAppearanceMode::updateAndSynchronize,
+            "expected one original write before synchronization failure");
+        fixture.appearanceSyncFails = false;
+        expect(fixture.model.retryLivePreviewOperation(), "expected preview synchronization retry");
+        fixture.schedulerThrows = rejectScheduler;
+        fixture.appearanceThrows = !rejectScheduler;
+        fixture.runtime.pump();
+        if (!rejectScheduler) {
+            fixture.scheduled.back()();
+            expect(fixture.appearanceRequest.mode == UpdateTattooAppearanceMode::synchronizeOnly,
+                "expected throwing retry to request synchronization only");
+        }
+        expect(fixture.model.error() && fixture.model.error()->code == ServiceErrorCode::synchronizeFailed,
+            "expected retry exception to retain synchronization error semantics");
+        fixture.appearanceThrows = false;
+        expect(fixture.model.retryLivePreviewOperation(), "expected failed sync retry to remain retryable");
+        const auto beforeRetry = fixture.scheduled.size();
+        fixture.runtime.pump();
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == beforeRetry + 1, "expected one scheduled synchronization retry");
+        fixture.scheduled.back()();
+        expect(fixture.appearanceRequest.actorFormId == 0x14 && fixture.appearanceRequest.runtimeHandle == 73 &&
+                fixture.appearanceRequest.mode == UpdateTattooAppearanceMode::synchronizeOnly &&
+                fixture.model.livePreviewStatus() == LivePreviewStatus::applied && fixture.model.editAppearance(),
+            "expected synchronization-only success to preserve identity and preview purpose");
+    }
+}
+
+void stalePreviewCompletionCannotChangeAReplacementSession() {
+    for (const bool operationThrows : {false, true}) {
+        Fixture fixture;
+        beginAppearanceEdit(fixture);
+        fixture.runtime.pump();
+        fixture.now += 1000ms;
+        auto ticketView = fixture.model;
+        ticketView.advanceLivePreview(fixture.now);
+        const auto oldTicket = ticketView.takeAppearanceRequest();
+        expect(oldTicket.has_value(), "expected copied model to expose the scheduled generation");
+        fixture.runtime.pump();
+
+        // Inject an earlier delivered failure so the delayed scheduler completion is obsolete.
+        fixture.model.completeAppearanceUpdate(oldTicket->generation, std::unexpected(stui::core::ServiceError{
+            .code = ServiceErrorCode::updateFailed, .message = "earlier delivered failure",
+        }));
+        fixture.model.cancelEditAppearance();
+        expect(fixture.model.selectCrosshairTarget(), "expected safe target replacement after failed write");
+        const auto target = fixture.model.takeActorTargetRequest();
+        expect(target.has_value(), "expected replacement target resolution");
+        fixture.model.completeActorTargetResolution(target->generation, fixture.targetResult);
+        const auto query = fixture.model.takeSlotQuery();
+        expect(query.has_value(), "expected replacement Actor query");
+        auto slots = bodySlotsWithOwnedTattoo();
+        slots.actorFormId = 0x1234;
+        slots.slots[1].tattoo->runtimeHandle = 99;
+        slots.slots[1].tattoo->texturePath = "replacement.dds";
+        fixture.model.completeSlotQuery(query->generation, std::move(slots));
+        expect(fixture.model.selectSlot(1) && fixture.model.beginEditAppearance(), "expected replacement edit session");
+        fixture.model.setEditedAppearance(0xABCDEF, 0.8F);
+        fixture.runtime.pump();
+        fixture.now += 1000ms;
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 2, "expected old task to retain coordinator guard");
+        fixture.appearanceThrows = operationThrows;
+        fixture.scheduled.back()();
+        expect(fixture.model.actorTarget()->formId == 0x1234 && fixture.model.editAppearance() &&
+                fixture.model.editAppearance()->runtimeHandle == 99 &&
+                fixture.model.editAppearance()->texturePath == "replacement.dds" &&
+                fixture.model.editAppearance()->edited.color == 0xABCDEF &&
+                !fixture.model.error() && !fixture.model.takeMenuCloseRequest(),
+            "expected stale success or failure not to alter replacement identity, edits, error, or Close");
+        fixture.appearanceThrows = false;
+        fixture.runtime.pump();
+        fixture.runtime.pump();
+        expect(fixture.scheduled.size() == 3, "expected stale completion to release guard for replacement preview");
+        fixture.scheduled.back()();
+        expect(fixture.appearanceRequest.actorFormId == 0x1234 && fixture.appearanceRequest.runtimeHandle == 99 &&
+                fixture.appearanceRequest.color == 0xABCDEF &&
+                fixture.model.livePreviewStatus() == LivePreviewStatus::applied,
+            "expected only current Actor appearance completion accepted");
+    }
 }
 
 void schedulesOnlyOneQueryAndCompletesModel() {
@@ -644,6 +870,12 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("preview schedules once at exact debounce deadline", previewSchedulesOnceAtTheExactDebounceDeadline);
+    failures += run("preview observes latest edits before in-flight guard", previewObservesLatestEditsBeforeTheInFlightGuard);
+    failures += run("Save flushes pending preview without waiting for clock", saveFlushesPendingPreviewWithoutWaitingForClock);
+    failures += run("preview exceptions remain retryable and release guard", previewExceptionsRemainRetryableAndReleaseTheGuard);
+    failures += run("preview synchronization retry never requests another write", previewSynchronizationRetryNeverRequestsAnotherWrite);
+    failures += run("stale preview completion cannot change replacement session", stalePreviewCompletionCannotChangeAReplacementSession);
     failures += run("schedules one Crosshair resolution before querying resolved Actor",
         schedulesOneCrosshairResolutionBeforeQueryingResolvedActor);
     failures += run("resolver exception fails without fallback and allows refresh",

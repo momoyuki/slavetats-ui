@@ -41,7 +41,8 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     SlotRemoveOperation remove,
     SlotAppearanceOperation updateAppearance,
     SlotLockOperation setLocked,
-    NativeSlotScheduler scheduler)
+    NativeSlotScheduler scheduler,
+    LivePreviewClock livePreviewClock)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
@@ -49,9 +50,12 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_remove(std::move(remove)),
       m_updateAppearance(std::move(updateAppearance)),
       m_setLocked(std::move(setLocked)),
-      m_scheduler(std::move(scheduler)) {}
+      m_scheduler(std::move(scheduler)),
+      m_livePreviewClock(std::move(livePreviewClock)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
+    m_model.advanceLivePreview(m_livePreviewClock());
+
     bool expected = false;
     if (!m_inFlight.compare_exchange_strong(expected, true)) {
         return;

@@ -3,6 +3,7 @@
 #include "native/NativeSlotWorkflowModel.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 
@@ -10,6 +11,7 @@ namespace stui::native {
 
 using NativeSlotTask = std::function<void()>;
 using NativeSlotScheduler = std::function<void(NativeSlotTask)>;
+using LivePreviewClock = std::function<std::chrono::steady_clock::time_point()>;
 using ActorTargetOperation = std::function<ActorTargetResult()>;
 using SlotQueryOperation = std::function<core::TattooSlotsResult(
     std::uint32_t actorFormId,
@@ -33,7 +35,8 @@ public:
         SlotRemoveOperation remove,
         SlotAppearanceOperation updateAppearance,
         SlotLockOperation setLocked,
-        NativeSlotScheduler scheduler);
+        NativeSlotScheduler scheduler,
+        LivePreviewClock livePreviewClock);
 
     void pump();
 
@@ -53,6 +56,7 @@ private:
     SlotAppearanceOperation m_updateAppearance;
     SlotLockOperation m_setLocked;
     NativeSlotScheduler m_scheduler;
+    LivePreviewClock m_livePreviewClock;
     std::atomic_bool m_inFlight{false};
 };
 

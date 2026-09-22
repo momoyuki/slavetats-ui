@@ -52,7 +52,8 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
             throw std::runtime_error("SKSE task interface unavailable");
         }
         taskInterface->AddTask(std::move(task));
-    });
+    },
+    [] { return std::chrono::steady_clock::now(); });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
     std::filesystem::path textureRoot = {}) {
