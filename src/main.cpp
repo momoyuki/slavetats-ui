@@ -294,6 +294,13 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         return native::OfficialMenuFrameworkAdapter::renderLauncher(*g_hotkeyBinding);
     });
     nativeMenu.setOpenCallback([] { g_nativeSlotWorkflow.resetSession(); });
+    nativeMenu.setCloseRequestCallback([] {
+        if (!g_nativeSlotWorkflow.editAppearance()) {
+            return false;
+        }
+        (void)g_nativeSlotWorkflow.requestEditAppearanceClose();
+        return true;
+    });
     g_nativeMenu = &nativeMenu;
     if (const auto result = nativeMenu.registerMenu(menuFrameworkAdapter); !result) {
         logger::warn(

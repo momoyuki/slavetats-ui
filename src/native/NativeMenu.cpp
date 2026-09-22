@@ -78,6 +78,16 @@ std::optional<MenuRegistrationError> NativeMenu::lastError() const noexcept {
 
 void NativeMenu::toggle() noexcept {
     if (isOpen()) {
+        if (closeRequestCallback_) {
+            try {
+                if (closeRequestCallback_()) {
+                    return;
+                }
+            } catch (...) {
+                lastError_ = MenuRegistrationError::callbackFailed;
+                return;
+            }
+        }
         close();
         return;
     }
@@ -110,6 +120,10 @@ void NativeMenu::open() noexcept {
 
 void NativeMenu::setOpenCallback(OpenFunction callback) {
     openCallback_ = std::move(callback);
+}
+
+void NativeMenu::setCloseRequestCallback(CloseRequestFunction callback) {
+    closeRequestCallback_ = std::move(callback);
 }
 
 void NativeMenu::close() noexcept {

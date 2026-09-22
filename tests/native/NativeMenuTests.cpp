@@ -291,6 +291,48 @@ void unavailableRegistrationCanBeRetriedAndClearsError() {
     expect(menu.isRegistered(), "expected registered state after retry");
 }
 
+void hotkeyCloseCanBeDeferredUntilTheOwnerCompletesItsWork() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    int openCount = 0;
+    int closeRequests = 0;
+    menu.setOpenCallback([&] { ++openCount; });
+    menu.setCloseRequestCallback([&] {
+        ++closeRequests;
+        return true;
+    });
+    expect(menu.handleFrameworkHotkey(true, true, true) && menu.isOpen(), "hotkey opens normally");
+    expect(closeRequests == 0 && openCount == 1, "opening must not request close");
+    expect(menu.handleFrameworkHotkey(true, true, true) && menu.isOpen(), "handled close keeps window open");
+    expect(menu.handleFrameworkHotkey(true, true, true) && menu.isOpen(), "repeated close remains deferred");
+    expect(closeRequests == 2 && openCount == 1, "deferred close cannot reset/reopen the session");
+    menu.close();
+    expect(!menu.isOpen() && closeRequests == 2, "completion closes directly without another close request");
+}
+
+void unhandledCloseRequestPreservesImmediateHotkeyClose() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    menu.setCloseRequestCallback([] { return false; });
+    menu.open();
+    expect(menu.handleFrameworkHotkey(true, true, true) && !menu.isOpen(),
+        "non-editor owner permits immediate close");
+}
+
+void throwingCloseRequestKeepsTheWindowOpen() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    menu.setCloseRequestCallback([]() -> bool { throw std::runtime_error("close request failed"); });
+    menu.open();
+    expect(menu.handleFrameworkHotkey(true, true, true) && menu.isOpen(),
+        "failed close intent must not bypass pending owner work");
+    expect(menu.lastError() == stui::native::MenuRegistrationError::callbackFailed,
+        "close callback exception is contained at the noexcept hotkey boundary");
+}
+
 void registrationErrorsHaveStableDiagnosticNames() {
     expect(stui::native::registrationErrorName(
                stui::native::MenuRegistrationError::missingExport) == "missing export",
@@ -337,6 +379,12 @@ int main() {
         std::cout << "PASS render action can close owning window\n";
         matchingFrameworkInputTogglesAndConsumesTheEvent();
         std::cout << "PASS matching framework input toggles and consumes the event\n";
+        hotkeyCloseCanBeDeferredUntilTheOwnerCompletesItsWork();
+        std::cout << "PASS hotkey close defers until owner completion\n";
+        unhandledCloseRequestPreservesImmediateHotkeyClose();
+        std::cout << "PASS unhandled close request closes immediately\n";
+        throwingCloseRequestKeepsTheWindowOpen();
+        std::cout << "PASS throwing close request keeps window open\n";
         unavailableRegistrationCanBeRetriedAndClearsError();
         std::cout << "PASS unavailable registration can be retried and clears error\n";
         registrationErrorsHaveStableDiagnosticNames();

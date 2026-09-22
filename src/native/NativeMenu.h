@@ -12,6 +12,7 @@ public:
     using RenderFunction = std::function<void(NativeMenu&)>;
     using LaunchFunction = std::function<bool()>;
     using OpenFunction = std::function<void()>;
+    using CloseRequestFunction = std::function<bool()>;
 
     explicit NativeMenu(RenderFunction render = {}, LaunchFunction launch = {});
     ~NativeMenu();
@@ -25,6 +26,7 @@ public:
         bool isKeyboard, bool isDown, bool matchesBinding) noexcept;
     void open() noexcept;
     void setOpenCallback(OpenFunction callback);
+    void setCloseRequestCallback(CloseRequestFunction callback);
     void close() noexcept;
     [[nodiscard]] bool isOpen() const noexcept;
     [[nodiscard]] bool isRegistered() const noexcept;
@@ -39,6 +41,7 @@ private:
     RenderFunction render_;
     LaunchFunction launch_;
     OpenFunction openCallback_;
+    CloseRequestFunction closeRequestCallback_;
     std::optional<MenuRegistrationError> lastError_;
     bool registered_{};
 };

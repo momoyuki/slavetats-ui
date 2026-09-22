@@ -418,10 +418,10 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     materialChangedSession.edited = materialChangedSession.original;
     materialChangedSession.edited.glow = 0x203040;
 
-    expect(!stui::native::isAppearanceSaveEnabled(
+    expect(stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &unchangedSession),
-        "unchanged appearance must disable Save");
+        "unchanged appearance must allow Save to exit without writing");
     expect(stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &changedSession),
@@ -481,8 +481,8 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     const auto retry = stui::native::appearanceSavePresentation(
         stui::native::SlotWorkflowScreen::editAppearance,
         &retrySession);
-    expect(retry.label == "Retry Sync" && retry.enabled,
-        "expected synchronize-only retries to replace Save with Retry Sync");
+    expect(retry.label == "Save" && retry.enabled,
+        "expected Save label to stay separate from operation retry");
     expect(!stui::native::isAppearanceEditingEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &retrySession),
@@ -491,8 +491,8 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     const auto savingRetry = stui::native::appearanceSavePresentation(
         stui::native::SlotWorkflowScreen::savingAppearance,
         &retrySession);
-    expect(savingRetry.label == "Retry Sync" && !savingRetry.enabled,
-        "expected saving appearance to disable the Retry Sync submission");
+    expect(savingRetry.label == "Save" && !savingRetry.enabled,
+        "expected saving appearance to disable duplicate Save");
 }
 
 void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
@@ -564,7 +564,7 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
     bool sessionResetBeforeTeardown = false;
     stui::native::orchestrateEditAppearanceFrame(
         workflow,
-        {.cancelRequested = true},
+        {.intent = stui::native::EditAppearanceIntent::cancel},
         [&workflow, &events, &sessionResetBeforeTeardown] {
             sessionResetBeforeTeardown = workflow.editAppearance() == nullptr;
             events.emplace_back("teardown");
@@ -577,6 +577,218 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
     expect(sessionResetBeforeTeardown &&
                events == std::vector<std::string>{"teardown"},
         "expected teardown before any post-Cancel renderer continuation");
+}
+
+void livePreviewPresentationMatchesTransactionState() {
+    using namespace stui::native;
+    expect(livePreviewStatusLabel(LivePreviewStatus::clean).empty(), "clean has no status");
+    expect(livePreviewStatusLabel(LivePreviewStatus::pending) == "Preview pending...", "pending label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::updating) == "Updating preview...", "updating label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::applied) == "Preview applied", "applied label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::restoring) == "Restoring original appearance...", "restore label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::previewError).empty() &&
+        livePreviewStatusLabel(LivePreviewStatus::restoreError).empty(), "errors use service messages");
+    const auto absent = livePreviewPresentation(SlotWorkflowScreen::currentSlots, nullptr);
+    expect(!absent.save.visible && !absent.cancel.visible && !absent.close.visible && !absent.retry.visible,
+        "no session has no editor actions");
+    AppearanceEditSession session;
+    for (auto status : {LivePreviewStatus::clean, LivePreviewStatus::pending,
+             LivePreviewStatus::updating, LivePreviewStatus::applied}) {
+        session.status = status;
+        const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+        expect(ui.save.visible && ui.save.enabled && ui.cancel.enabled && ui.close.enabled && !ui.retry.visible,
+            "editor allows one Save, Cancel or Close intent even while preview runs");
+    }
+    for (auto status : {LivePreviewStatus::previewError, LivePreviewStatus::restoreError}) {
+        session.status = status;
+        session.exitIntent = status == LivePreviewStatus::restoreError ? AppearanceExitIntent::close : AppearanceExitIntent::none;
+        for (auto mode : {stui::core::UpdateTattooAppearanceMode::updateAndSynchronize,
+                 stui::core::UpdateTattooAppearanceMode::synchronizeOnly}) {
+            session.mode = mode;
+            const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+            const auto expected = status == LivePreviewStatus::restoreError
+                ? (mode == stui::core::UpdateTattooAppearanceMode::synchronizeOnly ? "Retry Restore Sync" : "Retry Restore")
+                : (mode == stui::core::UpdateTattooAppearanceMode::synchronizeOnly ? "Retry Preview Sync" : "Retry Preview");
+            expect(ui.retry.visible && ui.retry.enabled && ui.retryLabel == expected && !ui.save.enabled,
+                "retry matches failed purpose and preserves sync-only mode");
+            expect(ui.cancel.enabled == (status == LivePreviewStatus::previewError) &&
+                ui.close.enabled == (status == LivePreviewStatus::previewError), "restore error retains exit intent");
+        }
+    }
+    for (auto intent : {AppearanceExitIntent::save, AppearanceExitIntent::cancel, AppearanceExitIntent::close}) {
+        session.exitIntent = intent;
+        session.status = intent == AppearanceExitIntent::save ? LivePreviewStatus::updating : LivePreviewStatus::restoring;
+        const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+        expect(!ui.save.enabled && !ui.cancel.enabled && !ui.close.enabled && !ui.retry.enabled,
+            "accepted exit intent disables duplicate actions");
+        expect(!isAppearanceEditingEnabled(SlotWorkflowScreen::editAppearance, &session), "exit blocks edits");
+    }
+}
+
+struct LivePreviewRendererFixture {
+    stui::native::NativeCatalogBrowserModel catalog{[] { return nullptr; }};
+    stui::native::NativeSlotWorkflowModel workflow{catalog};
+
+    LivePreviewRendererFixture() {
+        using namespace stui::core;
+        workflow.start();
+        const auto query = workflow.takeSlotQuery();
+        workflow.completeSlotQuery(query->generation, TattooSlots{
+            .actorFormId = 0x14, .area = TattooArea::body, .configuredCount = 1,
+            .slots = {{.index = 0, .occupancy = SlotOccupancy::slaveTats,
+                .tattoo = TattooEntry{.runtimeHandle = 73, .texturePath = "preview.dds", .slot = 0}}}});
+        expect(workflow.selectSlot(0) && workflow.beginEditAppearance(), "editor fixture");
+        workflow.setEditedAppearance(0x123456, 0.5F);
+    }
+};
+
+void livePreviewFrameRoutesOneIntentAndDefersClose() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (auto intent : {EditAppearanceIntent::save, EditAppearanceIntent::cancel, EditAppearanceIntent::close,
+             EditAppearanceIntent::retry}) {
+        LivePreviewRendererFixture fixture;
+        auto& workflow = fixture.workflow;
+        workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+        workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+        const auto targetControls = actorTargetControlPresentation(
+            workflow.selectedTargetKind(), workflow.isActorTargetResolutionInFlight(), workflow.isMutationInFlight());
+        expect(!targetControls.playerEnabled && !targetControls.crosshairEnabled && !targetControls.refreshEnabled,
+            "real preview ownership disables Actor header actions");
+        expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::crosshair), "preview blocks target transition");
+        workflow.selectArea(TattooArea::hands);
+        workflow.backToSlots();
+        expect(workflow.selectedArea() == TattooArea::body && workflow.screen() == SlotWorkflowScreen::editAppearance &&
+            !workflow.selectSlot(0) && !workflow.requestRemove() && !workflow.toggleSelectedSlotLock(),
+            "preview ownership blocks navigation and unrelated mutations");
+        const auto preview = workflow.takeAppearanceRequest();
+        expect(preview.has_value(), "preview fixture");
+        if (intent == EditAppearanceIntent::retry) {
+            workflow.completeAppearanceUpdate(preview->generation, std::unexpected(ServiceError{
+                ServiceErrorCode::synchronizeFailed, "sync failed"}));
+        } else {
+            workflow.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+        }
+        int teardowns = 0;
+        int continuations = 0;
+        orchestrateEditAppearanceFrame(workflow, {.intent = intent}, [&] { ++teardowns; },
+            [&](const auto& thumbnail) {
+                expect(workflow.editAppearance() && thumbnail.texturePath == "preview.dds", "only live session references are rendered");
+                ++continuations;
+            });
+        int closes = 0;
+        if (intent == EditAppearanceIntent::save) {
+            expect(!workflow.editAppearance() && !workflow.takeAppearanceRequest() && workflow.takeSlotQuery(),
+                "Save commits applied preview with refresh and no duplicate write");
+            expect(teardowns == 1 && continuations == 0, "Save invalidation ends frame before scoped rendering");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "Save never closes menu");
+        } else {
+            expect(teardowns == 0 && continuations == 1, "pending operation retains valid presentation");
+            expect(!applyEditAppearanceIntent(workflow, intent), "duplicate input is rejected");
+            const auto operation = workflow.takeAppearanceRequest();
+            expect(operation && operation->purpose == (intent == EditAppearanceIntent::retry
+                    ? AppearanceOperationPurpose::preview : AppearanceOperationPurpose::restore), "exact intent purpose");
+            expect(operation->request.color == (intent == EditAppearanceIntent::retry ? 0x123456 : 0xFFFFFF), "exact edited or original value");
+            expect(operation->request.mode == (intent == EditAppearanceIntent::retry
+                    ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize), "retry preserves sync-only");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "no close before restore success");
+            workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == (intent == EditAppearanceIntent::close),
+                "only Close emits menu callback after restore success");
+        }
+        expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }) && closes == (intent == EditAppearanceIntent::close ? 1 : 0),
+            "menu close is consumable exactly once");
+    }
+}
+
+void livePreviewExitInputHandlesPendingAndInFlightFrames() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (bool inFlight : {false, true}) {
+        for (auto intent : {EditAppearanceIntent::save, EditAppearanceIntent::cancel, EditAppearanceIntent::close}) {
+            LivePreviewRendererFixture fixture;
+            auto& workflow = fixture.workflow;
+            std::optional<SlotAppearanceTicket> preview;
+            if (inFlight) {
+                workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+                workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+                preview = workflow.takeAppearanceRequest();
+                expect(preview.has_value(), "in-flight fixture");
+            }
+            expect(!applyEditAppearanceIntent(workflow, EditAppearanceIntent::none) &&
+                !applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "unavailable inputs cannot emit work");
+            int teardowns = 0;
+            int continuations = 0;
+            orchestrateEditAppearanceFrame(workflow, {.intent = intent}, [&] { ++teardowns; },
+                [&](const auto&) { ++continuations; });
+            expect(!applyEditAppearanceIntent(workflow, intent), "pending exit rejects duplicate input");
+            if (!inFlight && intent != EditAppearanceIntent::save) {
+                expect(teardowns == 1 && continuations == 0 && !workflow.editAppearance() &&
+                    !workflow.takeAppearanceRequest(), "Cancel and Close before preview end frame without runtime writes");
+            } else {
+                expect(teardowns == 0 && continuations == 1, "active operation keeps editor frame alive");
+                if (inFlight) {
+                    expect(!workflow.takeAppearanceRequest(), "exit waits for exact active preview");
+                    workflow.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+                }
+                const auto operation = workflow.takeAppearanceRequest();
+                if (inFlight && intent == EditAppearanceIntent::save) {
+                    expect(!operation && !workflow.editAppearance(), "Save reuses successful active preview");
+                } else {
+                    expect(operation && operation->purpose == (intent == EditAppearanceIntent::save
+                            ? AppearanceOperationPurpose::commit : AppearanceOperationPurpose::restore), "intent schedules only matching work");
+                    workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+                }
+            }
+            int closes = 0;
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == (intent == EditAppearanceIntent::close),
+                "only Close intent closes after completion");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "duplicate close dispatch is empty");
+        }
+    }
+}
+
+void livePreviewRetryInputPreservesFailedPurposeAndMode() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (bool restore : {false, true}) {
+        for (auto error : {ServiceErrorCode::synchronizeFailed, ServiceErrorCode::actorNotFound}) {
+            LivePreviewRendererFixture fixture;
+            auto& workflow = fixture.workflow;
+            workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+            workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+            auto operation = workflow.takeAppearanceRequest();
+            expect(operation.has_value(), "preview retry fixture");
+            if (restore) {
+                workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+                expect(applyEditAppearanceIntent(workflow, EditAppearanceIntent::close), "Close starts restore");
+                operation = workflow.takeAppearanceRequest();
+                expect(operation.has_value(), "restore retry fixture");
+            }
+            workflow.completeAppearanceUpdate(operation->generation, std::unexpected(ServiceError{error, "operation failed"}));
+            expect(applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "error offers matching retry input");
+            expect(!applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "retry input cannot duplicate pending work");
+            const auto retry = workflow.takeAppearanceRequest();
+            expect(retry && retry->purpose == operation->purpose && retry->request.actorFormId == 0x14 &&
+                retry->request.runtimeHandle == 73 && retry->request.color == (restore ? 0xFFFFFF : 0x123456),
+                "retry retains purpose and exact appearance identity");
+            expect(retry->request.mode == (error == ServiceErrorCode::synchronizeFailed
+                    ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize),
+                "sync retry cannot repeat a completed write");
+            int closes = 0;
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "failed/pending restore does not close");
+            workflow.completeAppearanceUpdate(retry->generation, UpdateTattooAppearanceSuccess{});
+            if (restore) {
+                expect(!dispatchMenuCloseRequest(workflow, {}), "missing callback does not lose close request");
+            }
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == restore,
+                "successful restore retry preserves requested Close");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "retry closes at most once");
+        }
+    }
 }
 
 void currentSlotColorSwatchUsesOwnedTattooColorAtBottomRight() {
@@ -960,6 +1172,14 @@ int main() {
         std::cout << "PASS Edit Appearance uses session save and thumbnail state\n";
         editAppearanceRendererOrchestrationOrdersInputAndCancel();
         std::cout << "PASS Edit Appearance renderer orders input and Cancel\n";
+        livePreviewPresentationMatchesTransactionState();
+        std::cout << "PASS Live Preview labels and action presentation\n";
+        livePreviewFrameRoutesOneIntentAndDefersClose();
+        std::cout << "PASS Live Preview routing and deferred Close\n";
+        livePreviewExitInputHandlesPendingAndInFlightFrames();
+        std::cout << "PASS Live Preview pending and in-flight frame safety\n";
+        livePreviewRetryInputPreservesFailedPurposeAndMode();
+        std::cout << "PASS Live Preview retry purpose and mode\n";
         currentSlotColorSwatchUsesOwnedTattooColorAtBottomRight();
         std::cout << "PASS Current Slot color swatch uses owned tattoo color\n";
         currentSlotColorSwatchSkipsEmptyAndExternalSlots();

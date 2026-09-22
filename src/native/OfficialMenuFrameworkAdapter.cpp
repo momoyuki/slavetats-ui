@@ -222,13 +222,16 @@ bool isAppearanceSaveEnabled(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return screen == SlotWorkflowScreen::editAppearance && session &&
-        session->edited != session->original;
+        session->exitIntent == AppearanceExitIntent::none &&
+        session->status != LivePreviewStatus::previewError &&
+        session->status != LivePreviewStatus::restoreError;
 }
 
 bool isAppearanceEditingEnabled(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return screen == SlotWorkflowScreen::editAppearance && session &&
+        session->exitIntent == AppearanceExitIntent::none &&
         session->mode == core::UpdateTattooAppearanceMode::updateAndSynchronize;
 }
 
@@ -236,12 +239,74 @@ AppearanceSavePresentation appearanceSavePresentation(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return {
-        .label = session &&
-                session->mode == core::UpdateTattooAppearanceMode::synchronizeOnly
-            ? "Retry Sync"
-            : "Save",
+        .label = "Save",
         .enabled = isAppearanceSaveEnabled(screen, session),
     };
+}
+
+std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept {
+    switch (status) {
+    case LivePreviewStatus::pending: return "Preview pending...";
+    case LivePreviewStatus::updating: return "Updating preview...";
+    case LivePreviewStatus::applied: return "Preview applied";
+    case LivePreviewStatus::restoring: return "Restoring original appearance...";
+    default: return {};
+    }
+}
+
+LivePreviewPresentation livePreviewPresentation(
+    SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept {
+    const bool visible = session && (screen == SlotWorkflowScreen::editAppearance ||
+        screen == SlotWorkflowScreen::savingAppearance);
+    const bool failed = visible && (session->status == LivePreviewStatus::previewError ||
+        session->status == LivePreviewStatus::restoreError);
+    const bool canExit = visible && screen == SlotWorkflowScreen::editAppearance &&
+        (session->exitIntent == AppearanceExitIntent::none ||
+            (failed && session->exitIntent == AppearanceExitIntent::save));
+    std::string_view retryLabel;
+    if (failed) {
+        const bool sync = session->mode == core::UpdateTattooAppearanceMode::synchronizeOnly;
+        retryLabel = session->status == LivePreviewStatus::restoreError
+            ? (sync ? "Retry Restore Sync" : "Retry Restore")
+            : (sync ? "Retry Preview Sync" : "Retry Preview");
+    }
+    return {
+        .save = {visible, visible && isAppearanceSaveEnabled(screen, session)},
+        .cancel = {visible, canExit},
+        .close = {visible, canExit},
+        .retry = {failed, failed && screen == SlotWorkflowScreen::editAppearance},
+        .retryLabel = retryLabel,
+    };
+}
+
+bool applyEditAppearanceIntent(NativeSlotWorkflowModel& workflow, EditAppearanceIntent intent) {
+    const auto ui = livePreviewPresentation(
+        workflow.screen(), workflow.editAppearance());
+    switch (intent) {
+    case EditAppearanceIntent::save:
+        return ui.save.enabled && workflow.confirmAppearanceUpdate();
+    case EditAppearanceIntent::cancel:
+        if (!ui.cancel.enabled) {
+            return false;
+        }
+        workflow.cancelEditAppearance();
+        return true;
+    case EditAppearanceIntent::close:
+        return ui.close.enabled && workflow.requestEditAppearanceClose();
+    case EditAppearanceIntent::retry:
+        return ui.retry.enabled && workflow.retryLivePreviewOperation();
+    default:
+        return false;
+    }
+}
+
+bool dispatchMenuCloseRequest(
+    NativeSlotWorkflowModel& workflow, const std::function<void()>& close) {
+    if (!close || !workflow.takeMenuCloseRequest()) {
+        return false;
+    }
+    close();
+    return true;
 }
 
 std::string removeButtonLabel(std::int32_t slot, RemoveButtonState state) {
@@ -543,7 +608,8 @@ void orchestrateEditAppearanceFrame(
     EditAppearanceFrameInteraction interaction,
     const std::function<void()>& teardown,
     const std::function<void(const AppearanceThumbnailPresentation&)>& continueRendering) {
-    if (interaction.appearanceChanged) {
+    if (interaction.appearanceChanged &&
+        isAppearanceEditingEnabled(workflow.screen(), workflow.editAppearance())) {
         workflow.setEditedAppearance(
             interaction.color,
             interaction.alpha,
@@ -552,9 +618,7 @@ void orchestrateEditAppearanceFrame(
             interaction.specularStrength,
             interaction.emissiveMult);
     }
-    if (interaction.cancelRequested) {
-        workflow.cancelEditAppearance();
-    }
+    (void)applyEditAppearanceIntent(workflow, interaction.intent);
 
     const auto presentation = editAppearanceFramePresentation(
         workflow.screen(), workflow.editAppearance());
@@ -1500,6 +1564,15 @@ void renderEditAppearance(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    // The title-bar close follows the same rollback intent as the footer Close.
+    if (!open) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        (void)applyEditAppearanceIntent(workflow, EditAppearanceIntent::close);
+        (void)dispatchMenuCloseRequest(workflow, close);
+        return;
+    }
+
     if (renderActorTargetHeader(workflow)) {
         ImGuiMCP::End();
         ImGuiMCP::PopStyleVar();
@@ -1624,6 +1697,10 @@ void renderEditAppearance(
         frameInteraction,
         teardown,
         [&](const AppearanceThumbnailPresentation& thumbnailPresentation) {
+            const auto status = livePreviewStatusLabel(workflow.livePreviewStatus());
+            if (!status.empty()) {
+                ImGuiMCP::TextUnformatted(status.data());
+            }
             const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
             const float imageHeight = std::max(
                 1.0F,
@@ -1665,7 +1742,9 @@ void renderEditAppearance(
             const auto footerLayout = calculateUnifiedFooterLayout(
                 ImGuiMCP::GetContentRegionAvail().x,
                 closeButtonWidth);
-            bool cancelled = false;
+            const auto actions = livePreviewPresentation(
+                workflow.screen(), workflow.editAppearance());
+            EditAppearanceIntent intent = EditAppearanceIntent::none;
             if (ImGuiMCP::BeginTable(
                     "EditAppearanceFooter",
                     2,
@@ -1679,33 +1758,38 @@ void renderEditAppearance(
                     footerLayout.closeWidth);
                 ImGuiMCP::TableNextRow();
                 ImGuiMCP::TableSetColumnIndex(0);
-                ImGuiMCP::BeginDisabled(saving);
-                cancelled = ImGuiMCP::Button("Cancel");
-                ImGuiMCP::EndDisabled();
-                ImGuiMCP::SameLine();
-                const auto savePresentation = appearanceSavePresentation(
-                    workflow.screen(), workflow.editAppearance());
-                ImGuiMCP::BeginDisabled(!targetActionsEnabled || !savePresentation.enabled);
-                if (ImGuiMCP::Button(savePresentation.label.data())) {
-                    (void)workflow.confirmAppearanceUpdate();
+                ImGuiMCP::BeginDisabled(!actions.cancel.enabled);
+                if (ImGuiMCP::Button("Cancel")) {
+                    intent = EditAppearanceIntent::cancel;
                 }
                 ImGuiMCP::EndDisabled();
+                ImGuiMCP::SameLine();
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.save.enabled);
+                if (ImGuiMCP::Button("Save") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::save;
+                }
+                ImGuiMCP::EndDisabled();
+                if (actions.retry.visible) {
+                    ImGuiMCP::SameLine();
+                    ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.retry.enabled);
+                    if (ImGuiMCP::Button(actions.retryLabel.data()) && intent == EditAppearanceIntent::none) {
+                        intent = EditAppearanceIntent::retry;
+                    }
+                    ImGuiMCP::EndDisabled();
+                }
                 ImGuiMCP::TableSetColumnIndex(1);
-                ImGuiMCP::BeginDisabled(saving);
-                if (ImGuiMCP::Button("Close")) {
-                    open = false;
+                ImGuiMCP::BeginDisabled(!actions.close.enabled);
+                if (ImGuiMCP::Button("Close") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::close;
                 }
                 ImGuiMCP::EndDisabled();
                 ImGuiMCP::EndTable();
             }
 
-            if (cancelled) {
-                workflow.cancelEditAppearance();
-            }
             teardown();
-            if (!open && close) {
-                close();
-            }
+            // All actor-scoped rendering ends before an intent can reset the session.
+            (void)applyEditAppearanceIntent(workflow, intent);
+            (void)dispatchMenuCloseRequest(workflow, close);
         });
 }
 
@@ -1741,6 +1825,9 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
     slotRuntime.pump();
+    if (dispatchMenuCloseRequest(workflow, close)) {
+        return;
+    }
     if (workflow.screen() == SlotWorkflowScreen::currentSlots) {
         renderCurrentSlots(workflow, thumbnails, close);
         return;

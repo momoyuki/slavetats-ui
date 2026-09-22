@@ -23,6 +23,7 @@ class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;
 enum class SlotWorkflowScreen;
+enum class LivePreviewStatus;
 enum class NativeThumbnailStatus;
 struct NativeThumbnailView;
 
@@ -238,6 +239,30 @@ struct EditAppearanceFramePresentation {
     std::optional<AppearanceThumbnailPresentation> thumbnail;
 };
 
+struct LivePreviewActionPresentation {
+    bool visible{};
+    bool enabled{};
+};
+
+struct LivePreviewPresentation {
+    LivePreviewActionPresentation save;
+    LivePreviewActionPresentation cancel;
+    LivePreviewActionPresentation close;
+    LivePreviewActionPresentation retry;
+    std::string_view retryLabel;
+};
+
+enum class EditAppearanceIntent { none, save, cancel, close, retry };
+
+[[nodiscard]] std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept;
+[[nodiscard]] LivePreviewPresentation livePreviewPresentation(
+    SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept;
+[[nodiscard]] bool applyEditAppearanceIntent(
+    NativeSlotWorkflowModel& workflow, EditAppearanceIntent intent);
+// Consume before rendering another actor-scoped frame. True means the menu closed.
+[[nodiscard]] bool dispatchMenuCloseRequest(
+    NativeSlotWorkflowModel& workflow, const std::function<void()>& close);
+
 struct EditAppearanceFrameInteraction {
     bool appearanceChanged{};
     std::int32_t color{0xFFFFFF};
@@ -246,7 +271,7 @@ struct EditAppearanceFrameInteraction {
     float glossiness{};
     float specularStrength{};
     float emissiveMult{1.0F};
-    bool cancelRequested{};
+    EditAppearanceIntent intent{EditAppearanceIntent::none};
 };
 
 struct SlotColorSwatchPresentation {
