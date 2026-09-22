@@ -314,6 +314,7 @@ struct BindingState {
     std::map<TattooFieldKey, std::int32_t> integers;
     std::map<TattooFieldKey, float> floats;
     std::vector<std::string> appearanceWriteKeys;
+    std::vector<std::string> appearanceReadKeys;
     std::string ineffectiveReadbackKey;
     std::int32_t updatedValue{};
     std::string updatedPath;
@@ -347,6 +348,7 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
                             std::int32_t handle,
                             const char* key,
                             std::int32_t fallback) {
+            state.appearanceReadKeys.emplace_back(key);
             if (state.ineffectiveReadbackKey == key) {
                 return fallback;
             }
@@ -359,6 +361,7 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
             state.floats[{handle, key}] = value;
         },
         .getTattooFloat = [&state](std::int32_t handle, const char* key, float fallback) {
+            state.appearanceReadKeys.emplace_back(key);
             if (state.ineffectiveReadbackKey == key) {
                 return fallback;
             }
@@ -576,6 +579,42 @@ void productionDelegationQueriesRequestedActorAndWritesExactAppearance() {
     expect(state.synchronizeCount == 1 && state.synchronizedActor == state.actor &&
             !state.synchronizedSilently,
         "expected exactly one synchronize call with SlaveTats silent=false polarity");
+}
+
+void glowingAppearanceRestoresZeroGlowAndEmissionWithVerifiedWrites() {
+    BindingState state;
+    state.integers[{73, "glow"}] = 0x102030;
+    state.floats[{73, "emissiveMult"}] = 3.0F;
+    SlaveTatsRuntime runtime(bindingsFor(state));
+    auto restore = request();
+    restore.glow = 0;
+    restore.emissiveMult = 0.0F;
+
+    const auto result = runtime.updateAppearance(restore);
+
+    expect(result.has_value(), "expected glowing appearance restoration to succeed");
+    expect(state.integers[{73, "glow"}] == 0 && state.floats[{73, "emissiveMult"}] == 0.0F,
+        "expected exact zero glow and emission values stored after previously non-zero values");
+    expect(state.appearanceWriteKeys == std::vector<std::string>{
+            "color",
+            "invertedAlpha",
+            "glow",
+            "glossiness",
+            "specularStrength",
+            "emissiveMult",
+        } && state.appearanceReadKeys == std::vector<std::string>{
+            "color",
+            "invertedAlpha",
+            "glow",
+            "glossiness",
+            "specularStrength",
+            "emissiveMult",
+        }, "expected every appearance write, including zero values, verified by readback");
+    expect(state.updatedWriteCount == 1 && state.updatedActor == state.actor &&
+            state.updatedPath == ".SlaveTats.updated" && state.updatedValue == 1 &&
+            state.synchronizeCount == 1 && state.synchronizedActor == state.actor &&
+            !state.synchronizedSilently,
+        "expected one truthful updated marker and one synchronization after verified restoration");
 }
 
 void staleHandlesNeverWriteMarkOrSynchronize() {
@@ -877,6 +916,8 @@ int main() {
         runtimeQueriesReadMissingAdvancedKeysWithDocumentedDefaults);
     failures += run("production delegation queries actor and writes exact appearance",
         productionDelegationQueriesRequestedActorAndWritesExactAppearance);
+    failures += run("glowing appearance restores zero glow and emission with verified writes",
+        glowingAppearanceRestoresZeroGlowAndEmissionWithVerifiedWrites);
     failures += run("stale handles never mutate or synchronize",
         staleHandlesNeverWriteMarkOrSynchronize);
     failures += run("missing actor stops before query or mutation",

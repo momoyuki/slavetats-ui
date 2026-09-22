@@ -696,6 +696,21 @@ void appearanceBoundariesAreForwardedUnchanged() {
         "expected advanced appearance values forwarded unchanged");
 }
 
+void zeroEmissiveAppearanceIsAcceptedAndForwardedUnchanged() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto request = validAppearanceRequest();
+    request.emissiveMult = 0.0F;
+
+    const auto result = service.updateAppearance(request);
+
+    expect(result.has_value(), "expected zero emissive multiplier accepted");
+    expect(runtime.updateCount == 1, "expected zero emissive update forwarded exactly once");
+    expect(runtime.updatedRequest.actorFormId == 0x14 && runtime.updatedRequest.runtimeHandle == 42 &&
+            runtime.updatedRequest.emissiveMult == 0.0F,
+        "expected zero emissive multiplier forwarded unchanged");
+}
+
 void synchronizeOnlyAppearanceRequestIsForwardedUnchanged() {
     FakeTattooRuntime runtime;
     SlaveTatsService service(runtime);
@@ -839,6 +854,8 @@ int main() {
     failures += run("invalid appearance glow is rejected", invalidAppearanceGlowIsRejected);
     failures += run("invalid appearance material values are rejected", invalidAppearanceMaterialValuesAreRejected);
     failures += run("appearance boundaries are forwarded unchanged", appearanceBoundariesAreForwardedUnchanged);
+    failures += run("zero emissive appearance is accepted and forwarded unchanged",
+        zeroEmissiveAppearanceIsAcceptedAndForwardedUnchanged);
     failures += run("synchronize-only appearance request is forwarded unchanged", synchronizeOnlyAppearanceRequestIsForwardedUnchanged);
     failures += run("synchronize-only appearance bypasses appearance validation", synchronizeOnlyAppearanceBypassesAppearanceValueValidation);
     failures += run("valid lock request is forwarded exactly once", validLockRequestIsForwardedExactlyOnce);
