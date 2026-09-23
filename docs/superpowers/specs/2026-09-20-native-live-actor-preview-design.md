@@ -139,7 +139,9 @@ The scheduler accepts one appearance ticket at a time. Exceptions map to the exi
 
 ## UI Behavior
 
-The Edit Appearance screen preserves its current control groups and footer placement. A compact status line appears below the appearance controls:
+The Edit Appearance screen preserves its current control groups and footer
+placement. Compact status text appears on the Actor identity line after
+`Player [FormID]` or the resolved crosshair Actor identity `[FormID]`:
 
 - `Preview pending...`
 - `Updating preview...`

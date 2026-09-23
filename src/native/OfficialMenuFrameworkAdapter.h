@@ -255,6 +255,8 @@ struct LivePreviewPresentation {
 enum class EditAppearanceIntent { none, save, cancel, close, retry };
 
 [[nodiscard]] std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept;
+[[nodiscard]] std::string formatActorTargetIdentityWithPreviewStatus(
+    bool resolving, const ActorTarget* target, LivePreviewStatus previewStatus);
 [[nodiscard]] LivePreviewPresentation livePreviewPresentation(
     SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept;
 [[nodiscard]] bool applyEditAppearanceIntent(
@@ -282,12 +284,30 @@ struct SlotColorSwatchPresentation {
     std::uint32_t borderColor{};
 };
 
+struct EditAppearanceThumbnailLayout {
+    float xOffset{};
+    float size{};
+};
+
+struct EditAppearanceControlRanges {
+    float glossinessMax{};
+    float specularStrengthMax{};
+};
+
 [[nodiscard]] TattooColorComponents tattooColorComponents(
     std::int32_t color) noexcept;
 [[nodiscard]] std::int32_t tattooColorValue(
     TattooColorComponents components) noexcept;
 [[nodiscard]] std::string_view appearanceTextureMetadata(
     std::string_view texturePath) noexcept;
+[[nodiscard]] bool shouldShowAppearanceTextureMetadata(
+    std::string_view texturePath) noexcept;
+[[nodiscard]] EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
+    float availableWidth,
+    float availableHeight,
+    float reservedFooterHeight,
+    float preferredSize = 160.0F) noexcept;
+[[nodiscard]] EditAppearanceControlRanges editAppearanceControlRanges() noexcept;
 [[nodiscard]] std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept;
 [[nodiscard]] EditAppearanceFramePresentation editAppearanceFramePresentation(

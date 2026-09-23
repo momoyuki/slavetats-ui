@@ -58,6 +58,28 @@ void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
         "expected slot and mutation actions disabled without a resolved Actor");
 }
 
+void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
+    using namespace stui::native;
+    const ActorTarget player;
+    const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &player, LivePreviewStatus::pending) ==
+               "Player [0x00000014] - Preview pending...",
+        "expected pending preview status after the Player identity");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &lydia, LivePreviewStatus::applied) ==
+               "Lydia [0x000A2C8E] - Preview applied",
+        "expected applied preview status after the crosshair target identity");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &player, LivePreviewStatus::clean) ==
+               "Player [0x00000014]",
+        "expected clean preview state not to add redundant text");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               true, &player, LivePreviewStatus::pending) ==
+               "Resolving target... - Preview pending...",
+        "expected target resolution status to remain visible with preview status");
+}
+
 void actorTargetControlsRespectMutationAndCrosshairMode() {
     using namespace stui::native;
     for (const auto kind : {ActorTargetKind::player, ActorTargetKind::crosshair}) {
@@ -493,6 +515,27 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
         &retrySession);
     expect(savingRetry.label == "Save" && !savingRetry.enabled,
         "expected saving appearance to disable duplicate Save");
+}
+
+void editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges() {
+    using namespace stui::native;
+    expect(!shouldShowAppearanceTextureMetadata("") &&
+               shouldShowAppearanceTextureMetadata("textures/tattoos/glow.dds"),
+        "expected empty texture metadata to stay hidden");
+
+    const auto spacious = calculateEditAppearanceThumbnailLayout(400.0F, 300.0F, 30.0F);
+    expect(spacious.size == 160.0F && spacious.xOffset == 120.0F,
+        "expected a centered 160-pixel square thumbnail when space permits");
+    const auto narrow = calculateEditAppearanceThumbnailLayout(120.0F, 300.0F, 30.0F);
+    expect(narrow.size == 120.0F && narrow.xOffset == 0.0F,
+        "expected thumbnail size to fit narrow content without overflow");
+    const auto shortLayout = calculateEditAppearanceThumbnailLayout(400.0F, 100.0F, 30.0F);
+    expect(shortLayout.size == 70.0F && shortLayout.xOffset == 165.0F,
+        "expected thumbnail size to preserve footer space");
+
+    const auto ranges = editAppearanceControlRanges();
+    expect(ranges.glossinessMax == 1000.0F && ranges.specularStrengthMax == 100.0F,
+        "expected expanded material slider ranges");
 }
 
 void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
@@ -1134,6 +1177,8 @@ int main() {
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
         std::cout << "PASS actor target status and action availability\n";
+        editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity();
+        std::cout << "PASS Edit Appearance header appends Preview status\n";
         actorTargetControlsRespectMutationAndCrosshairMode();
         std::cout << "PASS actor target control presentation\n";
         actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges();
@@ -1170,6 +1215,8 @@ int main() {
         std::cout << "PASS tattoo color components preserve RGB channel order\n";
         editAppearanceUsesSessionStateForSaveAndThumbnailPresentation();
         std::cout << "PASS Edit Appearance uses session save and thumbnail state\n";
+        editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges();
+        std::cout << "PASS Edit Appearance layout and expanded ranges\n";
         editAppearanceRendererOrchestrationOrdersInputAndCancel();
         std::cout << "PASS Edit Appearance renderer orders input and Cancel\n";
         livePreviewPresentationMatchesTransactionState();

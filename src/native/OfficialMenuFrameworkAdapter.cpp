@@ -254,6 +254,22 @@ std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept {
     }
 }
 
+std::string formatActorTargetIdentityWithPreviewStatus(
+    bool resolving, const ActorTarget* target, LivePreviewStatus previewStatus) {
+    const auto targetStatus = actorTargetStatusLabel(resolving, target);
+    std::string text = targetStatus.empty() && target
+        ? formatActorTargetIdentity(*target)
+        : std::string(targetStatus);
+    const auto previewStatusText = livePreviewStatusLabel(previewStatus);
+    if (!previewStatusText.empty()) {
+        if (!text.empty()) {
+            text += " - ";
+        }
+        text += previewStatusText;
+    }
+    return text;
+}
+
 LivePreviewPresentation livePreviewPresentation(
     SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept {
     const bool visible = session && (screen == SlotWorkflowScreen::editAppearance ||
@@ -576,6 +592,28 @@ std::string_view appearanceTextureMetadata(std::string_view texturePath) noexcep
     return texturePath.empty() ? "None" : texturePath;
 }
 
+bool shouldShowAppearanceTextureMetadata(std::string_view texturePath) noexcept {
+    return !texturePath.empty();
+}
+
+EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
+    float availableWidth,
+    float availableHeight,
+    float reservedFooterHeight,
+    float preferredSize) noexcept {
+    const float usableWidth = std::max(0.0F, availableWidth);
+    const float usableHeight = std::max(0.0F, availableHeight - reservedFooterHeight);
+    const float size = std::min({preferredSize, usableWidth, usableHeight});
+    return {
+        .xOffset = std::max(0.0F, (usableWidth - size) * 0.5F),
+        .size = size,
+    };
+}
+
+EditAppearanceControlRanges editAppearanceControlRanges() noexcept {
+    return {.glossinessMax = 1000.0F, .specularStrengthMax = 100.0F};
+}
+
 std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept {
     if (!session) {
@@ -882,7 +920,9 @@ void renderSlotImage(
     }
 }
 
-bool renderActorTargetHeader(NativeSlotWorkflowModel& workflow) {
+bool renderActorTargetHeader(
+    NativeSlotWorkflowModel& workflow,
+    LivePreviewStatus previewStatus = LivePreviewStatus::clean) {
     const auto kind = workflow.selectedTargetKind();
     const bool resolving = workflow.isActorTargetResolutionInFlight();
     const auto controls = actorTargetControlPresentation(
@@ -900,9 +940,8 @@ bool renderActorTargetHeader(NativeSlotWorkflowModel& workflow) {
     }
     ImGuiMCP::EndDisabled();
     const auto* target = workflow.actorTarget();
-    const auto status = actorTargetStatusLabel(resolving, target);
-    const auto identity = status.empty() && target ? formatActorTargetIdentity(*target)
-                                                 : std::string(status);
+    const auto identity = formatActorTargetIdentityWithPreviewStatus(
+        resolving, target, previewStatus);
     ImGuiMCP::TextUnformatted(identity.c_str());
     if (controls.refreshVisible) {
         ImGuiMCP::BeginDisabled(!controls.refreshEnabled);
@@ -1573,7 +1612,7 @@ void renderEditAppearance(
         return;
     }
 
-    if (renderActorTargetHeader(workflow)) {
+    if (renderActorTargetHeader(workflow, workflow.livePreviewStatus())) {
         ImGuiMCP::End();
         ImGuiMCP::PopStyleVar();
         return;
@@ -1641,12 +1680,16 @@ void renderEditAppearance(
         "Emission Strength", &emissiveMult, 0.0F, 10.0F, "%.2f");
     const bool emissiveInputChanged =
         ImGuiMCP::InputFloat("Emission Strength Value", &emissiveMult, 0.0F, 0.0F, "%.3f");
-    const bool glossinessSliderChanged =
-        ImGuiMCP::SliderFloat("Glossiness", &glossiness, 0.0F, 10.0F, "%.2f");
+    const auto controlRanges = editAppearanceControlRanges();
+    const bool glossinessSliderChanged = ImGuiMCP::SliderFloat(
+        "Glossiness", &glossiness, 0.0F, controlRanges.glossinessMax, "%.2f",
+        ImGuiMCP::ImGuiSliderFlags_Logarithmic);
     const bool glossinessInputChanged =
         ImGuiMCP::InputFloat("Glossiness Value", &glossiness, 0.0F, 0.0F, "%.3f");
     const bool specularSliderChanged = ImGuiMCP::SliderFloat(
-        "Specular Strength", &specularStrength, 0.0F, 10.0F, "%.2f");
+        "Specular Strength", &specularStrength, 0.0F,
+        controlRanges.specularStrengthMax, "%.2f",
+        ImGuiMCP::ImGuiSliderFlags_Logarithmic);
     const bool specularInputChanged = ImGuiMCP::InputFloat(
         "Specular Strength Value", &specularStrength, 0.0F, 0.0F, "%.3f");
     const EditAppearanceFrameInteraction frameInteraction{
@@ -1680,12 +1723,16 @@ void renderEditAppearance(
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted("Bump");
         }
-        ImGuiMCP::TextUnformatted("Glow Texture:");
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->glowTexture).data());
-        ImGuiMCP::TextUnformatted("Bump Texture:");
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->bump).data());
+        if (shouldShowAppearanceTextureMetadata(session->glowTexture)) {
+            ImGuiMCP::TextUnformatted("Glow Texture:");
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted(session->glowTexture.c_str());
+        }
+        if (shouldShowAppearanceTextureMetadata(session->bump)) {
+            ImGuiMCP::TextUnformatted("Bump Texture:");
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted(session->bump.c_str());
+        }
     }
 
     const auto teardown = [] {
@@ -1697,20 +1744,18 @@ void renderEditAppearance(
         frameInteraction,
         teardown,
         [&](const AppearanceThumbnailPresentation& thumbnailPresentation) {
-            const auto status = livePreviewStatusLabel(workflow.livePreviewStatus());
-            if (!status.empty()) {
-                ImGuiMCP::TextUnformatted(status.data());
-            }
             const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
-            const float imageHeight = std::max(
-                1.0F,
-                ImGuiMCP::GetContentRegionAvail().y - footerHeight);
+            const auto available = ImGuiMCP::GetContentRegionAvail();
+            const auto thumbnailLayout = calculateEditAppearanceThumbnailLayout(
+                available.x, available.y, footerHeight);
+            ImGuiMCP::SetCursorPosX(
+                ImGuiMCP::GetCursorPosX() + thumbnailLayout.xOffset);
             ImGuiMCP::PushStyleColor(
                 ImGuiMCP::ImGuiCol_ChildBg,
                 ImGuiMCP::ImVec4(0.08F, 0.08F, 0.08F, 1.0F));
             if (ImGuiMCP::BeginChild(
                     "EditAppearanceImage",
-                    {0.0F, imageHeight},
+                    {thumbnailLayout.size, thumbnailLayout.size},
                     ImGuiMCP::ImGuiChildFlags_Border,
                     ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                         ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
