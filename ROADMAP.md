@@ -151,7 +151,7 @@ Add convenience features only after the full appearance model and actor-scoped r
 
 Candidates:
 
-- [ ] Live actor preview with throttling/debounce and explicit synchronization policy
+- [x] Live actor preview with throttling/debounce and explicit synchronization policy
 - [ ] Favorites
 - [ ] Recently used tattoos
 - [ ] Appearance presets
