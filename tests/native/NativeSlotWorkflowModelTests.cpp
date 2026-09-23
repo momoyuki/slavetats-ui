@@ -18,6 +18,7 @@ using stui::core::RemoveTattooSuccess;
 using stui::core::RemoveTattooMode;
 using stui::core::ServiceError;
 using stui::core::ServiceErrorCode;
+using stui::core::MutationSideEffect;
 using stui::core::SetTattooLockedSuccess;
 using stui::core::SlotOccupancy;
 using stui::core::TattooArea;
@@ -1456,7 +1457,7 @@ void rollbackDuringPreviewWaitsForTheExactWriteOutcome() {
     auto snapshot = catalogWithEntries(1);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     for (bool close : {false, true}) {
-        for (int outcome = 0; outcome < 3; ++outcome) {
+        for (int outcome = 0; outcome < 4; ++outcome) {
             NativeSlotWorkflowModel model(catalog);
             completeInitialQuery(model, slotsWithEditableOwnedTattoo());
             const auto preview = startLivePreview(model);
@@ -1474,17 +1475,22 @@ void rollbackDuringPreviewWaitsForTheExactWriteOutcome() {
                 model.completeAppearanceUpdate(preview.generation, UpdateTattooAppearanceSuccess{});
             } else {
                 model.completeAppearanceUpdate(preview.generation, std::unexpected(ServiceError{
-                    outcome == 1 ? ServiceErrorCode::updateFailed : ServiceErrorCode::synchronizeFailed,
-                    "preview failed"}));
+                    .code = outcome == 3 ? ServiceErrorCode::synchronizeFailed
+                                         : ServiceErrorCode::updateFailed,
+                    .message = "preview failed",
+                    .mutationSideEffect = outcome == 2
+                        ? MutationSideEffect::mayHaveOccurred
+                        : MutationSideEffect::none,
+                }));
             }
             const auto restore = model.takeAppearanceRequest();
             if (outcome == 1) {
                 expect(!restore && !model.editAppearance(),
-                    "expected failed first preview write to exit without a restore");
+                    "expected confirmed pre-write failure to exit without a restore");
             } else {
                 expect(restore && restore->purpose == AppearanceOperationPurpose::restore &&
                         restore->request.mode == UpdateTattooAppearanceMode::updateAndSynchronize,
-                    "expected successful preview write or sync failure to restore original values");
+                    "expected success, possible partial write, or sync failure to restore original values");
                 model.completeAppearanceUpdate(restore->generation, UpdateTattooAppearanceSuccess{});
             }
             expect(model.takeMenuCloseRequest() == close && !model.takeMenuCloseRequest() &&

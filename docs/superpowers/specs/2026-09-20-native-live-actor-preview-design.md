@@ -30,6 +30,7 @@ Live Preview covers every value currently editable in Native Edit Appearance:
 - A completion from an obsolete target generation or edit session cannot update the current workflow.
 - At most one appearance operation may be in flight.
 - Synchronization-only retry never repeats a completed appearance write.
+- Appearance failures carry a typed side-effect state so the workflow can distinguish a confirmed pre-write failure from a failure after mutation may have begun.
 - The user cannot switch Actor, navigate away, mutate another slot, or close the menu while a preview or restore operation is active.
 - The workflow never falls back to the Player when an NPC cannot be resolved or is unloaded.
 
@@ -115,7 +116,7 @@ Save means that the latest edited appearance becomes authoritative.
 Cancel and Close share the same rollback policy.
 
 - If no preview write succeeded, local edits are discarded immediately.
-- If Cancel or Close is requested while a preview is in flight, the workflow records rollback intent and waits for that exact completion. A failed write requires no restore; a successful write or synchronization-only failure proceeds to restore the original appearance.
+- If Cancel or Close is requested while a preview is in flight, the workflow records rollback intent and waits for that exact completion. A confirmed pre-write failure requires no restore; success, synchronization failure, or any failure after mutation may have begun proceeds to restore the original appearance.
 - If the Actor currently has a previewed value, the workflow schedules restoration of `original`.
 - Navigation or menu closure completes only after restoration and synchronization succeed.
 - A restore write failure exposes `Retry Restore`.
@@ -157,6 +158,7 @@ Save flushes a pending preview immediately. Cancel initiates restoration when re
 ## Error Handling
 
 - Preview write failure preserves local edits and offers full preview retry.
+- A preview failure after mutation may have begun retains full-update retry semantics but is treated as written for Cancel/Close restoration.
 - Preview synchronization failure preserves the successful write and offers synchronization-only retry.
 - Restore write failure preserves rollback intent and offers full restore retry.
 - Restore synchronization failure preserves the restored write and offers synchronization-only retry.
@@ -182,6 +184,7 @@ Tests are added at the narrowest stable seams.
 - target/navigation/mutation blocking;
 - stale generation and obsolete session completions;
 - preview, commit, and restore retry-mode preservation.
+- confirmed pre-write failure versus possible partial-write rollback behavior.
 
 ### Runtime coordinator
 

@@ -148,9 +148,15 @@ enum class ServiceErrorCode {
     lockFailed,
 };
 
+enum class MutationSideEffect {
+    none,
+    mayHaveOccurred,
+};
+
 struct ServiceError {
     ServiceErrorCode code;
     std::string message;
+    MutationSideEffect mutationSideEffect{MutationSideEffect::none};
 };
 
 using TattooQueryResult = std::expected<std::vector<TattooEntry>, ServiceError>;

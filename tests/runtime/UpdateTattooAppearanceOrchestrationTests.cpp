@@ -13,6 +13,7 @@ namespace {
 
 using stui::core::ServiceError;
 using stui::core::ServiceErrorCode;
+using stui::core::MutationSideEffect;
 using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceRequest;
 
@@ -163,10 +164,27 @@ void appearanceWriteFailureStopsBeforeUpdatedAndSynchronization() {
 
     expectErrorCode(result, ServiceErrorCode::updateFailed,
         "appearance write failure must return updateFailed");
+    expect(result.error().mutationSideEffect == MutationSideEffect::mayHaveOccurred,
+        "appearance write failure must disclose that a partial write may have occurred");
     expect(backend.writeCount == 1,
         "valid handle must attempt one appearance write");
     expect(backend.markUpdatedCount == 0 && backend.synchronizeCount == 0,
         "appearance write failure must not mark updated or synchronize");
+}
+
+void updatedMarkerFailureReportsThatAppearanceWasWritten() {
+    FakeAppearanceBackend backend;
+    backend.markUpdatedSucceeds = false;
+
+    const auto result = stui::runtime::updateTattooAppearance(validRequest(), backend);
+
+    expectErrorCode(result, ServiceErrorCode::updateFailed,
+        "updated marker failure must return updateFailed");
+    expect(result.error().mutationSideEffect == MutationSideEffect::mayHaveOccurred,
+        "updated marker failure must disclose the completed appearance write");
+    expect(backend.writeCount == 1 && backend.markUpdatedCount == 1 &&
+            backend.synchronizeCount == 0,
+        "updated marker failure occurs after the appearance write and before synchronization");
 }
 
 void validHandleWritesAppearanceMarksUpdatedAndSynchronizesOnce() {
@@ -246,6 +264,8 @@ int main() {
     failures += run("foreign handle stops before mutation", foreignHandleStopsBeforeMutation);
     failures += run("write failure stops before updated and sync",
         appearanceWriteFailureStopsBeforeUpdatedAndSynchronization);
+    failures += run("updated marker failure reports completed appearance write",
+        updatedMarkerFailureReportsThatAppearanceWasWritten);
     failures += run("valid handle writes, updates, and synchronizes once",
         validHandleWritesAppearanceMarksUpdatedAndSynchronizesOnce);
     failures += run("sync failure reports partial success",

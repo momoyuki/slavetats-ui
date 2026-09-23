@@ -834,6 +834,9 @@ void NativeSlotWorkflowModel::completeAppearanceUpdate(
             m_error->code == core::ServiceErrorCode::synchronizeFailed) {
             session.mode = core::UpdateTattooAppearanceMode::synchronizeOnly;
             session.appearanceWritten = true;
+        } else if (m_error->mutationSideEffect ==
+            core::MutationSideEffect::mayHaveOccurred) {
+            session.appearanceWritten = true;
         }
         session.status = purpose == AppearanceOperationPurpose::restore
             ? LivePreviewStatus::restoreError : LivePreviewStatus::previewError;

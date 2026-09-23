@@ -32,16 +32,21 @@ core::UpdateTattooAppearanceResult updateTattooAppearance(
 
         if (!backend.writeAppearance(request.runtimeHandle, request)) {
             return std::unexpected(core::ServiceError{
-                core::ServiceErrorCode::updateFailed,
-                "Failed to update tattoo appearance",
+                .code = core::ServiceErrorCode::updateFailed,
+                .message = "Failed to update tattoo appearance",
+                .mutationSideEffect = core::MutationSideEffect::mayHaveOccurred,
             });
         }
     }
 
     if (!backend.markActorUpdated(actor)) {
         return std::unexpected(core::ServiceError{
-            core::ServiceErrorCode::updateFailed,
-            "Failed to mark actor tattoos updated",
+            .code = core::ServiceErrorCode::updateFailed,
+            .message = "Failed to mark actor tattoos updated",
+            .mutationSideEffect = request.mode ==
+                    core::UpdateTattooAppearanceMode::updateAndSynchronize
+                ? core::MutationSideEffect::mayHaveOccurred
+                : core::MutationSideEffect::none,
         });
     }
     if (!backend.synchronize(actor)) {

@@ -10,6 +10,19 @@ core::ServiceError operationError(core::ServiceErrorCode code, const char* messa
     return core::ServiceError{.code = code, .message = message};
 }
 
+core::ServiceError appearanceOperationError(
+    core::ServiceErrorCode code,
+    const char* message,
+    core::UpdateTattooAppearanceMode mode) {
+    return core::ServiceError{
+        .code = code,
+        .message = message,
+        .mutationSideEffect = mode == core::UpdateTattooAppearanceMode::updateAndSynchronize
+            ? core::MutationSideEffect::mayHaveOccurred
+            : core::MutationSideEffect::none,
+    };
+}
+
 core::ServiceErrorCode appearanceErrorCode(
     core::UpdateTattooAppearanceMode mode) noexcept {
     return mode == core::UpdateTattooAppearanceMode::synchronizeOnly
@@ -194,11 +207,13 @@ void NativeSlotWorkflowRuntime::scheduleRemove(SlotRemoveTicket ticket) {
 void NativeSlotWorkflowRuntime::scheduleAppearance(SlotAppearanceTicket ticket) {
     const std::uint64_t generation = ticket.generation;
     const auto errorCode = appearanceErrorCode(ticket.request.mode);
-    NativeSlotTask task = [this, ticket = std::move(ticket), errorCode] {
+    const auto mode = ticket.request.mode;
+    NativeSlotTask task = [this, ticket = std::move(ticket), errorCode, mode] {
         InFlightGuard guard(m_inFlight);
-        core::UpdateTattooAppearanceResult result = std::unexpected(operationError(
+        core::UpdateTattooAppearanceResult result = std::unexpected(appearanceOperationError(
             errorCode,
-            "Tattoo appearance update failed."));
+            "Tattoo appearance update failed.",
+            mode));
         try {
             result = m_updateAppearance(ticket.request);
         } catch (...) {

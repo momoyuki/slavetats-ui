@@ -668,8 +668,10 @@ void mapsFullAppearanceExceptionsAndSchedulerRejectionToUpdateFailed() {
     operationFailure.scheduled.back()();
     expect(operationFailure.model.screen() == SlotWorkflowScreen::editAppearance &&
             operationFailure.model.error() &&
-            operationFailure.model.error()->code == ServiceErrorCode::updateFailed,
-        "expected full appearance exception converted to updateFailed");
+            operationFailure.model.error()->code == ServiceErrorCode::updateFailed &&
+            operationFailure.model.error()->mutationSideEffect ==
+                stui::core::MutationSideEffect::mayHaveOccurred,
+        "expected in-task appearance exception to disclose a possible partial write");
     operationFailure.appearanceThrows = false;
     expect(operationFailure.model.confirmAppearanceUpdate(),
         "expected full appearance exception to remain retryable");
@@ -685,8 +687,10 @@ void mapsFullAppearanceExceptionsAndSchedulerRejectionToUpdateFailed() {
     schedulingFailure.runtime.pump();
     expect(schedulingFailure.model.screen() == SlotWorkflowScreen::editAppearance &&
             schedulingFailure.model.error() &&
-            schedulingFailure.model.error()->code == ServiceErrorCode::updateFailed,
-        "expected full appearance scheduler rejection converted to updateFailed");
+            schedulingFailure.model.error()->code == ServiceErrorCode::updateFailed &&
+            schedulingFailure.model.error()->mutationSideEffect ==
+                stui::core::MutationSideEffect::none,
+        "expected pre-task scheduler rejection to confirm that no write occurred");
     expect(schedulingFailure.model.confirmAppearanceUpdate(),
         "expected full appearance scheduler rejection to remain retryable");
     schedulingFailure.runtime.pump();
