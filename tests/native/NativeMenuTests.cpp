@@ -277,6 +277,46 @@ void matchingFrameworkInputTogglesAndConsumesTheEvent() {
            "expected unrelated keyboard input not to be consumed");
 }
 
+void openGuardBlocksNewOpeningFromHotkeyAndSectionItem() {
+    FakeMenuFrameworkPort port;
+    bool allowOpen = false;
+    int openCount = 0;
+    stui::native::NativeMenu menu({}, [] { return true; });
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    menu.setOpenGuard([&] { return allowOpen; });
+    menu.setOpenCallback([&] { ++openCount; });
+
+    expect(menu.handleFrameworkHotkey(true, true, true),
+        "expected blocked matching hotkey to remain consumed");
+    expect(!menu.isOpen() && openCount == 0,
+        "expected guard to block hotkey opening and open callback");
+    port.itemCallback();
+    expect(!menu.isOpen() && openCount == 0,
+        "expected guard to block section-item opening");
+
+    allowOpen = true;
+    expect(menu.handleFrameworkHotkey(true, true, true) && menu.isOpen(),
+        "expected opening after blocking menu closes");
+    expect(openCount == 1, "expected allowed opening callback once");
+
+    allowOpen = false;
+    expect(menu.handleFrameworkHotkey(true, true, true) && !menu.isOpen(),
+        "expected guard not to prevent closing an already-open window");
+}
+
+void throwingOpenGuardLeavesWindowClosed() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    menu.setOpenGuard([]() -> bool { throw std::runtime_error("open guard failed"); });
+
+    expect(menu.handleFrameworkHotkey(true, true, true),
+        "expected matching hotkey to remain consumed after guard failure");
+    expect(!menu.isOpen(), "expected failed guard to leave window closed");
+    expect(menu.lastError() == stui::native::MenuRegistrationError::callbackFailed,
+        "expected open guard exception to remain inside noexcept boundary");
+}
+
 void unavailableRegistrationCanBeRetriedAndClearsError() {
     FakeMenuFrameworkPort port;
     port.isAvailable = false;
@@ -379,6 +419,10 @@ int main() {
         std::cout << "PASS render action can close owning window\n";
         matchingFrameworkInputTogglesAndConsumesTheEvent();
         std::cout << "PASS matching framework input toggles and consumes the event\n";
+        openGuardBlocksNewOpeningFromHotkeyAndSectionItem();
+        std::cout << "PASS open guard blocks hotkey and section-item opening\n";
+        throwingOpenGuardLeavesWindowClosed();
+        std::cout << "PASS throwing open guard leaves window closed\n";
         hotkeyCloseCanBeDeferredUntilTheOwnerCompletesItsWork();
         std::cout << "PASS hotkey close defers until owner completion\n";
         unhandledCloseRequestPreservesImmediateHotkeyClose();

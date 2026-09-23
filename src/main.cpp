@@ -293,6 +293,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
     }, [] {
         return native::OfficialMenuFrameworkAdapter::renderLauncher(*g_hotkeyBinding);
     });
+    nativeMenu.setOpenGuard([] {
+        auto* ui = RE::UI::GetSingleton();
+        return ui &&
+            !ui->IsMenuOpen(RE::Console::MENU_NAME) &&
+            !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
+    });
     nativeMenu.setOpenCallback([] { g_nativeSlotWorkflow.resetSession(); });
     nativeMenu.setCloseRequestCallback([] {
         if (!g_nativeSlotWorkflow.editAppearance()) {
