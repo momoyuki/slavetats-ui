@@ -317,6 +317,13 @@ void favoriteButtonsUseFontAwesomeStarIcons() {
         "expected selected favorite action to use the Font Awesome solid star icon");
 }
 
+void favoriteButtonSizeContainsItsIcon() {
+    expect(stui::native::catalogIconButtonSize(16.0F, 4.0F) == 24.0F,
+        "expected the minimum icon button size for a normal font glyph");
+    expect(stui::native::catalogIconButtonSize(30.0F, 4.0F) == 38.0F,
+        "expected tall icon glyphs to expand the button rather than clip");
+}
+
 void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
     const auto collapsed = stui::native::calculateCatalogBrowserGridLayout(
         700.0F, 40.0F, 60.0F, 3);
@@ -1235,6 +1242,8 @@ int main() {
         std::cout << "PASS thumbnail card widgets have stable unique IDs\n";
         favoriteButtonsUseFontAwesomeStarIcons();
         std::cout << "PASS favorite buttons use Font Awesome star icons\n";
+        favoriteButtonSizeContainsItsIcon();
+        std::cout << "PASS favorite button size contains its icon\n";
         browserGridUsesRemainingHeightWithoutVerticalScrolling();
         std::cout << "PASS browser grid uses remaining height without scrolling\n";
         catalogBadgeAnchorsInsideThumbnailTopRightCorner();

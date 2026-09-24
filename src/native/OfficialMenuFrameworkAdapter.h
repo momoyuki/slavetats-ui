@@ -175,6 +175,7 @@ struct CatalogCardGridPosition {
     std::string_view sourceId,
     std::size_t sourceIndex);
 [[nodiscard]] unsigned int catalogFavoriteButtonIcon(bool favorite) noexcept;
+[[nodiscard]] float catalogIconButtonSize(float iconHeight, float verticalPadding) noexcept;
 
 struct CatalogBrowserGridLayout {
     float gridHeight{};

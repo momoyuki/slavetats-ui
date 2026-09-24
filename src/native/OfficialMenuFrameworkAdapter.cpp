@@ -490,6 +490,11 @@ unsigned int catalogFavoriteButtonIcon(const bool favorite) noexcept {
     return favorite ? 0xF005U : 0xF006U;
 }
 
+float catalogIconButtonSize(const float iconHeight, const float verticalPadding) noexcept {
+    return std::max(24.0F, std::max(0.0F, iconHeight) +
+        std::max(0.0F, verticalPadding) * 2.0F);
+}
+
 CatalogBrowserGridLayout calculateCatalogBrowserGridLayout(
     float availableHeight,
     float footerHeight,
@@ -1150,9 +1155,9 @@ void renderCurrentSlots(
                         std::to_string(slot.index);
                     FontAwesome::PushSolid();
                     const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
-                    const float buttonSize = std::max(
-                        24.0F,
-                        iconSize.y + (style ? style->FramePadding.y * 2.0F : 8.0F));
+                    const float buttonSize = catalogIconButtonSize(
+                        iconSize.y,
+                        style ? style->FramePadding.y : 4.0F);
                     ImGuiMCP::SetCursorScreenPos({
                         imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
                         imageScreenOrigin.y + 6.0F,
@@ -2253,12 +2258,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     } else {
                         FontAwesome::PushRegular();
                     }
+                    const auto favoriteIconSize = ImGuiMCP::CalcTextSize(favoriteIcon.c_str());
+                    const float favoriteButtonSize = catalogIconButtonSize(
+                        favoriteIconSize.y,
+                        style ? style->FramePadding.y : 4.0F);
                     ImGuiMCP::PushStyleColor(
                         ImGuiMCP::ImGuiCol_Text,
                         favorite ? 0xFF4FD8FF : 0xFFC0C0C0);
                     favoriteClicked = ImGuiMCP::Button(
                         favoriteLabel.c_str(),
-                        {26.0F, 0.0F});
+                        {favoriteButtonSize, favoriteButtonSize});
                     if (ImGuiMCP::IsItemHovered()) {
                         ImGuiMCP::SetTooltip(
                             "%s",
