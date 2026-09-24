@@ -310,11 +310,11 @@ void thumbnailCardWidgetsHaveStableUniqueIds() {
         "expected equal source indices from different files to remain unique");
 }
 
-void favoriteButtonsUseDistinctStarGlyphs() {
-    expect(stui::native::catalogFavoriteButtonGlyph(false) == "\xE2\x98\x86",
-        "expected unselected favorite action to use an outline star glyph");
-    expect(stui::native::catalogFavoriteButtonGlyph(true) == "\xE2\x98\x85",
-        "expected selected favorite action to use a filled star glyph");
+void favoriteButtonsUseFontAwesomeStarIcons() {
+    expect(stui::native::catalogFavoriteButtonIcon(false) == 0xF006U,
+        "expected unselected favorite action to use the Font Awesome regular star icon");
+    expect(stui::native::catalogFavoriteButtonIcon(true) == 0xF005U,
+        "expected selected favorite action to use the Font Awesome solid star icon");
 }
 
 void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
@@ -1233,8 +1233,8 @@ int main() {
         std::cout << "PASS thumbnail grid groups two cards into each row\n";
         thumbnailCardWidgetsHaveStableUniqueIds();
         std::cout << "PASS thumbnail card widgets have stable unique IDs\n";
-        favoriteButtonsUseDistinctStarGlyphs();
-        std::cout << "PASS favorite buttons use distinct star glyphs\n";
+        favoriteButtonsUseFontAwesomeStarIcons();
+        std::cout << "PASS favorite buttons use Font Awesome star icons\n";
         browserGridUsesRemainingHeightWithoutVerticalScrolling();
         std::cout << "PASS browser grid uses remaining height without scrolling\n";
         catalogBadgeAnchorsInsideThumbnailTopRightCorner();

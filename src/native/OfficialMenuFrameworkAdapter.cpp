@@ -486,8 +486,8 @@ std::string catalogCardWidgetId(
         std::to_string(sourceIndex);
 }
 
-std::string_view catalogFavoriteButtonGlyph(const bool favorite) noexcept {
-    return favorite ? "\xE2\x98\x85" : "\xE2\x98\x86";
+unsigned int catalogFavoriteButtonIcon(const bool favorite) noexcept {
+    return favorite ? 0xF005U : 0xF006U;
 }
 
 CatalogBrowserGridLayout calculateCatalogBrowserGridLayout(
@@ -2240,13 +2240,19 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
 
                     ImGuiMCP::SetCursorPos({imageOrigin.x + 4.0F, imageOrigin.y + 4.0F});
                     const bool favorite = model.isFavorite(tattoo);
+                    const auto favoriteIcon = FontAwesome::UnicodeToUtf8(
+                        catalogFavoriteButtonIcon(favorite));
                     const auto favoriteWidgetId = catalogCardWidgetId(
                         favorite ? "RemoveFavorite" : "AddFavorite",
                         tattoo.sourceId,
                         tattoo.sourceIndex);
-                    const auto favoriteLabel = std::string(catalogFavoriteButtonGlyph(favorite)) +
-                        "##" + favoriteWidgetId;
+                    const auto favoriteLabel = favoriteIcon + "##" + favoriteWidgetId;
                     ImGuiMCP::BeginDisabled(workflow.favoritePending());
+                    if (favorite) {
+                        FontAwesome::PushSolid();
+                    } else {
+                        FontAwesome::PushRegular();
+                    }
                     ImGuiMCP::PushStyleColor(
                         ImGuiMCP::ImGuiCol_Text,
                         favorite ? 0xFF4FD8FF : 0xFFC0C0C0);
@@ -2259,6 +2265,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             favorite ? "Remove from favorites" : "Add to favorites");
                     }
                     ImGuiMCP::PopStyleColor();
+                    FontAwesome::Pop();
                     ImGuiMCP::EndDisabled();
 
                     if (!inUseSlots.empty()) {
