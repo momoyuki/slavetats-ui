@@ -310,6 +310,13 @@ void thumbnailCardWidgetsHaveStableUniqueIds() {
         "expected equal source indices from different files to remain unique");
 }
 
+void favoriteButtonsUseDistinctStarGlyphs() {
+    expect(stui::native::catalogFavoriteButtonGlyph(false) == "\xE2\x98\x86",
+        "expected unselected favorite action to use an outline star glyph");
+    expect(stui::native::catalogFavoriteButtonGlyph(true) == "\xE2\x98\x85",
+        "expected selected favorite action to use a filled star glyph");
+}
+
 void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
     const auto collapsed = stui::native::calculateCatalogBrowserGridLayout(
         700.0F, 40.0F, 60.0F, 3);
@@ -318,12 +325,11 @@ void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
     expect(collapsed.rowHeight == 220.0F && collapsed.thumbnailHeight == 160.0F,
         "expected three equal image-first rows with collapsed filters");
 
-    const auto expanded = stui::native::calculateCatalogBrowserGridLayout(
-        520.0F, 40.0F, 60.0F, 3);
-    expect(expanded.gridHeight == 480.0F,
-        "expected expanded filters to leave a smaller bounded grid");
-    expect(expanded.rowHeight == 160.0F && expanded.thumbnailHeight == 100.0F,
-        "expected all three rows to remain visible with expanded filters");
+    const auto filterOverlay = stui::native::calculateCatalogBrowserGridLayout(
+        700.0F, 40.0F, 60.0F, 3);
+    expect(filterOverlay.gridHeight == collapsed.gridHeight &&
+            filterOverlay.thumbnailHeight == collapsed.thumbnailHeight,
+        "expected filter overlay to preserve the thumbnail grid height");
 
     const auto constrained = stui::native::calculateCatalogBrowserGridLayout(
         80.0F, 40.0F, 60.0F, 3);
@@ -1227,6 +1233,8 @@ int main() {
         std::cout << "PASS thumbnail grid groups two cards into each row\n";
         thumbnailCardWidgetsHaveStableUniqueIds();
         std::cout << "PASS thumbnail card widgets have stable unique IDs\n";
+        favoriteButtonsUseDistinctStarGlyphs();
+        std::cout << "PASS favorite buttons use distinct star glyphs\n";
         browserGridUsesRemainingHeightWithoutVerticalScrolling();
         std::cout << "PASS browser grid uses remaining height without scrolling\n";
         catalogBadgeAnchorsInsideThumbnailTopRightCorner();

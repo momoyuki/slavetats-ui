@@ -486,6 +486,10 @@ std::string catalogCardWidgetId(
         std::to_string(sourceIndex);
 }
 
+std::string_view catalogFavoriteButtonGlyph(const bool favorite) noexcept {
+    return favorite ? "\xE2\x98\x85" : "\xE2\x98\x86";
+}
+
 CatalogBrowserGridLayout calculateCatalogBrowserGridLayout(
     float availableHeight,
     float footerHeight,
@@ -1989,9 +1993,11 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         workflow.actorTarget(), workflow.selectedArea(), workflow.targetSlot().value_or(-1));
     ImGuiMCP::Text("Target: %s", targetLabel.c_str());
 
-    static bool filtersExpanded = false;
-    if (ImGuiMCP::Button(filtersExpanded ? "Hide filters" : "Filters")) {
-        filtersExpanded = !filtersExpanded;
+    if (ImGuiMCP::Button("Filters")) {
+        const auto filterButtonMin = ImGuiMCP::GetItemRectMin();
+        const auto filterButtonMax = ImGuiMCP::GetItemRectMax();
+        ImGuiMCP::SetNextWindowPos({filterButtonMin.x, filterButtonMax.y + 4.0F});
+        ImGuiMCP::OpenPopup("CatalogFilters");
     }
 
     constexpr std::size_t searchCapacity = 256;
@@ -2044,10 +2050,11 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         sourceLabels.push_back(source.label.c_str());
     }
 
-    if (filtersExpanded && ImGuiMCP::BeginTable(
-            "FilterControls",
-            2,
-            ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
+    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
+        if (ImGuiMCP::BeginTable(
+                "FilterControls",
+                2,
+                ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
         ImGuiMCP::TableSetupColumn(
             "FilterLabel", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 72.0F);
         ImGuiMCP::TableSetupColumn(
@@ -2126,7 +2133,9 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             model.setSection(
                 sectionIndex == 0 ? "" : contextualFacets.sections[sectionIndex - 1]);
         }
-        ImGuiMCP::EndTable();
+            ImGuiMCP::EndTable();
+        }
+        ImGuiMCP::EndPopup();
     }
 
     const auto& page = model.page();
@@ -2229,26 +2238,27 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         }
                     }
 
-                    ImGuiMCP::SetCursorPos({
-                        imageOrigin.x + std::max(0.0F, imageRegion.x - 86.0F),
-                        imageOrigin.y + 4.0F,
-                    });
+                    ImGuiMCP::SetCursorPos({imageOrigin.x + 4.0F, imageOrigin.y + 4.0F});
                     const bool favorite = model.isFavorite(tattoo);
                     const auto favoriteWidgetId = catalogCardWidgetId(
                         favorite ? "RemoveFavorite" : "AddFavorite",
                         tattoo.sourceId,
                         tattoo.sourceIndex);
-                    const auto favoriteLabel = std::string(favorite ? "Unstar##" : "Star##") +
-                        favoriteWidgetId;
+                    const auto favoriteLabel = std::string(catalogFavoriteButtonGlyph(favorite)) +
+                        "##" + favoriteWidgetId;
                     ImGuiMCP::BeginDisabled(workflow.favoritePending());
+                    ImGuiMCP::PushStyleColor(
+                        ImGuiMCP::ImGuiCol_Text,
+                        favorite ? 0xFF4FD8FF : 0xFFC0C0C0);
                     favoriteClicked = ImGuiMCP::Button(
                         favoriteLabel.c_str(),
-                        {82.0F, 0.0F});
+                        {26.0F, 0.0F});
                     if (ImGuiMCP::IsItemHovered()) {
                         ImGuiMCP::SetTooltip(
                             "%s",
                             favorite ? "Remove from favorites" : "Add to favorites");
                     }
+                    ImGuiMCP::PopStyleColor();
                     ImGuiMCP::EndDisabled();
 
                     if (!inUseSlots.empty()) {
