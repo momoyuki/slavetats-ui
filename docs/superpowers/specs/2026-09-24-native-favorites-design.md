@@ -1,10 +1,10 @@
 # Native Favorites Design
 
-**Status:** Approved. Implementation is explicitly deferred by the user.
+**Status:** Approved. Implementation in progress; deployment and in-game acceptance remain deferred.
 
 **Milestone:** vNext.4 — Workflow Quality of Life.
 
-**Implementation plan:** `docs/superpowers/plans/2026-09-24-native-favorites.md` (draft, not active).
+**Implementation plan:** `docs/superpowers/plans/2026-09-24-native-favorites.md` (execution record until the approved implementation commit moves it active).
 
 ## Purpose and Agreed Scope
 
@@ -180,4 +180,4 @@ Deployment remains deferred. Automated success does not complete manual acceptan
 
 ## Document Relationship
 
-This spec defines intended behavior and architectural boundaries. The linked draft plan defines implementation order and tests. Both remain review documents; writing them is not authorization to implement, commit, or deploy. If execution discovers a conflict between shared-profile scope and the resolved configuration path, surface it before changing the agreed persistence location.
+This spec defines intended behavior and architectural boundaries. The linked plan defines implementation order and tests. Implementation has been authorized; commit and deployment remain separate approval gates. If execution discovers a conflict between shared-profile scope and the resolved configuration path, surface it before changing the agreed persistence location.

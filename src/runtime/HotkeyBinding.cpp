@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cctype>
-#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -57,23 +56,25 @@ std::span<const HotkeyOption> hotkeyOptions() noexcept {
 }
 
 HotkeyBinding::HotkeyBinding(std::filesystem::path configPath)
-    : configPath_(std::move(configPath)) {}
+    : HotkeyBinding(std::make_shared<PluginConfigFile>(std::move(configPath))) {}
+
+HotkeyBinding::HotkeyBinding(std::shared_ptr<PluginConfigFile> config)
+    : m_config(std::move(config)) {}
 
 bool HotkeyBinding::load() {
     const std::scoped_lock lock(mutex_);
-    if (!std::filesystem::exists(configPath_)) {
+    if (!m_config) {
+        return false;
+    }
+    const auto config = m_config->read();
+    if (!config) {
+        return false;
+    }
+    if (!config->contains("hotkey")) {
         key_.reset();
         return save();
     }
-    std::ifstream input(configPath_);
-    if (!input) {
-        return false;
-    }
-    const auto config = nlohmann::json::parse(input, nullptr, false);
-    if (config.is_discarded() || !config.is_object() || !config.contains("hotkey")) {
-        return false;
-    }
-    const auto& hotkey = config.at("hotkey");
+    const auto& hotkey = config->at("hotkey");
     if (hotkey.is_null()) {
         key_.reset();
         return true;
@@ -142,21 +143,13 @@ std::string HotkeyBinding::label() const {
 }
 
 bool HotkeyBinding::save() const {
-    nlohmann::json config = nlohmann::json::object();
-    std::ifstream existing(configPath_);
-    if (existing) {
-        auto parsed = nlohmann::json::parse(existing, nullptr, false);
-        if (!parsed.is_discarded() && parsed.is_object()) {
-            config = std::move(parsed);
-        }
-    }
-    config["hotkey"] = key_ ? nlohmann::json(*key_) : nlohmann::json(nullptr);
-    std::ofstream output(configPath_);
-    if (!output) {
+    if (!m_config) {
         return false;
     }
-    output << config.dump(2);
-    return output.good();
+    return m_config->update([key = key_](nlohmann::json& config) -> ConfigUpdateResult {
+        config["hotkey"] = key ? nlohmann::json(*key) : nlohmann::json(nullptr);
+        return {};
+    }).has_value();
 }
 
 }  // namespace stui::runtime

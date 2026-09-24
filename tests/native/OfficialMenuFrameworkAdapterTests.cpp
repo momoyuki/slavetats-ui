@@ -957,6 +957,19 @@ void classifiesEmptyCatalogSeparatelyFromNoMatches() {
     expect(stui::native::catalogBrowserEmptyMessage(noAppliedMatches) ==
                "No applied tattoos match the current filters.",
            "expected Applied-only empty state guidance");
+
+    const auto noFavoriteMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, true);
+    expect(noFavoriteMatches == stui::native::CatalogBrowserEmptyState::noFavoriteMatches &&
+            stui::native::catalogBrowserEmptyMessage(noFavoriteMatches) ==
+                "No favorite tattoos match the current filters.",
+        "expected Favorites-only empty state guidance");
+    const auto noFavoriteAppliedMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, true);
+    expect(noFavoriteAppliedMatches == stui::native::CatalogBrowserEmptyState::noFavoriteAppliedMatches &&
+            stui::native::catalogBrowserEmptyMessage(noFavoriteAppliedMatches) ==
+                "No favorite applied tattoos match the current filters.",
+        "expected combined filter empty state guidance");
 }
 
 void sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds() {

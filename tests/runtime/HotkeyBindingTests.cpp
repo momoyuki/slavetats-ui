@@ -1,8 +1,10 @@
 #include "runtime/HotkeyBinding.h"
+#include "runtime/PluginConfigFile.h"
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -121,6 +123,29 @@ void legacyNamedHotkeyLoadsAndUnrelatedSettingsSurviveClear() {
     expect(json.at("anotherSetting") == true, "expected unrelated setting to survive clear");
 }
 
+void sharedConfigurationPreservesFavoritesWhenHotkeyChanges() {
+    TemporaryDirectory directory;
+    const auto configPath = directory.path() / "SlaveTatsUI.json";
+    auto config = std::make_shared<stui::runtime::PluginConfigFile>(configPath);
+    expect(config->update([](nlohmann::json& json) -> stui::runtime::ConfigUpdateResult {
+        json["favorites"] = {
+            {"version", 1},
+            {"entries", {{{"domain", "default"}, {"sourceId", "marks.json"},
+                          {"section", "Marks"}, {"name", "Rose"}}}},
+        };
+        return {};
+    }).has_value(), "expected favorite fixture to save");
+
+    stui::runtime::HotkeyBinding binding(config);
+    expect(binding.load(), "expected shared configuration hotkey load");
+    expect(binding.select(0x43), "expected hotkey update through shared configuration");
+
+    const auto result = config->read();
+    expect(result && result->at("hotkey") == 0x43 &&
+            result->at("favorites").at("entries").size() == 1,
+        "expected hotkey write to preserve favorites");
+}
+
 }  // namespace
 
 int main() {
@@ -135,6 +160,8 @@ int main() {
         std::cout << "PASS clear disables and persists no hotkey\n";
         legacyNamedHotkeyLoadsAndUnrelatedSettingsSurviveClear();
         std::cout << "PASS legacy named hotkey loads and unrelated settings survive clear\n";
+        sharedConfigurationPreservesFavoritesWhenHotkeyChanges();
+        std::cout << "PASS shared configuration preserves favorites when hotkey changes\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';
         return 1;

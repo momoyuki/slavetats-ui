@@ -748,6 +748,44 @@ std::optional<SlotLockTicket> NativeSlotWorkflowModel::takeLockRequest() {
     return ticket;
 }
 
+bool NativeSlotWorkflowModel::requestFavorite(
+    const repository::TattooDefinition& tattoo,
+    const bool enabled) {
+    if (m_activeFavoriteRequestId || m_pendingFavorite) {
+        return false;
+    }
+    const auto identity = repository::favoriteIdentity(tattoo);
+    m_favoriteError.reset();
+    m_failedFavorite.reset();
+    m_pendingFavorite = FavoriteTicket{
+        .requestId = ++m_favoriteRequestId,
+        .identity = identity,
+        .enabled = enabled,
+    };
+    return true;
+}
+
+bool NativeSlotWorkflowModel::retryFavorite() {
+    if (!m_failedFavorite || m_activeFavoriteRequestId || m_pendingFavorite) {
+        return false;
+    }
+    auto retry = *m_failedFavorite;
+    retry.requestId = ++m_favoriteRequestId;
+    m_favoriteError.reset();
+    m_pendingFavorite = std::move(retry);
+    return true;
+}
+
+std::optional<FavoriteTicket> NativeSlotWorkflowModel::takeFavoriteRequest() {
+    auto ticket = std::move(m_pendingFavorite);
+    m_pendingFavorite.reset();
+    if (ticket) {
+        m_activeFavoriteRequestId = ticket->requestId;
+        m_activeFavorite = *ticket;
+    }
+    return ticket;
+}
+
 void NativeSlotWorkflowModel::completeSlotQuery(
     std::uint64_t generation,
     core::TattooSlotsResult result) {
@@ -906,6 +944,24 @@ void NativeSlotWorkflowModel::completeLockStateChange(
     scheduleSlotQuery(m_selectedArea);
 }
 
+void NativeSlotWorkflowModel::completeFavorite(
+    const std::uint64_t requestId,
+    runtime::FavoriteResult result) {
+    if (!m_activeFavoriteRequestId || requestId != *m_activeFavoriteRequestId) {
+        return;
+    }
+    m_activeFavoriteRequestId.reset();
+    if (!result) {
+        m_favoriteError = std::move(result.error());
+        m_failedFavorite = std::move(m_activeFavorite);
+        return;
+    }
+    m_activeFavorite.reset();
+    m_catalog.setFavoriteIdentities(std::move(*result));
+    m_favoriteError.reset();
+    m_failedFavorite.reset();
+}
+
 SlotWorkflowScreen NativeSlotWorkflowModel::screen() const noexcept {
     return m_screen;
 }
@@ -972,6 +1028,22 @@ void NativeSlotWorkflowModel::setAppliedOnly(bool value) {
 
 bool NativeSlotWorkflowModel::appliedOnly() const noexcept {
     return m_catalog.appliedOnly();
+}
+
+void NativeSlotWorkflowModel::setFavoritesOnly(const bool value) {
+    m_catalog.setFavoritesOnly(value);
+}
+
+bool NativeSlotWorkflowModel::favoritesOnly() const noexcept {
+    return m_catalog.favoritesOnly();
+}
+
+bool NativeSlotWorkflowModel::favoritePending() const noexcept {
+    return m_pendingFavorite.has_value() || m_activeFavoriteRequestId.has_value();
+}
+
+const runtime::ConfigError* NativeSlotWorkflowModel::favoriteError() const noexcept {
+    return m_favoriteError ? &*m_favoriteError : nullptr;
 }
 
 void NativeSlotWorkflowModel::updateAppliedTattooIdentities() {

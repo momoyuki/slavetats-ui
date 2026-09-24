@@ -11,6 +11,8 @@
 #include "native/OfficialMenuFrameworkAdapter.h"
 #include "runtime/ApplicationRuntime.h"
 #include "runtime/HotkeyBinding.h"
+#include "runtime/PluginConfigFile.h"
+#include "runtime/FavoriteStore.h"
 #include "SKSEMenuFramework.h"
 #include "textures/ExactStreamReader.h"
 
@@ -28,6 +30,8 @@ runtime::ApplicationRuntime g_applicationRuntime;
 native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
     [] { return g_tattooCatalogStore.snapshot(); });
 native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
+std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
+std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
     [] { return native::resolveCrosshairActorTarget(); },
@@ -53,7 +57,14 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
         }
         taskInterface->AddTask(std::move(task));
     },
-    [] { return std::chrono::steady_clock::now(); });
+    [] { return std::chrono::steady_clock::now(); },
+    [](const repository::FavoriteIdentity& identity, bool enabled) {
+        if (!g_favoriteStore) {
+            return runtime::FavoriteResult(std::unexpected(runtime::ConfigError{
+                .message = "Favorite storage is unavailable."}));
+        }
+        return g_favoriteStore->setFavorite(identity, enabled);
+    });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
     std::filesystem::path textureRoot = {}) {
@@ -276,10 +287,29 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         spdlog::set_default_logger(std::move(log));
     } catch (...) {}
 
-    g_hotkeyBinding = std::make_unique<runtime::HotkeyBinding>(
-        pluginDir / "SlaveTatsUI.json");
+    if (!pluginDir.empty()) {
+        std::error_code absoluteError;
+        const auto configPath = std::filesystem::absolute(pluginDir / "SlaveTatsUI.json", absoluteError);
+        if (!absoluteError) {
+            g_pluginConfig = std::make_shared<runtime::PluginConfigFile>(configPath);
+            logger::info("SlaveTatsUI: configuration path is '{}'", configPath.string());
+        }
+    }
+    if (!g_pluginConfig) {
+        logger::warn("SlaveTatsUI: configuration path unavailable; persistence disabled");
+    }
+    g_hotkeyBinding = std::make_unique<runtime::HotkeyBinding>(g_pluginConfig);
     if (!g_hotkeyBinding->load()) {
         logger::warn("SlaveTatsUI: failed to load hotkey configuration; hotkey disabled");
+    }
+    if (g_pluginConfig) {
+        g_favoriteStore = std::make_unique<runtime::FavoriteStore>(g_pluginConfig);
+        const auto favorites = g_favoriteStore->load();
+        if (favorites) {
+            g_nativeCatalogBrowser.setFavoriteIdentities(std::move(*favorites));
+        } else {
+            logger::warn("SlaveTatsUI: failed to load favorites: {}", favorites.error().message);
+        }
     }
 
     static native::OfficialMenuFrameworkAdapter menuFrameworkAdapter;

@@ -1817,6 +1817,46 @@ void failedLatestPreviewStillRestoresPreviouslyWrittenAppearance() {
         "expected prior successful preview to require rollback despite latest write failure");
 }
 
+void favoriteRequestsDoNotMutateCatalogUntilSuccessfulCompletion() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    const auto selected = catalog.page().entries.front();
+
+    expect(model.requestFavorite(selected, true), "expected favorite request to queue");
+    const auto ticket = model.takeFavoriteRequest();
+    expect(ticket && model.favoritePending() && !catalog.isFavorite(selected),
+        "expected favorite to remain unchanged while storage is pending");
+    expect(!model.takeApplyRequest() && !model.takeRemoveRequest(),
+        "expected favorite request not to create tattoo mutation requests");
+    model.completeFavorite(ticket->requestId,
+        stui::runtime::FavoriteList{stui::repository::favoriteIdentity(selected)});
+
+    expect(!model.favoritePending() && !model.favoriteError() && catalog.isFavorite(selected),
+        "expected successful favorite completion to update only catalog membership");
+}
+
+void failedFavoriteCanRetryWithFreshRequestId() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    const auto selected = catalog.page().entries.front();
+
+    expect(model.requestFavorite(selected, true), "expected initial favorite request");
+    const auto first = model.takeFavoriteRequest();
+    model.completeFavorite(first->requestId,
+        std::unexpected(stui::runtime::ConfigError{.message = "disk failure"}));
+    expect(model.favoriteError() && !catalog.isFavorite(selected),
+        "expected failed favorite to preserve prior catalog membership");
+    expect(model.retryFavorite(), "expected failed favorite request to be retryable");
+    const auto retry = model.takeFavoriteRequest();
+
+    expect(retry && retry->requestId > first->requestId && retry->enabled,
+        "expected retry to use a fresh explicit desired-state request");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -1848,6 +1888,8 @@ int main() {
     failures += run("clean editor rejects refresh before preview starts", cleanEditorRejectsRefreshBeforePreviewStarts);
     failures += run("restoring non-glowing original preserves zero emission", restoringNonGlowingOriginalPreservesZeroEmission);
     failures += run("failed latest preview still restores previously written appearance", failedLatestPreviewStillRestoresPreviouslyWrittenAppearance);
+    failures += run("favorite requests wait for successful completion", favoriteRequestsDoNotMutateCatalogUntilSuccessfulCompletion);
+    failures += run("failed favorite can retry with fresh request", failedFavoriteCanRetryWithFreshRequestId);
     failures += run("explicit Player and Crosshair resolution never fallback", explicitPlayerAndCrosshairResolutionNeverFallback);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);

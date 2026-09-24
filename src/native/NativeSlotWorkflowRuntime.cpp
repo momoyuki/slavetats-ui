@@ -55,7 +55,8 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     SlotAppearanceOperation updateAppearance,
     SlotLockOperation setLocked,
     NativeSlotScheduler scheduler,
-    LivePreviewClock livePreviewClock)
+    LivePreviewClock livePreviewClock,
+    FavoriteOperation favoriteOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
@@ -64,9 +65,11 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_updateAppearance(std::move(updateAppearance)),
       m_setLocked(std::move(setLocked)),
       m_scheduler(std::move(scheduler)),
-      m_livePreviewClock(std::move(livePreviewClock)) {}
+      m_livePreviewClock(std::move(livePreviewClock)),
+      m_favoriteOperation(std::move(favoriteOperation)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
+    drainFavoriteCompletions();
     m_model.advanceLivePreview(m_livePreviewClock());
 
     bool expected = false;
@@ -98,8 +101,23 @@ void NativeSlotWorkflowRuntime::pump() {
         scheduleLock(std::move(*lock));
         return;
     }
+    if (auto favorite = m_model.takeFavoriteRequest()) {
+        scheduleFavorite(std::move(*favorite));
+        return;
+    }
 
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::drainFavoriteCompletions() {
+    std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> completions;
+    {
+        const std::scoped_lock lock(m_favoriteCompletionMutex);
+        completions.swap(m_favoriteCompletions);
+    }
+    for (auto& [requestId, result] : completions) {
+        m_model.completeFavorite(requestId, std::move(result));
+    }
 }
 
 void NativeSlotWorkflowRuntime::scheduleActorTarget(ActorTargetResolutionTicket ticket) {
@@ -254,6 +272,36 @@ void NativeSlotWorkflowRuntime::scheduleLock(SlotLockTicket ticket) {
             std::unexpected(operationError(
                 core::ServiceErrorCode::lockFailed,
                 "Failed to schedule tattoo lock state update.")));
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleFavorite(FavoriteTicket ticket) {
+    const std::uint64_t requestId = ticket.requestId;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        runtime::FavoriteResult result = std::unexpected(runtime::ConfigError{
+            .message = "Favorite storage operation failed."});
+        try {
+            if (!m_favoriteOperation) {
+                result = std::unexpected(runtime::ConfigError{
+                    .message = "Favorite storage is unavailable."});
+            } else {
+                result = m_favoriteOperation(ticket.identity, ticket.enabled);
+            }
+        } catch (...) {
+        }
+        const std::scoped_lock lock(m_favoriteCompletionMutex);
+        m_favoriteCompletions.emplace_back(ticket.requestId, std::move(result));
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        {
+            const std::scoped_lock lock(m_favoriteCompletionMutex);
+            m_favoriteCompletions.emplace_back(requestId, std::unexpected(runtime::ConfigError{
+                .message = "Failed to schedule favorite storage."}));
+        }
         m_inFlight.store(false);
     }
 }

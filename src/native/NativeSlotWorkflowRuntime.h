@@ -6,6 +6,10 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace stui::native {
 
@@ -24,6 +28,9 @@ using SlotAppearanceOperation = std::function<core::UpdateTattooAppearanceResult
     const core::UpdateTattooAppearanceRequest& request)>;
 using SlotLockOperation = std::function<core::SetTattooLockedResult(
     const core::SetTattooLockedRequest& request)>;
+using FavoriteOperation = std::function<runtime::FavoriteResult(
+    const repository::FavoriteIdentity& identity,
+    bool enabled)>;
 
 class NativeSlotWorkflowRuntime {
 public:
@@ -36,7 +43,8 @@ public:
         SlotAppearanceOperation updateAppearance,
         SlotLockOperation setLocked,
         NativeSlotScheduler scheduler,
-        LivePreviewClock livePreviewClock);
+        LivePreviewClock livePreviewClock,
+        FavoriteOperation favoriteOperation = {});
 
     void pump();
 
@@ -47,6 +55,8 @@ private:
     void scheduleRemove(SlotRemoveTicket ticket);
     void scheduleAppearance(SlotAppearanceTicket ticket);
     void scheduleLock(SlotLockTicket ticket);
+    void scheduleFavorite(FavoriteTicket ticket);
+    void drainFavoriteCompletions();
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
@@ -57,6 +67,9 @@ private:
     SlotLockOperation m_setLocked;
     NativeSlotScheduler m_scheduler;
     LivePreviewClock m_livePreviewClock;
+    FavoriteOperation m_favoriteOperation;
+    std::mutex m_favoriteCompletionMutex;
+    std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::atomic_bool m_inFlight{false};
 };
 

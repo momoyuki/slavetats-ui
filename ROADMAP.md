@@ -152,7 +152,7 @@ Add convenience features only after the full appearance model and actor-scoped r
 Candidates:
 
 - [x] Live actor preview with throttling/debounce and explicit synchronization policy
-- [ ] Favorites
+- [ ] Favorites — implementation in progress; in-game acceptance pending
 - [ ] Recently used tattoos
 - [ ] Appearance presets
 - [ ] Saved tattoo sets / loadouts

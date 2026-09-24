@@ -1,7 +1,10 @@
 #pragma once
 
+#include "runtime/PluginConfigFile.h"
+
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -20,6 +23,7 @@ struct HotkeyOption {
 class HotkeyBinding {
 public:
     explicit HotkeyBinding(std::filesystem::path configPath);
+    explicit HotkeyBinding(std::shared_ptr<PluginConfigFile> config);
 
     [[nodiscard]] bool load();
     [[nodiscard]] bool select(std::optional<std::uint32_t> key);
@@ -30,7 +34,7 @@ public:
 private:
     [[nodiscard]] bool save() const;
 
-    std::filesystem::path configPath_;
+    std::shared_ptr<PluginConfigFile> m_config;
     mutable std::mutex mutex_;
     std::optional<std::uint32_t> key_;
 };

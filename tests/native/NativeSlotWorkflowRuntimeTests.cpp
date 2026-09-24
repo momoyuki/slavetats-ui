@@ -167,7 +167,14 @@ struct Fixture {
                   }
                   scheduled.push_back(std::move(task));
               },
-              [this] { return now; }) {}
+              [this] { return now; },
+              [this](const stui::repository::FavoriteIdentity&, bool) {
+                  ++favoriteCount;
+                  if (favoriteThrows) {
+                      throw std::runtime_error("favorite save failed");
+                  }
+                  return favoriteResult;
+              }) {}
 
     stui::repository::TattooCatalogSnapshot snapshot =
         std::make_shared<const TattooCatalog>(TattooCatalog{
@@ -185,6 +192,7 @@ struct Fixture {
     std::size_t removeCount{};
     std::size_t appearanceCount{};
     std::size_t lockCount{};
+    std::size_t favoriteCount{};
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
@@ -199,6 +207,8 @@ struct Fixture {
     bool appearanceThrows{};
     bool appearanceSyncFails{};
     bool schedulerThrows{};
+    bool favoriteThrows{};
+    stui::runtime::FavoriteResult favoriteResult{stui::runtime::FavoriteList{}};
     std::chrono::steady_clock::time_point now{};
     NativeSlotWorkflowRuntime runtime;
 };
@@ -858,6 +868,26 @@ void ignoresStaleCompletionAfterAReplacementQuery() {
     expect(fixture.model.slots(), "expected replacement completion accepted");
 }
 
+void favoriteCompletionPublishesOnlyOnTheNextPump() {
+    Fixture fixture;
+    fixture.catalog.refresh();
+    const auto selected = tattoo();
+    fixture.favoriteResult = stui::runtime::FavoriteList{
+        stui::repository::favoriteIdentity(selected)};
+
+    expect(fixture.model.requestFavorite(selected, true), "expected favorite intent");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1 && fixture.model.favoritePending(),
+        "expected favorite storage to be scheduled without optimistic catalog update");
+    fixture.scheduled.front()();
+    expect(fixture.favoriteCount == 1 && fixture.model.favoritePending() &&
+            !fixture.catalog.isFavorite(selected),
+        "expected storage callback to leave catalog unchanged before presentation pump");
+    fixture.runtime.pump();
+    expect(!fixture.model.favoritePending() && fixture.catalog.isFavorite(selected),
+        "expected next presentation pump to publish favorite completion");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -903,5 +933,7 @@ int main() {
     failures += run("maps full appearance exceptions and scheduler rejection to updateFailed", mapsFullAppearanceExceptionsAndSchedulerRejectionToUpdateFailed);
     failures += run("maps synchronization-only exceptions and scheduler rejection to synchronizeFailed", mapsSynchronizeOnlyExceptionsAndSchedulerRejectionToSynchronizeFailed);
     failures += run("ignores stale completion after replacement query", ignoresStaleCompletionAfterAReplacementQuery);
+    failures += run("favorite completion publishes only on next pump",
+        favoriteCompletionPublishesOnlyOnTheNextPump);
     return failures == 0 ? 0 : 1;
 }

@@ -106,6 +106,32 @@ void NativeCatalogBrowserModel::setAppliedTattooIdentities(
     query();
 }
 
+void NativeCatalogBrowserModel::setFavoritesOnly(const bool value) {
+    if (m_favoritesOnly == value) {
+        return;
+    }
+    m_favoritesOnly = value;
+    m_filter.favoriteIdentities = value
+        ? std::optional(m_favoriteIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setFavoriteIdentities(
+    std::vector<repository::FavoriteIdentity> identities) {
+    if (m_favoriteIdentities == identities) {
+        return;
+    }
+    m_favoriteIdentities = std::move(identities);
+    if (m_favoritesOnly) {
+        m_filter.favoriteIdentities = m_favoriteIdentities;
+        reconcileContextualFilters();
+        query();
+    }
+}
+
 void NativeCatalogBrowserModel::previousPage() {
     if (m_filter.pageIndex == 0) {
         return;
@@ -151,10 +177,24 @@ bool NativeCatalogBrowserModel::appliedOnly() const noexcept {
     return m_appliedOnly;
 }
 
+bool NativeCatalogBrowserModel::favoritesOnly() const noexcept {
+    return m_favoritesOnly;
+}
+
+bool NativeCatalogBrowserModel::isFavorite(const repository::TattooDefinition& tattoo) const {
+    const auto identity = repository::favoriteIdentity(tattoo);
+    return std::ranges::any_of(m_favoriteIdentities, [&identity](const auto& favorite) {
+        return favorite == identity;
+    });
+}
+
 void NativeCatalogBrowserModel::resetFilter() {
     m_filter = repository::TattooFilter{.pageSize = kPageSize};
     if (m_appliedOnly) {
         m_filter.appliedIdentities = m_appliedTattooIdentities;
+    }
+    if (m_favoritesOnly) {
+        m_filter.favoriteIdentities = m_favoriteIdentities;
     }
 }
 

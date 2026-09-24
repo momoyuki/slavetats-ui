@@ -43,3 +43,7 @@ _Avoid_: Used tattoo
 **Applied-only Filter**:
 A Picker filter that retains only In-use Tattoos for the current Actor Target and Selected Area. It combines with the other Contextual Filters, uses runtime-exact Tattoo Identity matching, and excludes external overlays.
 _Avoid_: Global applied filter, external overlay filter
+
+**Favorite**:
+A persistent personal catalog preference identified by the exact tuple `(domain, sourceId, section, name)`. Favorites are independent of Actor, savegame, and applied state; unavailable catalog entries remain stored until explicitly removed.
+_Avoid_: Per-Actor favorite, applied tattoo

@@ -1,4 +1,5 @@
 #include "native/NativeCatalogBrowserModel.h"
+#include "repository/FavoriteIdentity.h"
 
 #include <exception>
 #include <iostream>
@@ -212,6 +213,60 @@ void domainSelectionReconcilesSourceAndSection() {
         "expected unavailable Domain to reconcile to All Domains");
 }
 
+void filtersExactFavoriteIdentitiesBeforePagination() {
+    std::vector<TattooDefinition> definitions;
+    for (std::size_t index = 0; index < 13; ++index) {
+        definitions.push_back(tattoo(
+            index % 2 == 0 ? "favorites.json" : "other.json",
+            "Marks",
+            "Body",
+            "Entry " + std::to_string(index),
+            index,
+            index == 12 ? "custom" : "default"));
+    }
+    TattooCatalogSnapshot current = snapshot(std::move(definitions));
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+
+    std::vector<stui::repository::FavoriteIdentity> favorites;
+    for (std::size_t index = 0; index < 13; index += 2) {
+        favorites.push_back(stui::repository::favoriteIdentity(tattoo(
+            "favorites.json", "Marks", "Body", "Entry " + std::to_string(index), index,
+            index == 12 ? "custom" : "default")));
+    }
+    model.setFavoriteIdentities(favorites);
+    model.setFavoritesOnly(true);
+
+    expect(model.favoritesOnly() && model.page().matchedEntries == favorites.size(),
+        "expected Favorites-only to filter the exact stored identities");
+    expect(std::ranges::all_of(model.page().entries, [&model](const TattooDefinition& entry) {
+        return model.isFavorite(entry);
+    }), "expected every visible Favorites-only entry to have a stored favorite identity");
+}
+
+void favoriteUpdateClampsPageWithoutResettingOtherFilters() {
+    TattooCatalogSnapshot current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    std::vector<stui::repository::FavoriteIdentity> favorites;
+    for (std::size_t index = 0; index < 7; ++index) {
+        favorites.push_back(stui::repository::favoriteIdentity(tattoo(
+            "source-a.json", "Marks", "Body", "Entry " + std::to_string(index), index)));
+    }
+    model.setFavoriteIdentities(favorites);
+    model.setFavoritesOnly(true);
+    model.setPageNumber(2);
+    model.setSearch("Entry");
+    model.setPageNumber(2);
+
+    favorites.pop_back();
+    model.setFavoriteIdentities(favorites);
+
+    expect(model.filter().search == "Entry" && model.page().pageIndex == 0 &&
+            model.page().matchedEntries == 6,
+        "expected membership update to clamp the page without clearing other filters");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -240,5 +295,9 @@ int main() {
     failures += run(
         "domain selection reconciles Source and Section",
         domainSelectionReconcilesSourceAndSection);
+    failures += run("filters exact favorite identities before pagination",
+        filtersExactFavoriteIdentitiesBeforePagination);
+    failures += run("favorite update clamps page without resetting filters",
+        favoriteUpdateClampsPageWithoutResettingOtherFilters);
     return failures == 0 ? 0 : 1;
 }

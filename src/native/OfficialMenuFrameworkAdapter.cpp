@@ -820,14 +820,20 @@ std::optional<std::size_t> CatalogBrowserPageInputState::finishFrame(
 CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
     const repository::TattooPage& page,
-    bool appliedOnly) noexcept {
+    bool appliedOnly,
+    bool favoritesOnly) noexcept {
     if (!hasSnapshot || page.totalEntries == 0) {
         return CatalogBrowserEmptyState::emptyCatalog;
     }
     if (page.matchedEntries == 0) {
-        return appliedOnly
-            ? CatalogBrowserEmptyState::noAppliedMatches
-            : CatalogBrowserEmptyState::noMatches;
+        if (favoritesOnly && appliedOnly) {
+            return CatalogBrowserEmptyState::noFavoriteAppliedMatches;
+        }
+        if (favoritesOnly) {
+            return CatalogBrowserEmptyState::noFavoriteMatches;
+        }
+        return appliedOnly ? CatalogBrowserEmptyState::noAppliedMatches
+                           : CatalogBrowserEmptyState::noMatches;
     }
     return CatalogBrowserEmptyState::none;
 }
@@ -840,6 +846,10 @@ std::string_view catalogBrowserEmptyMessage(CatalogBrowserEmptyState state) noex
         return "No tattoos match the current filters.";
     case CatalogBrowserEmptyState::noAppliedMatches:
         return "No applied tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteMatches:
+        return "No favorite tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteAppliedMatches:
+        return "No favorite applied tattoos match the current filters.";
     case CatalogBrowserEmptyState::none:
         return {};
     }
@@ -2056,6 +2066,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Favorites");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool favoritesOnly = workflow.favoritesOnly();
+        if (ImGuiMCP::Checkbox("Favorites only", &favoritesOnly)) {
+            workflow.setFavoritesOnly(favoritesOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
         ImGuiMCP::TextUnformatted("Domain");
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
@@ -2113,7 +2133,15 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const auto emptyState = classifyCatalogBrowserEmptyState(
         snapshot != nullptr,
         page,
-        workflow.appliedOnly());
+        workflow.appliedOnly(),
+        workflow.favoritesOnly());
+    if (const auto* favoriteError = workflow.favoriteError()) {
+        ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Retry favorite save")) {
+            (void)workflow.retryFavorite();
+        }
+    }
     const auto* style = ImGuiMCP::GetStyle();
     const float itemSpacing = style ? style->ItemSpacing.y : 4.0F;
     const float metadataHeight = calculateCatalogCardMetadataHeight(
@@ -2124,7 +2152,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         footerHeight,
         metadataHeight,
         3);
-    ImGuiMCP::BeginDisabled(!targetActionsEnabled);
     if (emptyState != CatalogBrowserEmptyState::none) {
         if (ImGuiMCP::BeginChild(
                 "CatalogEmptyState",
@@ -2165,6 +2192,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
 
                 const auto thumbnailWidgetId = catalogCardWidgetId(
                     "Thumbnail", tattoo.sourceId, tattoo.sourceIndex);
+                bool favoriteClicked = false;
 
                 ImGuiMCP::PushStyleColor(
                     ImGuiMCP::ImGuiCol_ChildBg,
@@ -2200,6 +2228,28 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             ImGuiMCP::TextUnformatted(label.data());
                         }
                     }
+
+                    ImGuiMCP::SetCursorPos({
+                        imageOrigin.x + std::max(0.0F, imageRegion.x - 86.0F),
+                        imageOrigin.y + 4.0F,
+                    });
+                    const bool favorite = model.isFavorite(tattoo);
+                    const auto favoriteWidgetId = catalogCardWidgetId(
+                        favorite ? "RemoveFavorite" : "AddFavorite",
+                        tattoo.sourceId,
+                        tattoo.sourceIndex);
+                    const auto favoriteLabel = std::string(favorite ? "Unstar##" : "Star##") +
+                        favoriteWidgetId;
+                    ImGuiMCP::BeginDisabled(workflow.favoritePending());
+                    favoriteClicked = ImGuiMCP::Button(
+                        favoriteLabel.c_str(),
+                        {82.0F, 0.0F});
+                    if (ImGuiMCP::IsItemHovered()) {
+                        ImGuiMCP::SetTooltip(
+                            "%s",
+                            favorite ? "Remove from favorites" : "Add to favorites");
+                    }
+                    ImGuiMCP::EndDisabled();
 
                     if (!inUseSlots.empty()) {
                         constexpr const char* badgeText = "In Use";
@@ -2263,15 +2313,15 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     const auto tooltip = formatCatalogTattooTooltip(tattoo.name, inUseSlots);
                     ImGuiMCP::SetTooltip("%s", tooltip.c_str());
                 }
-                if (targetActionsEnabled && ImGuiMCP::IsItemClicked()) {
+                if (favoriteClicked) {
+                    (void)workflow.requestFavorite(tattoo, !model.isFavorite(tattoo));
+                } else if (targetActionsEnabled && ImGuiMCP::IsItemClicked()) {
                     workflow.selectTattoo(tattoo);
                 }
             }
             ImGuiMCP::EndTable();
         }
     }
-
-    ImGuiMCP::EndDisabled();
 
     ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
         ImGuiMCP::GetCursorPosY(),

@@ -3,6 +3,7 @@
 #include "core/TattooModels.h"
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
+#include "runtime/FavoriteStore.h"
 
 #include <array>
 #include <chrono>
@@ -107,6 +108,12 @@ struct SlotLockTicket {
     core::SetTattooLockedRequest request;
 };
 
+struct FavoriteTicket {
+    std::uint64_t requestId{};
+    repository::FavoriteIdentity identity;
+    bool enabled{};
+};
+
 class NativeSlotWorkflowModel {
 public:
     static constexpr std::size_t kPageSize = 6;
@@ -158,12 +165,15 @@ public:
     [[nodiscard]] bool requestEditAppearanceClose();
     [[nodiscard]] bool takeMenuCloseRequest();
     [[nodiscard]] bool retryLivePreviewOperation();
+    [[nodiscard]] bool requestFavorite(const repository::TattooDefinition& tattoo, bool enabled);
+    [[nodiscard]] bool retryFavorite();
 
     [[nodiscard]] std::optional<SlotQueryTicket> takeSlotQuery();
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
     [[nodiscard]] std::optional<SlotRemoveTicket> takeRemoveRequest();
     [[nodiscard]] std::optional<SlotAppearanceTicket> takeAppearanceRequest();
     [[nodiscard]] std::optional<SlotLockTicket> takeLockRequest();
+    [[nodiscard]] std::optional<FavoriteTicket> takeFavoriteRequest();
     void completeSlotQuery(std::uint64_t generation, core::TattooSlotsResult result);
     void completeApply(std::uint64_t generation, core::ApplyTattooResult result);
     void completeRemove(std::uint64_t generation, core::RemoveTattooResult result);
@@ -171,6 +181,7 @@ public:
         std::uint64_t generation,
         core::UpdateTattooAppearanceResult result);
     void completeLockStateChange(std::uint64_t generation, core::SetTattooLockedResult result);
+    void completeFavorite(std::uint64_t requestId, runtime::FavoriteResult result);
 
     [[nodiscard]] SlotWorkflowScreen screen() const noexcept;
     [[nodiscard]] core::TattooArea selectedArea() const noexcept;
@@ -185,6 +196,10 @@ public:
     [[nodiscard]] bool isLockStateChangeInFlight() const noexcept;
     void setAppliedOnly(bool value);
     [[nodiscard]] bool appliedOnly() const noexcept;
+    void setFavoritesOnly(bool value);
+    [[nodiscard]] bool favoritesOnly() const noexcept;
+    [[nodiscard]] bool favoritePending() const noexcept;
+    [[nodiscard]] const runtime::ConfigError* favoriteError() const noexcept;
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(
         const repository::TattooDefinition& tattoo) const;
     [[nodiscard]] const core::ServiceError* error() const noexcept;
@@ -238,12 +253,18 @@ private:
     std::optional<SlotRemoveTicket> m_pendingRemove;
     std::optional<SlotAppearanceTicket> m_pendingAppearance;
     std::optional<SlotLockTicket> m_pendingLock;
+    std::optional<FavoriteTicket> m_pendingFavorite;
     std::optional<std::uint64_t> m_activeSlotQueryGeneration;
     std::optional<std::uint64_t> m_activeApplyGeneration;
     std::optional<std::uint64_t> m_activeRemoveGeneration;
     std::optional<std::uint64_t> m_activeAppearanceGeneration;
     std::optional<std::uint64_t> m_activeLockGeneration;
     std::optional<SlotWorkflowScreen> m_lockOriginScreen;
+    std::optional<std::uint64_t> m_activeFavoriteRequestId;
+    std::optional<FavoriteTicket> m_activeFavorite;
+    std::optional<FavoriteTicket> m_failedFavorite;
+    std::optional<runtime::ConfigError> m_favoriteError;
+    std::uint64_t m_favoriteRequestId{};
     bool m_removeRequiresSynchronizationOnly{};
     std::optional<AppearanceEditSession> m_editAppearance;
     bool m_menuCloseRequested{};

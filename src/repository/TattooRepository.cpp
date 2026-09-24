@@ -64,6 +64,17 @@ bool matchesAppliedIdentity(
         });
 }
 
+bool matchesFavoriteIdentity(
+    const TattooDefinition& definition,
+    const std::optional<std::vector<FavoriteIdentity>>& favoriteIdentities) {
+    return !favoriteIdentities || std::ranges::any_of(*favoriteIdentities,
+        [&definition](const FavoriteIdentity& identity) {
+            return identity.domain == definition.domain &&
+                identity.sourceId == definition.sourceId &&
+                identity.section == definition.section && identity.name == definition.name;
+        });
+}
+
 }  // namespace
 
 TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
@@ -149,7 +160,8 @@ TattooPage TattooRepository::query(const TattooFilter& filter) const {
             (!foldedDomain.empty() && entry.foldedDomain != foldedDomain) ||
             (!foldedSection.empty() && entry.foldedSection != foldedSection) ||
             (!foldedArea.empty() && entry.foldedArea != foldedArea) ||
-            !matchesAppliedIdentity(entry.definition, filter.appliedIdentities)) {
+            !matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
+            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities)) {
             continue;
         }
         matches.push_back(&entry);
@@ -194,7 +206,8 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
     std::vector<std::pair<std::string, std::string>> areas;
 
     for (const auto& entry : m_entries) {
-        if (!matchesAppliedIdentity(entry.definition, filter.appliedIdentities)) {
+        if (!matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
+            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities)) {
             continue;
         }
         areas.emplace_back(entry.foldedArea, entry.definition.area);

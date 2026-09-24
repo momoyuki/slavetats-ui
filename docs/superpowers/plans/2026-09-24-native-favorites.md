@@ -1,10 +1,10 @@
 # Native Favorites Implementation Plan
 
-> **For agentic workers:** Use `superpowers:executing-plans` when implementation is explicitly authorized. Steps use checkbox syntax for tracking. The user requested this document only; do not begin implementation, commit, or deploy from this planning turn.
+> **For agentic workers:** Use `superpowers:executing-plans` while implementing this approved plan. Steps use checkbox syntax for tracking. Commit and deployment remain separate approval gates.
 
 **Goal:** Add persistent, shared Favorites with independent star actions on Picker cards and a composable Favorites-only filter.
 
-**Status:** Draft for review; implementation not started. Keep outside `plans/active/` until approved for execution.
+**Status:** Implementation in progress. Move this plan to `plans/active/` with the approved implementation commit; deployment remains deferred.
 
 **Architecture:** A separate runtime `FavoriteStore` owns favorite persistence through a shared JSON transaction writer also used by `HotkeyBinding`. The workflow queues explicit desired-state requests; the runtime scheduler executes storage operations, and the presentation thread consumes copied completions. The repository filters by full favorite identities before pagination without reading files.
 
