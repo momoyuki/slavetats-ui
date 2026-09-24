@@ -215,6 +215,10 @@ struct UnifiedFooterLayout {
 [[nodiscard]] UnifiedFooterLayout calculateUnifiedFooterLayout(
     float availableWidth,
     float closeWidth) noexcept;
+[[nodiscard]] float calculatePinnedFooterY(
+    float cursorY,
+    float availableHeight,
+    float footerHeight) noexcept;
 
 struct PickerFooterActionLayout {
     float groupWidth{};

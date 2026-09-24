@@ -138,6 +138,7 @@ public:
     void selectTattoo(const repository::TattooDefinition& tattoo);
     void setPreviewAppearance(std::int32_t color, float alpha) noexcept;
     void cancelPreview();
+    void backToPicker();
     [[nodiscard]] bool confirmApply();
     [[nodiscard]] bool beginEditAppearance();
     [[nodiscard]] bool toggleSlotLock(std::int32_t slot);

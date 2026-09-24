@@ -378,6 +378,13 @@ void unifiedFooterKeepsCloseAtRightEdge() {
         "expected constrained unified footer to keep Close inside available content");
 }
 
+void pinnedFooterReservesTheBottomRowAfterShortContent() {
+    expect(stui::native::calculatePinnedFooterY(220.0F, 180.0F, 24.0F) == 376.0F,
+        "expected a short content region to place its footer at the bottom row");
+    expect(stui::native::calculatePinnedFooterY(220.0F, 12.0F, 24.0F) == 220.0F,
+        "expected an overflowing footer never to move above the current cursor");
+}
+
 void pickerFooterActionsStayRightAlignedInNavigationOrder() {
     const auto layout = stui::native::calculatePickerFooterActionLayout(
         200.0F,
@@ -1209,6 +1216,8 @@ int main() {
         std::cout << "PASS footer control aligns to right content edge\n";
         unifiedFooterKeepsCloseAtRightEdge();
         std::cout << "PASS unified footer keeps Close at right edge\n";
+        pinnedFooterReservesTheBottomRowAfterShortContent();
+        std::cout << "PASS pinned footer reserves the bottom row\n";
         pickerFooterActionsStayRightAlignedInNavigationOrder();
         std::cout << "PASS Picker footer actions stay right-aligned\n";
         tattooColorComponentsPreserveRgbChannelOrder();

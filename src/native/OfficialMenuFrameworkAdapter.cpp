@@ -550,6 +550,15 @@ UnifiedFooterLayout calculateUnifiedFooterLayout(
     };
 }
 
+float calculatePinnedFooterY(
+    float cursorY,
+    float availableHeight,
+    float footerHeight) noexcept {
+    return std::max(0.0F, cursorY) + std::max(
+        0.0F,
+        std::max(0.0F, availableHeight) - std::max(0.0F, footerHeight));
+}
+
 PickerFooterActionLayout calculatePickerFooterActionLayout(
     float availableWidth,
     float cancelWidth,
@@ -1161,6 +1170,10 @@ void renderCurrentSlots(
         ImGuiMCP::EndTable();
     }
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
     if (ImGuiMCP::BeginTable(
@@ -1315,32 +1328,33 @@ void renderSlotActions(
     ImGuiMCP::EndChild();
     ImGuiMCP::PopStyleColor();
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
+    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+        (style ? style->FramePadding.x * 2.0F : 16.0F);
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
-    const auto footerLayout = calculateUnifiedFooterLayout(
-        ImGuiMCP::GetContentRegionAvail().x,
-        closeButtonWidth);
     if (ImGuiMCP::BeginTable(
             "SlotActionsFooter",
-            2,
+            3,
             ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                 ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
         ImGuiMCP::TableSetupColumn(
             "SlotWorkflowActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
         ImGuiMCP::TableSetupColumn(
+            "SlotWorkflowCancel",
+            ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
+            cancelButtonWidth);
+        ImGuiMCP::TableSetupColumn(
             "SlotWorkflowClose",
             ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-            footerLayout.closeWidth);
+            closeButtonWidth);
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         if (confirming || removing) {
-            ImGuiMCP::BeginDisabled(removing);
-            if (ImGuiMCP::Button("Cancel")) {
-                workflow.cancelRemove();
-            }
-            ImGuiMCP::EndDisabled();
-            ImGuiMCP::SameLine();
             const bool canRemove = targetActionsEnabled && isRemoveConfirmationEnabled(
                 workflow.screen(), target.has_value());
             RemoveButtonState buttonState = RemoveButtonState::initial;
@@ -1389,6 +1403,14 @@ void renderSlotActions(
             ImGuiMCP::EndDisabled();
         }
         ImGuiMCP::TableSetColumnIndex(1);
+        if (confirming || removing) {
+            ImGuiMCP::BeginDisabled(removing);
+            if (ImGuiMCP::Button("Cancel")) {
+                workflow.cancelRemove();
+            }
+            ImGuiMCP::EndDisabled();
+        }
+        ImGuiMCP::TableSetColumnIndex(2);
         if (ImGuiMCP::Button("Close")) {
             open = false;
         }
@@ -1531,31 +1553,37 @@ void renderPreview(
     ImGuiMCP::EndChild();
     ImGuiMCP::PopStyleColor();
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
+    const float horizontalButtonPadding = style ? style->FramePadding.x * 2.0F : 16.0F;
+    const float backButtonWidth = ImGuiMCP::CalcTextSize("Back").x + horizontalButtonPadding;
+    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x + horizontalButtonPadding;
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
-        (style ? style->FramePadding.x * 2.0F : 16.0F);
-    const auto footerLayout = calculateUnifiedFooterLayout(
-        ImGuiMCP::GetContentRegionAvail().x,
-        closeButtonWidth);
+        horizontalButtonPadding;
     if (ImGuiMCP::BeginTable(
             "PreviewFooter",
-            2,
+            4,
             ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                 ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
         ImGuiMCP::TableSetupColumn(
-            "PreviewActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+            "PreviewBack", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, backButtonWidth);
         ImGuiMCP::TableSetupColumn(
-            "PreviewClose",
-            ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-            footerLayout.closeWidth);
+            "PreviewPrimary", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+        ImGuiMCP::TableSetupColumn(
+            "PreviewCancel", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, cancelButtonWidth);
+        ImGuiMCP::TableSetupColumn(
+            "PreviewClose", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, closeButtonWidth);
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::BeginDisabled(applying);
-        if (ImGuiMCP::Button("Cancel")) {
-            workflow.cancelPreview();
+        if (ImGuiMCP::Button("Back")) {
+            workflow.backToPicker();
         }
         ImGuiMCP::EndDisabled();
-        ImGuiMCP::SameLine();
+        ImGuiMCP::TableSetColumnIndex(1);
         const bool canApply = targetActionsEnabled && isPreviewApplyEnabled(
             workflow.screen(), target.has_value(), preview != nullptr);
         const auto applyLabel = previewApplyButtonLabel(
@@ -1565,7 +1593,13 @@ void renderPreview(
             (void)workflow.confirmApply();
         }
         ImGuiMCP::EndDisabled();
-        ImGuiMCP::TableSetColumnIndex(1);
+        ImGuiMCP::TableSetColumnIndex(2);
+        ImGuiMCP::BeginDisabled(applying);
+        if (ImGuiMCP::Button("Cancel")) {
+            workflow.cancelPreview();
+        }
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::TableSetColumnIndex(3);
         if (ImGuiMCP::Button("Close")) {
             open = false;
         }
@@ -1781,34 +1815,35 @@ void renderEditAppearance(
             ImGuiMCP::EndChild();
             ImGuiMCP::PopStyleColor();
 
+            ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+                ImGuiMCP::GetCursorPosY(),
+                ImGuiMCP::GetContentRegionAvail().y,
+                footerHeight));
             const auto* style = ImGuiMCP::GetStyle();
+            const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+                (style ? style->FramePadding.x * 2.0F : 16.0F);
             const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
                 (style ? style->FramePadding.x * 2.0F : 16.0F);
-            const auto footerLayout = calculateUnifiedFooterLayout(
-                ImGuiMCP::GetContentRegionAvail().x,
-                closeButtonWidth);
             const auto actions = livePreviewPresentation(
                 workflow.screen(), workflow.editAppearance());
             EditAppearanceIntent intent = EditAppearanceIntent::none;
             if (ImGuiMCP::BeginTable(
                     "EditAppearanceFooter",
-                    2,
+                    3,
                     ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                         ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
                 ImGuiMCP::TableSetupColumn(
-                    "EditAppearanceActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                    "EditAppearancePrimary", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGuiMCP::TableSetupColumn(
+                    "EditAppearanceCancel",
+                    ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
+                    cancelButtonWidth);
                 ImGuiMCP::TableSetupColumn(
                     "EditAppearanceClose",
                     ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-                    footerLayout.closeWidth);
+                    closeButtonWidth);
                 ImGuiMCP::TableNextRow();
                 ImGuiMCP::TableSetColumnIndex(0);
-                ImGuiMCP::BeginDisabled(!actions.cancel.enabled);
-                if (ImGuiMCP::Button("Cancel")) {
-                    intent = EditAppearanceIntent::cancel;
-                }
-                ImGuiMCP::EndDisabled();
-                ImGuiMCP::SameLine();
                 ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.save.enabled);
                 if (ImGuiMCP::Button("Save") && intent == EditAppearanceIntent::none) {
                     intent = EditAppearanceIntent::save;
@@ -1823,6 +1858,12 @@ void renderEditAppearance(
                     ImGuiMCP::EndDisabled();
                 }
                 ImGuiMCP::TableSetColumnIndex(1);
+                ImGuiMCP::BeginDisabled(!actions.cancel.enabled);
+                if (ImGuiMCP::Button("Cancel") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::cancel;
+                }
+                ImGuiMCP::EndDisabled();
+                ImGuiMCP::TableSetColumnIndex(2);
                 ImGuiMCP::BeginDisabled(!actions.close.enabled);
                 if (ImGuiMCP::Button("Close") && intent == EditAppearanceIntent::none) {
                     intent = EditAppearanceIntent::close;
@@ -2214,6 +2255,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
 
     ImGuiMCP::EndDisabled();
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const float horizontalButtonPadding =
         style ? style->FramePadding.x * 2.0F : 16.0F;
     const float cancelButtonWidth =

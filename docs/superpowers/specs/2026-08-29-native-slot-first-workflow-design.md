@@ -134,6 +134,7 @@ Back navigation is deterministic:
 
 - Picker to Current Slots clears the target but preserves catalog state;
 - Preview to Picker clears only the selected tattoo;
+- Preview Cancel returns to Current Slots and clears the target and preview state;
 - a successful Apply returns to Current Slots and refreshes the selected area;
 - closing and reopening the native window preserves session state.
 
@@ -179,8 +180,16 @@ BODY normally spans two pages with twelve slots. FACE, HANDS, and FEET normally 
 - Show selected tattoo thumbnail and name.
 - Show actor, area, and slot target.
 - `Apply to Slot N` starts one mutation and becomes disabled while applying.
-- Cancel returns to Picker without mutation.
+- Back returns to Picker without mutation and retains the selected slot's appearance state.
+- Cancel returns to Current Slots without mutation.
 - No color or alpha controls in this slice.
+
+### Footer Placement
+
+Every workflow footer is pinned to the bottom edge of the native window. Back
+is the leftmost navigation action. Contextual actions occupy the middle region.
+Cancel, when present, is immediately left of Close, and Close is always the
+rightmost action.
 
 ## Error Handling
 

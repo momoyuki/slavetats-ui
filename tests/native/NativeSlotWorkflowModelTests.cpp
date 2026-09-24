@@ -400,7 +400,7 @@ void findsInUseSlotsBySlaveTatsTattooIdentity() {
         "expected runtime-exact Tattoo Identity matching");
 }
 
-void previewDoesNotApplyAndCancelReturnsToPicker() {
+void previewDoesNotApplyAndCancelReturnsToSlots() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(13);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
@@ -425,18 +425,39 @@ void previewDoesNotApplyAndCancelReturnsToPicker() {
     expect(!model.takeApplyRequest(), "expected no mutation before explicit confirmation");
 
     model.cancelPreview();
-    expect(model.screen() == SlotWorkflowScreen::picker &&
-            model.targetSlot() == std::optional<std::int32_t>{2} &&
-            !model.previewTattoo() && !model.previewAppearance(),
-        "expected Cancel to discard Preview state and return to the selected slot Picker");
+    expect(model.screen() == SlotWorkflowScreen::currentSlots &&
+            !model.targetSlot() && !model.previewTattoo() && !model.previewAppearance(),
+        "expected Cancel to discard Preview state and return to Current Slots");
     expect(!model.takeApplyRequest(),
-        "expected Cancel to return to Picker without creating an Apply request");
+        "expected Cancel to return to Current Slots without creating an Apply request");
     expect(catalog.filter().search == filterBefore.search &&
             catalog.filter().sourceId == filterBefore.sourceId &&
             catalog.filter().section == filterBefore.section &&
             catalog.filter().area == filterBefore.area &&
             catalog.page().pageIndex == pageBefore,
-        "expected Cancel to preserve picker filters and page for the next Tattoo selection");
+        "expected Cancel to preserve picker filters and page for the next target");
+}
+
+void previewBackReturnsToPickerAndKeepsApplyingState() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(2);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slots(TattooArea::body, 3));
+    expect(model.selectSlot(2), "expected empty target selected");
+    const auto first = catalog.page().entries[0];
+    const auto replacement = catalog.page().entries[1];
+    model.selectTattoo(first);
+
+    model.backToPicker();
+
+    expect(model.screen() == SlotWorkflowScreen::picker &&
+            model.targetSlot() == std::optional<std::int32_t>{2} &&
+            !model.previewTattoo() && model.previewAppearance(),
+        "expected Back to preserve the selected slot and appearance for another Picker choice");
+    model.selectTattoo(replacement);
+    expect(model.confirmApply() && model.takeApplyRequest(),
+        "expected selecting another Tattoo after Back to create an Apply request");
 }
 
 void explicitConfirmationCreatesOneExactDomainPolicyRequest() {
@@ -1800,7 +1821,8 @@ int main() {
     failures += run("edited appearance flows into Apply request", editedAppearanceFlowsIntoApplyRequest);
     failures += run("rejects tattoo outside selected Area", rejectsTattooOutsideTheSelectedArea);
     failures += run("finds In Use slots by Tattoo Identity", findsInUseSlotsBySlaveTatsTattooIdentity);
-    failures += run("preview does not apply and Cancel returns to Picker", previewDoesNotApplyAndCancelReturnsToPicker);
+    failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
+    failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);
     failures += run("apply failure retains Preview for retry", applyFailureRetainsPreviewForRetry);

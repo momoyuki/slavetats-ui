@@ -362,8 +362,15 @@ void NativeSlotWorkflowModel::cancelPreview() {
         return;
     }
 
+    backToSlots();
+}
+
+void NativeSlotWorkflowModel::backToPicker() {
+    if (m_screen != SlotWorkflowScreen::preview) {
+        return;
+    }
+
     m_previewTattoo.reset();
-    m_previewAppearance.reset();
     m_error.reset();
     openPicker();
 }
