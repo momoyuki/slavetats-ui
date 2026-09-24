@@ -362,7 +362,10 @@ void NativeSlotWorkflowModel::cancelPreview() {
         return;
     }
 
-    backToSlots();
+    m_previewTattoo.reset();
+    m_previewAppearance.reset();
+    m_error.reset();
+    openPicker();
 }
 
 bool NativeSlotWorkflowModel::confirmApply() {
