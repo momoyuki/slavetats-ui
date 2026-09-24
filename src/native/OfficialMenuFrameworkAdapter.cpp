@@ -819,12 +819,15 @@ std::optional<std::size_t> CatalogBrowserPageInputState::finishFrame(
 
 CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
-    const repository::TattooPage& page) noexcept {
+    const repository::TattooPage& page,
+    bool appliedOnly) noexcept {
     if (!hasSnapshot || page.totalEntries == 0) {
         return CatalogBrowserEmptyState::emptyCatalog;
     }
     if (page.matchedEntries == 0) {
-        return CatalogBrowserEmptyState::noMatches;
+        return appliedOnly
+            ? CatalogBrowserEmptyState::noAppliedMatches
+            : CatalogBrowserEmptyState::noMatches;
     }
     return CatalogBrowserEmptyState::none;
 }
@@ -835,6 +838,8 @@ std::string_view catalogBrowserEmptyMessage(CatalogBrowserEmptyState state) noex
         return "The tattoo catalog is empty. Refresh the catalog to browse tattoos.";
     case CatalogBrowserEmptyState::noMatches:
         return "No tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noAppliedMatches:
+        return "No applied tattoos match the current filters.";
     case CatalogBrowserEmptyState::none:
         return {};
     }
@@ -2041,6 +2046,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Applied");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool appliedOnly = workflow.appliedOnly();
+        if (ImGuiMCP::Checkbox("Applied only", &appliedOnly)) {
+            workflow.setAppliedOnly(appliedOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
         ImGuiMCP::TextUnformatted("Domain");
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
@@ -2095,7 +2110,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     }
 
     const auto& page = model.page();
-    const auto emptyState = classifyCatalogBrowserEmptyState(snapshot != nullptr, page);
+    const auto emptyState = classifyCatalogBrowserEmptyState(
+        snapshot != nullptr,
+        page,
+        workflow.appliedOnly());
     const auto* style = ImGuiMCP::GetStyle();
     const float itemSpacing = style ? style->ItemSpacing.y : 4.0F;
     const float metadataHeight = calculateCatalogCardMetadataHeight(

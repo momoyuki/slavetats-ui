@@ -55,6 +55,15 @@ std::vector<std::string> buildFacetValues(
     return values;
 }
 
+bool matchesAppliedIdentity(
+    const TattooDefinition& definition,
+    const std::optional<std::vector<TattooIdentity>>& appliedIdentities) {
+    return !appliedIdentities || std::ranges::any_of(*appliedIdentities,
+        [&definition](const TattooIdentity& identity) {
+            return identity.section == definition.section && identity.name == definition.name;
+        });
+}
+
 }  // namespace
 
 TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
@@ -139,7 +148,8 @@ TattooPage TattooRepository::query(const TattooFilter& filter) const {
             (!foldedSourceId.empty() && entry.foldedSourceId != foldedSourceId) ||
             (!foldedDomain.empty() && entry.foldedDomain != foldedDomain) ||
             (!foldedSection.empty() && entry.foldedSection != foldedSection) ||
-            (!foldedArea.empty() && entry.foldedArea != foldedArea)) {
+            (!foldedArea.empty() && entry.foldedArea != foldedArea) ||
+            !matchesAppliedIdentity(entry.definition, filter.appliedIdentities)) {
             continue;
         }
         matches.push_back(&entry);
@@ -177,17 +187,21 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
     const std::string foldedArea = foldASCII(filter.area);
     const std::string foldedDomain = foldASCII(filter.domain);
     const std::string foldedSourceId = foldASCII(filter.sourceId);
-    TattooFacets result{
-        .domains = m_facets.domains,
-        .areas = m_facets.areas,
-    };
+    TattooFacets result;
     std::unordered_set<std::string> seenSources;
+    std::vector<std::pair<std::string, std::string>> domains;
     std::vector<std::pair<std::string, std::string>> sections;
+    std::vector<std::pair<std::string, std::string>> areas;
 
     for (const auto& entry : m_entries) {
+        if (!matchesAppliedIdentity(entry.definition, filter.appliedIdentities)) {
+            continue;
+        }
+        areas.emplace_back(entry.foldedArea, entry.definition.area);
         if (!foldedArea.empty() && entry.foldedArea != foldedArea) {
             continue;
         }
+        domains.emplace_back(entry.foldedDomain, entry.definition.domain);
         if (!foldedDomain.empty() && entry.foldedDomain != foldedDomain) {
             continue;
         }
@@ -207,7 +221,9 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
         return std::tuple(foldASCII(left.packName), foldASCII(left.sourceId), left.sourceId) <
                std::tuple(foldASCII(right.packName), foldASCII(right.sourceId), right.sourceId);
     });
+    result.domains = buildFacetValues(std::move(domains));
     result.sections = buildFacetValues(std::move(sections));
+    result.areas = buildFacetValues(std::move(areas));
     return result;
 }
 

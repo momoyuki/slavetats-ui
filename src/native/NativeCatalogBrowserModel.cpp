@@ -78,6 +78,34 @@ void NativeCatalogBrowserModel::setArea(std::string value) {
     query();
 }
 
+void NativeCatalogBrowserModel::setAppliedOnly(bool value) {
+    if (m_appliedOnly == value) {
+        return;
+    }
+    m_appliedOnly = value;
+    m_filter.appliedIdentities = value
+        ? std::optional(m_appliedTattooIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setAppliedTattooIdentities(
+    std::vector<repository::TattooIdentity> identities) {
+    if (m_appliedTattooIdentities == identities) {
+        return;
+    }
+    m_appliedTattooIdentities = std::move(identities);
+    if (!m_appliedOnly) {
+        return;
+    }
+    m_filter.appliedIdentities = m_appliedTattooIdentities;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
 void NativeCatalogBrowserModel::previousPage() {
     if (m_filter.pageIndex == 0) {
         return;
@@ -119,8 +147,15 @@ repository::TattooCatalogSnapshot NativeCatalogBrowserModel::snapshot() const no
     return m_snapshot;
 }
 
+bool NativeCatalogBrowserModel::appliedOnly() const noexcept {
+    return m_appliedOnly;
+}
+
 void NativeCatalogBrowserModel::resetFilter() {
     m_filter = repository::TattooFilter{.pageSize = kPageSize};
+    if (m_appliedOnly) {
+        m_filter.appliedIdentities = m_appliedTattooIdentities;
+    }
 }
 
 void NativeCatalogBrowserModel::reconcileContextualFilters() {

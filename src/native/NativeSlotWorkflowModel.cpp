@@ -316,6 +316,7 @@ bool NativeSlotWorkflowModel::confirmRemove() {
 }
 
 void NativeSlotWorkflowModel::openPicker() {
+    updateAppliedTattooIdentities();
     const auto targetArea = areaName(m_selectedArea);
     if (!equalsFoldedASCII(m_catalog.filter().area, targetArea)) {
         m_catalog.setArea(std::string(targetArea));
@@ -767,7 +768,11 @@ void NativeSlotWorkflowModel::completeSlotQuery(
             core::ServiceErrorCode::slotQueryFailed, "Slot snapshot belongs to a different Actor"};
         return;
     }
-    m_areaStates[areaIndex(completed.area)].slots = std::move(completed);
+    const auto completedArea = completed.area;
+    m_areaStates[areaIndex(completedArea)].slots = std::move(completed);
+    if (completedArea == m_selectedArea) {
+        updateAppliedTattooIdentities();
+    }
     m_error.reset();
     clampSelectedPage();
 }
@@ -958,6 +963,31 @@ bool NativeSlotWorkflowModel::canSaveAppearance() const noexcept {
 
 bool NativeSlotWorkflowModel::isLockStateChangeInFlight() const noexcept {
     return m_pendingLock.has_value() || m_activeLockGeneration.has_value();
+}
+
+void NativeSlotWorkflowModel::setAppliedOnly(bool value) {
+    updateAppliedTattooIdentities();
+    m_catalog.setAppliedOnly(value);
+}
+
+bool NativeSlotWorkflowModel::appliedOnly() const noexcept {
+    return m_catalog.appliedOnly();
+}
+
+void NativeSlotWorkflowModel::updateAppliedTattooIdentities() {
+    std::vector<repository::TattooIdentity> identities;
+    const auto* currentSlots = slots();
+    if (currentSlots) {
+        for (const auto& slot : currentSlots->slots) {
+            if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
+                identities.push_back(repository::TattooIdentity{
+                    .section = slot.tattoo->section,
+                    .name = slot.tattoo->name,
+                });
+            }
+        }
+    }
+    m_catalog.setAppliedTattooIdentities(std::move(identities));
 }
 
 std::vector<std::int32_t> NativeSlotWorkflowModel::inUseSlots(

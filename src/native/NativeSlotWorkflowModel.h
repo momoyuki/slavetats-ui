@@ -183,6 +183,8 @@ public:
     [[nodiscard]] const AppearanceEditSession* editAppearance() const noexcept;
     [[nodiscard]] bool canSaveAppearance() const noexcept;
     [[nodiscard]] bool isLockStateChangeInFlight() const noexcept;
+    void setAppliedOnly(bool value);
+    [[nodiscard]] bool appliedOnly() const noexcept;
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(
         const repository::TattooDefinition& tattoo) const;
     [[nodiscard]] const core::ServiceError* error() const noexcept;
@@ -203,6 +205,7 @@ private:
     void scheduleSlotQuery(core::TattooArea area);
     void clampSelectedPage() noexcept;
     void openPicker();
+    void updateAppliedTattooIdentities();
     [[nodiscard]] bool queueAppearanceOperation(
         AppearanceOperationPurpose purpose,
         const TattooAppearance& appearance);

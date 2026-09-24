@@ -949,6 +949,14 @@ void classifiesEmptyCatalogSeparatelyFromNoMatches() {
     expect(stui::native::classifyCatalogBrowserEmptyState(false, noMatches) ==
                stui::native::CatalogBrowserEmptyState::emptyCatalog,
            "expected no snapshot to remain an empty-catalog state");
+
+    const auto noAppliedMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true);
+    expect(noAppliedMatches == stui::native::CatalogBrowserEmptyState::noAppliedMatches,
+           "expected Applied-only empty results to have a distinct state");
+    expect(stui::native::catalogBrowserEmptyMessage(noAppliedMatches) ==
+               "No applied tattoos match the current filters.",
+           "expected Applied-only empty state guidance");
 }
 
 void sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds() {

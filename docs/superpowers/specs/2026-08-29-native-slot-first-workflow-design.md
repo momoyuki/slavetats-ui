@@ -173,6 +173,11 @@ BODY normally spans two pages with twelve slots. FACE, HANDS, and FEET normally 
 - Back control returns to Current Slots without mutation.
 - Target context remains visible while browsing.
 - Existing Filters toggle, two-by-three catalog grid, Area badge, hover name, and pagination are reused.
+- `Applied only` limits results to runtime-exact Tattoo Identities in SlaveTats-managed
+  Current Slots for the current Actor Target and Selected Area. It combines with the
+  existing filters before pagination and excludes external overlays.
+- The Applied-only toggle survives Picker, Preview, and Current Slots navigation while
+  its identity set is refreshed from the latest actor-scoped Slot Snapshot.
 - Catalog filters and page do not reset when a tattoo is selected, canceled, or applied.
 
 ### Preview

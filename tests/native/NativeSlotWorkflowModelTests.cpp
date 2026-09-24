@@ -400,6 +400,49 @@ void findsInUseSlotsBySlaveTatsTattooIdentity() {
         "expected runtime-exact Tattoo Identity matching");
 }
 
+void filtersPickerToAppliedTattoosAndPreservesToggleAcrossNavigation() {
+    TattooCatalogSnapshot snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({
+            tattoo("Applied A", 0),
+            tattoo("Unused", 1),
+            tattoo("External", 2),
+        }),
+        .sourceCount = 1,
+    });
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    auto bodySlots = slots(TattooArea::body, 4);
+    bodySlots.slots[0].occupancy = SlotOccupancy::slaveTats;
+    bodySlots.slots[0].tattoo = TattooEntry{
+        .section = "Marks",
+        .name = "Applied A",
+        .area = "BODY",
+        .slot = 0,
+    };
+    bodySlots.slots[1].occupancy = SlotOccupancy::external;
+    bodySlots.slots[1].tattoo = TattooEntry{
+        .section = "Marks",
+        .name = "External",
+        .area = "BODY",
+        .slot = 1,
+    };
+    completeInitialQuery(model, std::move(bodySlots));
+    expect(model.selectSlot(2), "expected empty slot to open Picker");
+
+    model.setAppliedOnly(true);
+
+    expect(model.appliedOnly(), "expected Applied-only toggle enabled");
+    expect(catalog.page().matchedEntries == 1 &&
+            catalog.page().entries.front().name == "Applied A",
+        "expected Picker to include only SlaveTats-managed applied identities");
+
+    model.backToSlots();
+    expect(model.selectSlot(3), "expected another empty slot to reopen Picker");
+    expect(model.appliedOnly() && catalog.page().matchedEntries == 1,
+        "expected Applied-only state preserved across Picker navigation");
+}
+
 void previewDoesNotApplyAndCancelReturnsToSlots() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(13);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -1821,6 +1864,9 @@ int main() {
     failures += run("edited appearance flows into Apply request", editedAppearanceFlowsIntoApplyRequest);
     failures += run("rejects tattoo outside selected Area", rejectsTattooOutsideTheSelectedArea);
     failures += run("finds In Use slots by Tattoo Identity", findsInUseSlotsBySlaveTatsTattooIdentity);
+    failures += run(
+        "filters Picker to applied tattoos and preserves toggle across navigation",
+        filtersPickerToAppliedTattoosAndPreservesToggleAcrossNavigation);
     failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);

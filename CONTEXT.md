@@ -39,3 +39,7 @@ _Avoid_: Live slot polling
 **In-use Tattoo**:
 A catalog tattoo whose Tattoo Identity matches at least one SlaveTats-managed Current Slot in the selected area. The UI labels this selectable state `In Use`; its matching Current Slot indices are supporting detail rather than part of the label.
 _Avoid_: Used tattoo
+
+**Applied-only Filter**:
+A Picker filter that retains only In-use Tattoos for the current Actor Target and Selected Area. It combines with the other Contextual Filters, uses runtime-exact Tattoo Identity matching, and excludes external overlays.
+_Avoid_: Global applied filter, external overlay filter

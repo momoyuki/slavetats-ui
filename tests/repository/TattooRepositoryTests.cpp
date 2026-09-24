@@ -13,6 +13,7 @@ namespace {
 
 using stui::repository::TattooDefinition;
 using stui::repository::TattooFilter;
+using stui::repository::TattooIdentity;
 using stui::repository::TattooRepository;
 
 TattooDefinition definition(
@@ -256,6 +257,66 @@ void contextualFacetsFollowAreaThenSource() {
         "expected Domain to narrow Source and Section facets after Area");
 }
 
+void appliedIdentityFilterPrecedesPaginationAndNarrowsFacets() {
+    TattooRepository repository({
+        definition("one.json", "One", "Marks", "Applied A", "a.dds", "Body"),
+        definition("one.json", "One", "Marks", "Unused", "unused.dds", "Body"),
+        definition("two.json", "Two", "Runes", "Applied B", "b.dds", "Body"),
+        definition("face.json", "Face", "Marks", "Applied A", "face.dds", "Face"),
+    });
+    const TattooFilter filter{
+        .area = "Body",
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "Applied A"},
+            {.section = "Runes", .name = "Applied B"},
+        },
+        .pageSize = 1,
+    };
+
+    const auto firstPage = repository.query(filter);
+    auto secondPageFilter = filter;
+    secondPageFilter.pageIndex = 1;
+    const auto secondPage = repository.query(secondPageFilter);
+    const auto facets = repository.contextualFacets(filter);
+
+    expect(firstPage.matchedEntries == 2 && firstPage.pageCount == 2 &&
+            firstPage.entries.size() == 1 && firstPage.entries.front().name == "Applied A",
+        "expected applied identities filtered before pagination");
+    expect(secondPage.entries.size() == 1 && secondPage.entries.front().name == "Applied B",
+        "expected second applied tattoo on the second filtered page");
+    expect(facets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "one.json", .packName = "One"},
+               {.sourceId = "two.json", .packName = "Two"},
+           } && facets.sections == std::vector<std::string>{"Marks", "Runes"},
+        "expected contextual facets limited to applied Body tattoos");
+}
+
+void appliedIdentityFilterUsesRuntimeExactIdentity() {
+    TattooRepository repository({
+        definition("one.json", "One", "Marks", "Corruption", "a.dds", "Body"),
+    });
+
+    const auto exact = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "Corruption"},
+        },
+    });
+    const auto differentCase = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "corruption"},
+        },
+    });
+    const auto noneApplied = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{},
+    });
+
+    expect(exact.matchedEntries == 1, "expected exact runtime Tattoo Identity match");
+    expect(differentCase.matchedEntries == 0,
+        "expected Tattoo Identity matching to remain case-sensitive");
+    expect(noneApplied.matchedEntries == 0,
+        "expected active empty applied filter to return no tattoos");
+}
+
 void emptyRepositoryReturnsEmptyPageAndFacets() {
     TattooRepository repository(std::vector<TattooDefinition>{});
 
@@ -330,6 +391,12 @@ int main() {
     failures += run(
         "contextual facets follow Area then Source",
         contextualFacetsFollowAreaThenSource);
+    failures += run(
+        "applied identity filter precedes pagination and narrows facets",
+        appliedIdentityFilterPrecedesPaginationAndNarrowsFacets);
+    failures += run(
+        "applied identity filter uses runtime-exact identity",
+        appliedIdentityFilterUsesRuntimeExactIdentity);
     failures += run(
         "empty repository returns empty page and facets",
         emptyRepositoryReturnsEmptyPageAndFacets);

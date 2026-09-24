@@ -379,11 +379,13 @@ enum class CatalogBrowserEmptyState {
     none,
     emptyCatalog,
     noMatches,
+    noAppliedMatches,
 };
 
 [[nodiscard]] CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
-    const repository::TattooPage& page) noexcept;
+    const repository::TattooPage& page,
+    bool appliedOnly = false) noexcept;
 [[nodiscard]] std::string_view catalogBrowserEmptyMessage(
     CatalogBrowserEmptyState state) noexcept;
 
