@@ -58,6 +58,11 @@ struct TattooSlots {
     std::vector<TattooSlot> slots;
 };
 
+enum class ApplyTattooMode {
+    applyAndSynchronize,
+    synchronizeOnly,
+};
+
 struct ApplyTattooRequest {
     std::uint32_t actorFormId{};
     TattooArea area{TattooArea::body};
@@ -67,6 +72,7 @@ struct ApplyTattooRequest {
     std::string name;
     std::int32_t color{0xFFFFFF};
     float alpha{1.0F};
+    ApplyTattooMode mode{ApplyTattooMode::applyAndSynchronize};
 };
 
 struct ApplyTattooSuccess {

@@ -23,6 +23,7 @@
 namespace {
 
 using stui::core::ServiceErrorCode;
+using stui::core::ApplyTattooMode;
 using stui::core::SetTattooLockedRequest;
 using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceRequest;
@@ -840,6 +841,28 @@ void synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites() {
         "expected synchronize-only path to mark and synchronize exactly once");
 }
 
+void synchronizeOnlyApplySkipsMutationAndSynchronizesOnce() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState state;
+    SlaveTatsRuntime runtime(bindingsFor(state));
+    runtime.bindSlaveTats(&queryApi());
+
+    const auto result = runtime.applyToSlot(stui::core::ApplyTattooRequest{
+        .actorFormId = 0x14,
+        .area = stui::core::TattooArea::body,
+        .mode = ApplyTattooMode::synchronizeOnly,
+    });
+
+    expect(result.has_value(), "expected synchronization-only Apply retry success");
+    expect(queryState.queryCount == 0 && queryState.applyCount == 0 &&
+            queryState.arrayCreateCount == 0,
+        "expected synchronization-only Apply retry to skip lookup and mutation");
+    expect(queryState.updatedWriteCount == 1 && queryState.synchronizeCount == 1,
+        "expected synchronization-only Apply retry to mark and synchronize once");
+}
+
 void lockStateWritesAndVerifiesWithoutSynchronization() {
     BindingState lockedState;
     SlaveTatsRuntime lockedRuntime(bindingsFor(lockedState));
@@ -932,6 +955,8 @@ int main() {
         failedUpdatedReadbackStopsBeforeSynchronization);
     failures += run("synchronize-only preserves no-write and failure polarity",
         synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites);
+    failures += run("synchronize-only Apply skips mutation and synchronizes once",
+        synchronizeOnlyApplySkipsMutationAndSynchronizesOnce);
     failures += run("lock state writes and verifies without synchronization",
         lockStateWritesAndVerifiesWithoutSynchronization);
     failures += run("stale lock handle performs no write", staleLockHandlePerformsNoWrite);

@@ -102,6 +102,10 @@ ApplyTattooResult SlaveTatsService::applyToSlot(const ApplyTattooRequest& reques
         });
     }
 
+    if (request.mode == ApplyTattooMode::synchronizeOnly) {
+        return m_runtime.applyToSlot(request);
+    }
+
     if (request.slot < 0) {
         return std::unexpected(ServiceError{
             ServiceErrorCode::invalidSlot,

@@ -13,6 +13,7 @@
 namespace {
 
 using stui::core::ITattooRuntime;
+using stui::core::ApplyTattooMode;
 using stui::core::ApplyTattooRequest;
 using stui::core::ApplyTattooResult;
 using stui::core::RemoveTattooRequest;
@@ -443,6 +444,24 @@ void validApplyRequestIsForwardedExactlyOnce() {
         "expected runtime apply result returned unchanged");
 }
 
+void synchronizeOnlyApplyBypassesMutationValidation() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto request = validApplyRequest();
+    request.slot = -1;
+    request.section.clear();
+    request.name.clear();
+    request.alpha = std::numeric_limits<float>::quiet_NaN();
+    request.mode = ApplyTattooMode::synchronizeOnly;
+
+    const auto result = service.applyToSlot(request);
+
+    expect(result.has_value(), "expected synchronization-only Apply retry accepted");
+    expect(runtime.applyCount == 1, "expected synchronization-only retry forwarded once");
+    expect(runtime.appliedRequest.mode == ApplyTattooMode::synchronizeOnly,
+        "expected exact synchronization-only Apply mode forwarded");
+}
+
 void applyRuntimeFailureIsReturnedUnchanged() {
     FakeTattooRuntime runtime;
     runtime.applyResult = std::unexpected(ServiceError{
@@ -841,6 +860,8 @@ int main() {
     failures += run("out-of-range apply alpha is rejected", outOfRangeApplyAlphaIsRejected);
     failures += run("boundary apply alpha is forwarded", boundaryApplyAlphaIsForwarded);
     failures += run("valid apply request is forwarded exactly once", validApplyRequestIsForwardedExactlyOnce);
+    failures += run("synchronize-only apply bypasses mutation validation",
+        synchronizeOnlyApplyBypassesMutationValidation);
     failures += run("apply runtime failure is returned unchanged", applyRuntimeFailureIsReturnedUnchanged);
     failures += run("unavailable dependencies stop remove", unavailableDependenciesStopRemove);
     failures += run("invalid remove target is rejected", invalidRemoveTargetIsRejected);
