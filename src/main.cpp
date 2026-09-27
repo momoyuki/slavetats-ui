@@ -13,6 +13,7 @@
 #include "runtime/HotkeyBinding.h"
 #include "runtime/PluginConfigFile.h"
 #include "runtime/FavoriteStore.h"
+#include "runtime/RecentTattooStore.h"
 #include "SKSEMenuFramework.h"
 #include "textures/ExactStreamReader.h"
 
@@ -32,6 +33,7 @@ native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
 native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
 std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
 std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
+std::unique_ptr<runtime::RecentTattooStore> g_recentTattooStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
     [] { return native::resolveCrosshairActorTarget(); },
@@ -64,6 +66,20 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
                 .message = "Favorite storage is unavailable."}));
         }
         return g_favoriteStore->setFavorite(identity, enabled);
+    },
+    [] {
+        if (!g_recentTattooStore) {
+            return runtime::RecentTattooResult(std::unexpected(runtime::ConfigError{
+                .message = "Recent tattoo storage is unavailable."}));
+        }
+        return g_recentTattooStore->load();
+    },
+    [](const repository::RecentTattooIdentity& identity) {
+        if (!g_recentTattooStore) {
+            return runtime::RecentTattooResult(std::unexpected(runtime::ConfigError{
+                .message = "Recent tattoo storage is unavailable."}));
+        }
+        return g_recentTattooStore->record(identity);
     });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
@@ -310,7 +326,9 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         } else {
             logger::warn("SlaveTatsUI: failed to load favorites: {}", favorites.error().message);
         }
+        g_recentTattooStore = std::make_unique<runtime::RecentTattooStore>(g_pluginConfig);
     }
+    g_nativeSlotWorkflow.initializeRecentTattoos();
 
     static native::OfficialMenuFrameworkAdapter menuFrameworkAdapter;
     static native::NativeMenu nativeMenu([](native::NativeMenu& menu) {

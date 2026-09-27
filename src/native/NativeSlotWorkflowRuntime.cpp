@@ -56,7 +56,9 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     SlotLockOperation setLocked,
     NativeSlotScheduler scheduler,
     LivePreviewClock livePreviewClock,
-    FavoriteOperation favoriteOperation)
+    FavoriteOperation favoriteOperation,
+    RecentTattooLoadOperation recentTattooLoadOperation,
+    RecentTattooRecordOperation recentTattooRecordOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
@@ -66,10 +68,13 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_setLocked(std::move(setLocked)),
       m_scheduler(std::move(scheduler)),
       m_livePreviewClock(std::move(livePreviewClock)),
-      m_favoriteOperation(std::move(favoriteOperation)) {}
+      m_favoriteOperation(std::move(favoriteOperation)),
+      m_recentTattooLoadOperation(std::move(recentTattooLoadOperation)),
+      m_recentTattooRecordOperation(std::move(recentTattooRecordOperation)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
     drainFavoriteCompletions();
+    drainRecentTattooCompletions();
     m_model.advanceLivePreview(m_livePreviewClock());
 
     bool expected = false;
@@ -105,8 +110,23 @@ void NativeSlotWorkflowRuntime::pump() {
         scheduleFavorite(std::move(*favorite));
         return;
     }
+    if (auto recentTattoo = m_model.takeRecentTattooRequest()) {
+        scheduleRecentTattoo(std::move(*recentTattoo));
+        return;
+    }
 
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::drainRecentTattooCompletions() {
+    std::vector<std::pair<std::uint64_t, runtime::RecentTattooResult>> completions;
+    {
+        const std::scoped_lock lock(m_recentTattooCompletionMutex);
+        completions.swap(m_recentTattooCompletions);
+    }
+    for (auto& [requestId, result] : completions) {
+        m_model.completeRecentTattoo(requestId, std::move(result));
+    }
 }
 
 void NativeSlotWorkflowRuntime::drainFavoriteCompletions() {
@@ -301,6 +321,43 @@ void NativeSlotWorkflowRuntime::scheduleFavorite(FavoriteTicket ticket) {
             const std::scoped_lock lock(m_favoriteCompletionMutex);
             m_favoriteCompletions.emplace_back(requestId, std::unexpected(runtime::ConfigError{
                 .message = "Failed to schedule favorite storage."}));
+        }
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleRecentTattoo(RecentTattooTicket ticket) {
+    const std::uint64_t requestId = ticket.requestId;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        runtime::RecentTattooResult result = std::unexpected(runtime::ConfigError{
+            .message = "Recent tattoo storage operation failed."});
+        try {
+            if (ticket.kind == RecentTattooRequestKind::load) {
+                if (m_recentTattooLoadOperation) {
+                    result = m_recentTattooLoadOperation();
+                } else {
+                    result = std::unexpected(runtime::ConfigError{
+                        .message = "Recent tattoo storage is unavailable."});
+                }
+            } else if (ticket.identity && m_recentTattooRecordOperation) {
+                result = m_recentTattooRecordOperation(*ticket.identity);
+            } else {
+                result = std::unexpected(runtime::ConfigError{
+                    .message = "Recent tattoo storage is unavailable."});
+            }
+        } catch (...) {
+        }
+        const std::scoped_lock lock(m_recentTattooCompletionMutex);
+        m_recentTattooCompletions.emplace_back(ticket.requestId, std::move(result));
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        {
+            const std::scoped_lock lock(m_recentTattooCompletionMutex);
+            m_recentTattooCompletions.emplace_back(requestId, std::unexpected(
+                runtime::ConfigError{.message = "Failed to schedule recent tattoo storage."}));
         }
         m_inFlight.store(false);
     }

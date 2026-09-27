@@ -12,6 +12,7 @@
 namespace {
 
 using stui::repository::TattooDefinition;
+using stui::repository::RecentTattooIdentity;
 using stui::repository::TattooFilter;
 using stui::repository::TattooIdentity;
 using stui::repository::TattooRepository;
@@ -317,6 +318,42 @@ void appliedIdentityFilterUsesRuntimeExactIdentity() {
         "expected active empty applied filter to return no tattoos");
 }
 
+void recentIdentityFilterUsesExactAreaAndNewestFirstOrder() {
+    auto alpha = definition("a.json", "Pack", "Marks", "Alpha", "a.dds", "Body");
+    auto beta = definition("b.json", "Pack", "Marks", "Beta", "b.dds", "Body");
+    auto face = definition("a.json", "Pack", "Marks", "Alpha", "f.dds", "Face");
+    TattooRepository repository({alpha, beta, face});
+    const std::vector<RecentTattooIdentity> recent{
+        {.domain = "default", .sourceId = "b.json", .section = "Marks",
+            .name = "Beta", .area = stui::core::TattooArea::body},
+        {.domain = "default", .sourceId = "a.json", .section = "Marks",
+            .name = "Alpha", .area = stui::core::TattooArea::body},
+    };
+
+    const auto ordered = repository.query(TattooFilter{
+        .area = "Body",
+        .recentIdentities = recent,
+        .pageSize = 1,
+    });
+    const auto second = repository.query(TattooFilter{
+        .area = "Body",
+        .recentIdentities = recent,
+        .pageIndex = 1,
+        .pageSize = 1,
+    });
+    const auto empty = repository.query(TattooFilter{
+        .area = "Face",
+        .recentIdentities = recent,
+    });
+
+    expect(ordered.matchedEntries == 2 && ordered.entries.front().name == "Beta",
+        "expected newest exact recent identity before pagination");
+    expect(second.entries.front().name == "Alpha",
+        "expected older recent identity on the next page");
+    expect(empty.matchedEntries == 0,
+        "expected area-scoped history not to match another area");
+}
+
 void emptyRepositoryReturnsEmptyPageAndFacets() {
     TattooRepository repository(std::vector<TattooDefinition>{});
 
@@ -397,6 +434,9 @@ int main() {
     failures += run(
         "applied identity filter uses runtime-exact identity",
         appliedIdentityFilterUsesRuntimeExactIdentity);
+    failures += run(
+        "recent identity filter uses exact area and newest-first order",
+        recentIdentityFilterUsesExactAreaAndNewestFirstOrder);
     failures += run(
         "empty repository returns empty page and facets",
         emptyRepositoryReturnsEmptyPageAndFacets);

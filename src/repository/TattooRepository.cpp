@@ -75,6 +75,41 @@ bool matchesFavoriteIdentity(
         });
 }
 
+std::string_view areaName(const core::TattooArea area) {
+    switch (area) {
+    case core::TattooArea::body: return "Body";
+    case core::TattooArea::face: return "Face";
+    case core::TattooArea::hands: return "Hands";
+    case core::TattooArea::feet: return "Feet";
+    }
+    return {};
+}
+
+bool matchesRecentIdentity(
+    const TattooDefinition& definition,
+    const std::optional<std::vector<RecentTattooIdentity>>& recentIdentities) {
+    return !recentIdentities || std::ranges::any_of(*recentIdentities,
+        [&definition](const RecentTattooIdentity& identity) {
+            return identity.domain == definition.domain &&
+                identity.sourceId == definition.sourceId &&
+                identity.section == definition.section && identity.name == definition.name &&
+                foldASCII(areaName(identity.area)) == foldASCII(definition.area);
+        });
+}
+
+std::size_t recentPosition(
+    const TattooDefinition& definition,
+    const std::vector<RecentTattooIdentity>& recentIdentities) {
+    const auto found = std::ranges::find_if(recentIdentities,
+        [&definition](const RecentTattooIdentity& identity) {
+            return identity.domain == definition.domain &&
+                identity.sourceId == definition.sourceId &&
+                identity.section == definition.section && identity.name == definition.name &&
+                foldASCII(areaName(identity.area)) == foldASCII(definition.area);
+        });
+    return static_cast<std::size_t>(std::distance(recentIdentities.begin(), found));
+}
+
 }  // namespace
 
 TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
@@ -161,10 +196,17 @@ TattooPage TattooRepository::query(const TattooFilter& filter) const {
             (!foldedSection.empty() && entry.foldedSection != foldedSection) ||
             (!foldedArea.empty() && entry.foldedArea != foldedArea) ||
             !matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
-            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities)) {
+            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities) ||
+            !matchesRecentIdentity(entry.definition, filter.recentIdentities)) {
             continue;
         }
         matches.push_back(&entry);
+    }
+    if (filter.recentIdentities) {
+        std::ranges::stable_sort(matches, [&filter](const auto* left, const auto* right) {
+            return recentPosition(left->definition, *filter.recentIdentities) <
+                recentPosition(right->definition, *filter.recentIdentities);
+        });
     }
 
     const std::size_t pageSize =
@@ -207,7 +249,8 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
 
     for (const auto& entry : m_entries) {
         if (!matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
-            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities)) {
+            !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities) ||
+            !matchesRecentIdentity(entry.definition, filter.recentIdentities)) {
             continue;
         }
         areas.emplace_back(entry.foldedArea, entry.definition.area);

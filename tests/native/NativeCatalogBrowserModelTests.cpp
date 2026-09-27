@@ -267,6 +267,54 @@ void favoriteUpdateClampsPageWithoutResettingOtherFilters() {
         "expected membership update to clamp the page without clearing other filters");
 }
 
+void filtersRecentlyUsedInNewestFirstOrder() {
+    TattooCatalogSnapshot current = snapshot({
+        tattoo("source-a.json", "Marks", "Body", "Alpha", 0),
+        tattoo("source-a.json", "Marks", "Body", "Beta", 1),
+        tattoo("source-a.json", "Marks", "Face", "Face Mark", 2),
+    });
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    model.setArea("Body");
+    model.setRecentTattooIdentities({
+        stui::repository::recentTattooIdentity(
+            tattoo("source-a.json", "Marks", "Body", "Beta", 1),
+            stui::core::TattooArea::body),
+        stui::repository::recentTattooIdentity(
+            tattoo("source-a.json", "Marks", "Body", "Alpha", 0),
+            stui::core::TattooArea::body),
+    });
+    model.setRecentlyUsedOnly(true);
+
+    expect(model.recentlyUsedOnly() && model.page().matchedEntries == 2 &&
+            model.page().entries[0].name == "Beta" &&
+            model.page().entries[1].name == "Alpha",
+        "expected Recently Used filter to preserve newest-first history order");
+}
+
+void recentUpdateClampsPageWithoutClearingOtherFilters() {
+    TattooCatalogSnapshot current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    std::vector<stui::repository::RecentTattooIdentity> recent;
+    for (std::size_t index = 0; index < 7; ++index) {
+        recent.push_back(stui::repository::recentTattooIdentity(tattoo(
+            "source-a.json", "Marks", "Body", "Entry " + std::to_string(index), index),
+            stui::core::TattooArea::body));
+    }
+    model.setRecentTattooIdentities(recent);
+    model.setRecentlyUsedOnly(true);
+    model.setSearch("Entry");
+    model.setPageNumber(2);
+
+    recent.pop_back();
+    model.setRecentTattooIdentities(recent);
+
+    expect(model.filter().search == "Entry" && model.page().pageIndex == 0 &&
+            model.page().matchedEntries == 6,
+        "expected recent update to clamp page without clearing filters");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -299,5 +347,9 @@ int main() {
         filtersExactFavoriteIdentitiesBeforePagination);
     failures += run("favorite update clamps page without resetting filters",
         favoriteUpdateClampsPageWithoutResettingOtherFilters);
+    failures += run("filters Recently Used in newest-first order",
+        filtersRecentlyUsedInNewestFirstOrder);
+    failures += run("recent update clamps page without clearing filters",
+        recentUpdateClampsPageWithoutClearingOtherFilters);
     return failures == 0 ? 0 : 1;
 }

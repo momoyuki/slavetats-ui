@@ -830,11 +830,24 @@ CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
     const repository::TattooPage& page,
     bool appliedOnly,
-    bool favoritesOnly) noexcept {
+    bool favoritesOnly,
+    bool recentlyUsedOnly) noexcept {
     if (!hasSnapshot || page.totalEntries == 0) {
         return CatalogBrowserEmptyState::emptyCatalog;
     }
     if (page.matchedEntries == 0) {
+        if (recentlyUsedOnly) {
+            if (favoritesOnly && appliedOnly) {
+                return CatalogBrowserEmptyState::noFavoriteAppliedRecentMatches;
+            }
+            if (favoritesOnly) {
+                return CatalogBrowserEmptyState::noFavoriteRecentMatches;
+            }
+            if (appliedOnly) {
+                return CatalogBrowserEmptyState::noAppliedRecentMatches;
+            }
+            return CatalogBrowserEmptyState::noRecentMatches;
+        }
         if (favoritesOnly && appliedOnly) {
             return CatalogBrowserEmptyState::noFavoriteAppliedMatches;
         }
@@ -859,6 +872,14 @@ std::string_view catalogBrowserEmptyMessage(CatalogBrowserEmptyState state) noex
         return "No favorite tattoos match the current filters.";
     case CatalogBrowserEmptyState::noFavoriteAppliedMatches:
         return "No favorite applied tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noRecentMatches:
+        return "No recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteRecentMatches:
+        return "No favorite recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noAppliedRecentMatches:
+        return "No applied recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteAppliedRecentMatches:
+        return "No favorite applied recently used tattoos match the current filters.";
     case CatalogBrowserEmptyState::none:
         return {};
     }
@@ -2088,6 +2109,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Recent");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool recentlyUsedOnly = workflow.recentlyUsedOnly();
+        if (ImGuiMCP::Checkbox("Recently used only", &recentlyUsedOnly)) {
+            workflow.setRecentlyUsedOnly(recentlyUsedOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
         ImGuiMCP::TextUnformatted("Domain");
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
@@ -2148,12 +2179,20 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         snapshot != nullptr,
         page,
         workflow.appliedOnly(),
-        workflow.favoritesOnly());
+        workflow.favoritesOnly(),
+        workflow.recentlyUsedOnly());
     if (const auto* favoriteError = workflow.favoriteError()) {
         ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
         ImGuiMCP::SameLine();
         if (ImGuiMCP::Button("Retry favorite save")) {
             (void)workflow.retryFavorite();
+        }
+    }
+    if (const auto* recentError = workflow.recentlyUsedError()) {
+        ImGuiMCP::Text("Recently Used: %s", recentError->message.c_str());
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Retry recent history")) {
+            (void)workflow.retryRecentTattoo();
         }
     }
     const auto* style = ImGuiMCP::GetStyle();

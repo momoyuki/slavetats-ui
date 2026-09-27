@@ -174,6 +174,15 @@ struct Fixture {
                       throw std::runtime_error("favorite save failed");
                   }
                   return favoriteResult;
+              },
+              [this] {
+                  ++recentLoadCount;
+                  return recentLoadResult;
+              },
+              [this](const stui::repository::RecentTattooIdentity& identity) {
+                  ++recentRecordCount;
+                  recordedRecentIdentity = identity;
+                  return recentRecordResult;
               }) {}
 
     stui::repository::TattooCatalogSnapshot snapshot =
@@ -193,6 +202,8 @@ struct Fixture {
     std::size_t appearanceCount{};
     std::size_t lockCount{};
     std::size_t favoriteCount{};
+    std::size_t recentLoadCount{};
+    std::size_t recentRecordCount{};
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
@@ -209,6 +220,9 @@ struct Fixture {
     bool schedulerThrows{};
     bool favoriteThrows{};
     stui::runtime::FavoriteResult favoriteResult{stui::runtime::FavoriteList{}};
+    stui::runtime::RecentTattooResult recentLoadResult{stui::runtime::RecentTattooList{}};
+    stui::runtime::RecentTattooResult recentRecordResult{stui::runtime::RecentTattooList{}};
+    stui::repository::RecentTattooIdentity recordedRecentIdentity;
     std::chrono::steady_clock::time_point now{};
     NativeSlotWorkflowRuntime runtime;
 };
@@ -888,6 +902,58 @@ void favoriteCompletionPublishesOnlyOnTheNextPump() {
         "expected next presentation pump to publish favorite completion");
 }
 
+void recentLoadCompletionPublishesOnlyOnTheNextPump() {
+    Fixture fixture;
+    const auto selected = tattoo();
+    fixture.snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({selected}),
+        .sourceCount = 1,
+    });
+    fixture.catalog.refresh();
+    const auto identity = stui::repository::recentTattooIdentity(selected, TattooArea::body);
+    fixture.recentLoadResult = stui::runtime::RecentTattooList{identity};
+
+    fixture.model.initializeRecentTattoos();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1 && fixture.model.recentlyUsedPending(),
+        "expected recent history load to be scheduled");
+    fixture.scheduled.front()();
+    expect(fixture.recentLoadCount == 1 && fixture.model.recentlyUsedPending(),
+        "expected worker completion to remain in the runtime mailbox");
+    fixture.runtime.pump();
+    fixture.model.setRecentlyUsedOnly(true);
+    expect(!fixture.model.recentlyUsedPending() && fixture.catalog.page().entries.size() == 1,
+        "expected next presentation pump to publish recent history");
+}
+
+void successfulApplySchedulesRecentRecordThroughTheMailbox() {
+    Fixture fixture;
+    fixture.model.start();
+    fixture.runtime.pump();
+    fixture.scheduled.back()();
+    expect(fixture.model.selectSlot(1), "expected empty slot selection");
+    const auto selected = tattoo();
+    fixture.model.selectTattoo(selected);
+    expect(fixture.model.confirmApply(), "expected Apply confirmation");
+    fixture.runtime.pump();
+    fixture.scheduled.back()();
+
+    fixture.runtime.pump();
+    fixture.scheduled.back()();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 4 && fixture.model.recentlyUsedPending(),
+        "expected successful Apply to schedule history after the refresh query");
+    fixture.scheduled.back()();
+    expect(fixture.recentRecordCount == 1 &&
+            fixture.recordedRecentIdentity ==
+                stui::repository::recentTattooIdentity(selected, TattooArea::body) &&
+            fixture.model.recentlyUsedPending(),
+        "expected exact identity persisted without publishing from the worker");
+    fixture.runtime.pump();
+    expect(!fixture.model.recentlyUsedPending(),
+        "expected next presentation pump to publish recorded history");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -935,5 +1001,9 @@ int main() {
     failures += run("ignores stale completion after replacement query", ignoresStaleCompletionAfterAReplacementQuery);
     failures += run("favorite completion publishes only on next pump",
         favoriteCompletionPublishesOnlyOnTheNextPump);
+    failures += run("recent load completion publishes only on next pump",
+        recentLoadCompletionPublishesOnlyOnTheNextPump);
+    failures += run("successful Apply schedules recent record through mailbox",
+        successfulApplySchedulesRecentRecordThroughTheMailbox);
     return failures == 0 ? 0 : 1;
 }

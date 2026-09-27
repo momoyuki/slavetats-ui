@@ -147,6 +147,7 @@ void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
     m_targetSlot.reset();
     m_previewTattoo.reset();
     m_previewAppearance.reset();
+    m_applyRequiresSynchronizationOnly = false;
     m_pendingAppearance.reset();
     m_activeAppearanceGeneration.reset();
     m_pendingLock.reset();
@@ -343,6 +344,7 @@ void NativeSlotWorkflowModel::selectTattoo(const repository::TattooDefinition& t
     }
 
     m_previewTattoo = tattoo;
+    m_applyRequiresSynchronizationOnly = false;
     m_error.reset();
     m_screen = SlotWorkflowScreen::preview;
 }
@@ -395,7 +397,12 @@ bool NativeSlotWorkflowModel::confirmApply() {
             .name = m_previewTattoo->name,
             .color = m_previewAppearance->color,
             .alpha = m_previewAppearance->alpha,
+            .mode = m_applyRequiresSynchronizationOnly
+                ? core::ApplyTattooMode::synchronizeOnly
+                : core::ApplyTattooMode::applyAndSynchronize,
         },
+        .recentIdentity = repository::recentTattooIdentity(
+            *m_previewTattoo, m_selectedArea),
     };
     m_activeApplyGeneration = generation;
     m_error.reset();
@@ -717,6 +724,7 @@ std::optional<SlotApplyTicket> NativeSlotWorkflowModel::takeApplyRequest() {
     m_pendingApply.reset();
     if (ticket) {
         m_outstandingMutationGeneration = ticket->generation;
+        m_activeApplyRecentIdentity = ticket->recentIdentity;
     }
     return ticket;
 }
@@ -776,12 +784,46 @@ bool NativeSlotWorkflowModel::retryFavorite() {
     return true;
 }
 
+void NativeSlotWorkflowModel::initializeRecentTattoos() {
+    if (m_pendingRecentTattoo || m_activeRecentTattooRequestId) {
+        return;
+    }
+    m_recentTattooError.reset();
+    m_failedRecentTattoo.reset();
+    m_pendingRecentTattoo = RecentTattooTicket{
+        .requestId = ++m_recentTattooRequestId,
+        .kind = RecentTattooRequestKind::load,
+    };
+}
+
+bool NativeSlotWorkflowModel::retryRecentTattoo() {
+    if (!m_failedRecentTattoo || m_pendingRecentTattoo ||
+        m_activeRecentTattooRequestId) {
+        return false;
+    }
+    auto retry = *m_failedRecentTattoo;
+    retry.requestId = ++m_recentTattooRequestId;
+    m_recentTattooError.reset();
+    m_pendingRecentTattoo = std::move(retry);
+    return true;
+}
+
 std::optional<FavoriteTicket> NativeSlotWorkflowModel::takeFavoriteRequest() {
     auto ticket = std::move(m_pendingFavorite);
     m_pendingFavorite.reset();
     if (ticket) {
         m_activeFavoriteRequestId = ticket->requestId;
         m_activeFavorite = *ticket;
+    }
+    return ticket;
+}
+
+std::optional<RecentTattooTicket> NativeSlotWorkflowModel::takeRecentTattooRequest() {
+    auto ticket = std::move(m_pendingRecentTattoo);
+    m_pendingRecentTattoo.reset();
+    if (ticket) {
+        m_activeRecentTattooRequestId = ticket->requestId;
+        m_activeRecentTattoo = *ticket;
     }
     return ticket;
 }
@@ -827,11 +869,19 @@ void NativeSlotWorkflowModel::completeApply(
     m_activeApplyGeneration.reset();
     if (!result) {
         m_error = std::move(result.error());
+        m_applyRequiresSynchronizationOnly =
+            m_error->code == core::ServiceErrorCode::synchronizeFailed ||
+            m_error->mutationSideEffect == core::MutationSideEffect::mayHaveOccurred;
         m_screen = SlotWorkflowScreen::preview;
         return;
     }
 
+    if (m_activeApplyRecentIdentity) {
+        enqueueRecentTattoo(std::move(*m_activeApplyRecentIdentity));
+    }
+    m_activeApplyRecentIdentity.reset();
     m_error.reset();
+    m_applyRequiresSynchronizationOnly = false;
     m_previewTattoo.reset();
     m_previewAppearance.reset();
     m_targetSlot.reset();
@@ -962,6 +1012,25 @@ void NativeSlotWorkflowModel::completeFavorite(
     m_failedFavorite.reset();
 }
 
+void NativeSlotWorkflowModel::completeRecentTattoo(
+    const std::uint64_t requestId,
+    runtime::RecentTattooResult result) {
+    if (!m_activeRecentTattooRequestId || requestId != *m_activeRecentTattooRequestId) {
+        return;
+    }
+    m_activeRecentTattooRequestId.reset();
+    if (!result) {
+        m_recentTattooError = std::move(result.error());
+        m_failedRecentTattoo = std::move(m_activeRecentTattoo);
+        return;
+    }
+    m_catalog.setRecentTattooIdentities(std::move(*result));
+    m_activeRecentTattoo.reset();
+    m_failedRecentTattoo.reset();
+    m_recentTattooError.reset();
+    queueNextRecentTattoo();
+}
+
 SlotWorkflowScreen NativeSlotWorkflowModel::screen() const noexcept {
     return m_screen;
 }
@@ -1038,12 +1107,51 @@ bool NativeSlotWorkflowModel::favoritesOnly() const noexcept {
     return m_catalog.favoritesOnly();
 }
 
+void NativeSlotWorkflowModel::setRecentlyUsedOnly(const bool value) {
+    m_catalog.setRecentlyUsedOnly(value);
+}
+
+bool NativeSlotWorkflowModel::recentlyUsedOnly() const noexcept {
+    return m_catalog.recentlyUsedOnly();
+}
+
+bool NativeSlotWorkflowModel::recentlyUsedPending() const noexcept {
+    return m_pendingRecentTattoo.has_value() || m_activeRecentTattooRequestId.has_value();
+}
+
+const runtime::ConfigError* NativeSlotWorkflowModel::recentlyUsedError() const noexcept {
+    return m_recentTattooError ? &*m_recentTattooError : nullptr;
+}
+
 bool NativeSlotWorkflowModel::favoritePending() const noexcept {
     return m_pendingFavorite.has_value() || m_activeFavoriteRequestId.has_value();
 }
 
 const runtime::ConfigError* NativeSlotWorkflowModel::favoriteError() const noexcept {
     return m_favoriteError ? &*m_favoriteError : nullptr;
+}
+
+void NativeSlotWorkflowModel::enqueueRecentTattoo(
+    repository::RecentTattooIdentity identity) {
+    if (!m_recentTattooQueue.empty() && m_recentTattooQueue.back() == identity) {
+        return;
+    }
+    m_recentTattooQueue.push_back(std::move(identity));
+    queueNextRecentTattoo();
+}
+
+void NativeSlotWorkflowModel::queueNextRecentTattoo() {
+    if (m_pendingRecentTattoo || m_activeRecentTattooRequestId ||
+        m_failedRecentTattoo || m_recentTattooQueue.empty()) {
+        return;
+    }
+    auto identity = std::move(m_recentTattooQueue.front());
+    m_recentTattooQueue.pop_front();
+    m_pendingRecentTattoo = RecentTattooTicket{
+        .requestId = ++m_recentTattooRequestId,
+        .kind = RecentTattooRequestKind::record,
+        .identity = std::move(identity),
+    };
 }
 
 void NativeSlotWorkflowModel::updateAppliedTattooIdentities() {
@@ -1139,6 +1247,8 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_activeSlotQueryGeneration.reset();
     m_pendingApply.reset();
     m_activeApplyGeneration.reset();
+    m_activeApplyRecentIdentity.reset();
+    m_applyRequiresSynchronizationOnly = false;
     m_pendingRemove.reset();
     m_activeRemoveGeneration.reset();
     m_removeRequiresSynchronizationOnly = false;

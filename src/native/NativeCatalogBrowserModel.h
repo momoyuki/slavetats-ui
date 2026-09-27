@@ -28,6 +28,9 @@ public:
     void setAppliedTattooIdentities(std::vector<repository::TattooIdentity> identities);
     void setFavoritesOnly(bool value);
     void setFavoriteIdentities(std::vector<repository::FavoriteIdentity> identities);
+    void setRecentlyUsedOnly(bool value);
+    void setRecentTattooIdentities(
+        std::vector<repository::RecentTattooIdentity> identities);
     void previousPage();
     void nextPage();
     void setPageNumber(std::size_t oneBasedPage);
@@ -38,6 +41,7 @@ public:
     [[nodiscard]] repository::TattooCatalogSnapshot snapshot() const noexcept;
     [[nodiscard]] bool appliedOnly() const noexcept;
     [[nodiscard]] bool favoritesOnly() const noexcept;
+    [[nodiscard]] bool recentlyUsedOnly() const noexcept;
     [[nodiscard]] bool isFavorite(const repository::TattooDefinition& tattoo) const;
 
 private:
@@ -51,8 +55,10 @@ private:
     repository::TattooPage m_page{.pageSize = kPageSize};
     std::vector<repository::TattooIdentity> m_appliedTattooIdentities;
     std::vector<repository::FavoriteIdentity> m_favoriteIdentities;
+    std::vector<repository::RecentTattooIdentity> m_recentTattooIdentities;
     bool m_appliedOnly{};
     bool m_favoritesOnly{};
+    bool m_recentlyUsedOnly{};
 };
 
 }  // namespace stui::native

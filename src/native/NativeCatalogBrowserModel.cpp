@@ -132,6 +132,32 @@ void NativeCatalogBrowserModel::setFavoriteIdentities(
     }
 }
 
+void NativeCatalogBrowserModel::setRecentlyUsedOnly(const bool value) {
+    if (m_recentlyUsedOnly == value) {
+        return;
+    }
+    m_recentlyUsedOnly = value;
+    m_filter.recentIdentities = value
+        ? std::optional(m_recentTattooIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setRecentTattooIdentities(
+    std::vector<repository::RecentTattooIdentity> identities) {
+    if (m_recentTattooIdentities == identities) {
+        return;
+    }
+    m_recentTattooIdentities = std::move(identities);
+    if (m_recentlyUsedOnly) {
+        m_filter.recentIdentities = m_recentTattooIdentities;
+        reconcileContextualFilters();
+        query();
+    }
+}
+
 void NativeCatalogBrowserModel::previousPage() {
     if (m_filter.pageIndex == 0) {
         return;
@@ -181,6 +207,10 @@ bool NativeCatalogBrowserModel::favoritesOnly() const noexcept {
     return m_favoritesOnly;
 }
 
+bool NativeCatalogBrowserModel::recentlyUsedOnly() const noexcept {
+    return m_recentlyUsedOnly;
+}
+
 bool NativeCatalogBrowserModel::isFavorite(const repository::TattooDefinition& tattoo) const {
     const auto identity = repository::favoriteIdentity(tattoo);
     return std::ranges::any_of(m_favoriteIdentities, [&identity](const auto& favorite) {
@@ -195,6 +225,9 @@ void NativeCatalogBrowserModel::resetFilter() {
     }
     if (m_favoritesOnly) {
         m_filter.favoriteIdentities = m_favoriteIdentities;
+    }
+    if (m_recentlyUsedOnly) {
+        m_filter.recentIdentities = m_recentTattooIdentities;
     }
 }
 

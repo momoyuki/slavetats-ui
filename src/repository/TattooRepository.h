@@ -2,6 +2,7 @@
 
 #include "repository/TattooSourceParser.h"
 #include "repository/FavoriteIdentity.h"
+#include "repository/RecentTattooIdentity.h"
 
 #include <cstddef>
 #include <optional>
@@ -27,6 +28,7 @@ struct TattooFilter {
     std::string area;
     std::optional<std::vector<TattooIdentity>> appliedIdentities;
     std::optional<std::vector<FavoriteIdentity>> favoriteIdentities;
+    std::optional<std::vector<RecentTattooIdentity>> recentIdentities;
     std::size_t pageIndex{};
     std::size_t pageSize{kDefaultTattooPageSize};
 };

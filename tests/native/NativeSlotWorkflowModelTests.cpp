@@ -14,6 +14,7 @@
 namespace {
 
 using stui::core::ApplyTattooSuccess;
+using stui::core::ApplyTattooMode;
 using stui::core::RemoveTattooSuccess;
 using stui::core::RemoveTattooMode;
 using stui::core::ServiceError;
@@ -594,6 +595,98 @@ void applyFailureRetainsPreviewForRetry() {
     const auto retry = model.takeApplyRequest();
     expect(retry && retry->generation > first->generation,
         "expected retry to use a newer generation");
+}
+
+void applySynchronizationFailureRetriesWithoutRepeatingMutation() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slots(TattooArea::body, 3));
+    expect(model.selectSlot(2), "expected synchronization-failure target selected");
+    model.selectTattoo(tattoo("Corruption", 7));
+    expect(model.confirmApply(), "expected initial Apply accepted");
+    const auto first = model.takeApplyRequest();
+    expect(first && first->request.mode == ApplyTattooMode::applyAndSynchronize,
+        "expected initial Apply to mutate and synchronize");
+
+    model.completeApply(first->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::synchronizeFailed,
+        "apply sync failed",
+        MutationSideEffect::mayHaveOccurred,
+    }));
+
+    expect(model.screen() == SlotWorkflowScreen::preview && model.previewTattoo(),
+        "expected synchronization failure to retain Preview for retry");
+    expect(model.confirmApply(), "expected synchronization-only Apply retry accepted");
+    const auto retry = model.takeApplyRequest();
+    expect(retry && retry->generation > first->generation &&
+            retry->request.mode == ApplyTattooMode::synchronizeOnly,
+        "expected retry to synchronize without repeating Apply mutation");
+
+    model.completeApply(retry->generation, ApplyTattooSuccess{});
+    expect(model.screen() == SlotWorkflowScreen::currentSlots,
+        "expected successful synchronization retry to finish Apply");
+}
+
+void recentHistoryLoadsAndRecordsOnlySuccessfulApply() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+
+    model.initializeRecentTattoos();
+    const auto load = model.takeRecentTattooRequest();
+    expect(load && load->kind == stui::native::RecentTattooRequestKind::load &&
+            !load->identity,
+        "expected one explicit Recently Used load request");
+    const auto stored = stui::repository::recentTattooIdentity(
+        tattoo("Stored", 5), TattooArea::body);
+    model.completeRecentTattoo(load->requestId, stui::runtime::RecentTattooList{stored});
+    model.setRecentlyUsedOnly(true);
+    expect(model.recentlyUsedOnly(), "expected Recently Used filter available after load");
+    model.setRecentlyUsedOnly(false);
+
+    completeInitialQuery(model, slots(TattooArea::body, 3));
+    expect(model.selectSlot(2), "expected Apply target");
+    const auto selected = tattoo("Corruption", 7);
+    model.selectTattoo(selected);
+    expect(model.confirmApply(), "expected Apply request");
+    const auto apply = model.takeApplyRequest();
+    expect(!model.takeRecentTattooRequest(), "expected no history before Apply success");
+    model.completeApply(apply->generation, ApplyTattooSuccess{});
+    const auto record = model.takeRecentTattooRequest();
+    expect(record && record->kind == stui::native::RecentTattooRequestKind::record &&
+            record->identity == stui::repository::recentTattooIdentity(
+                selected, TattooArea::body),
+        "expected exact copied identity only after Apply success");
+}
+
+void failedRecentHistoryWriteRetriesWithoutChangingTattooResult() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slots(TattooArea::body, 3));
+    expect(model.selectSlot(2), "expected Apply target");
+    model.selectTattoo(tattoo("Corruption", 7));
+    expect(model.confirmApply(), "expected Apply request");
+    const auto apply = model.takeApplyRequest();
+    model.completeApply(apply->generation, ApplyTattooSuccess{});
+    const auto record = model.takeRecentTattooRequest();
+
+    model.completeRecentTattoo(record->requestId, std::unexpected(stui::runtime::ConfigError{
+        .message = "history write failed"}));
+
+    expect(model.screen() == SlotWorkflowScreen::currentSlots && !model.error() &&
+            model.recentlyUsedError() && model.recentlyUsedError()->message == "history write failed",
+        "expected Apply success preserved with separate history error");
+    expect(model.retryRecentTattoo(), "expected explicit history retry");
+    const auto retry = model.takeRecentTattooRequest();
+    expect(retry && retry->requestId > record->requestId &&
+            retry->kind == stui::native::RecentTattooRequestKind::record &&
+            retry->identity == record->identity,
+        "expected fresh history-only retry for the same identity");
 }
 
 void staleCompletionsAreIgnored() {
@@ -1914,6 +2007,12 @@ int main() {
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);
     failures += run("apply failure retains Preview for retry", applyFailureRetainsPreviewForRetry);
+    failures += run("apply synchronization failure retries without repeating mutation",
+        applySynchronizationFailureRetriesWithoutRepeatingMutation);
+    failures += run("recent history loads and records only successful Apply",
+        recentHistoryLoadsAndRecordsOnlySuccessfulApply);
+    failures += run("failed recent history retries without changing tattoo result",
+        failedRecentHistoryWriteRetriesWithoutChangingTattooResult);
     failures += run("stale completions are ignored", staleCompletionsAreIgnored);
     failures += run("query failure remains retryable", queryFailureRemainsRetryable);
     failures += run("edit appearance requires owned slot with handle and copies snapshot", editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot);

@@ -31,6 +31,9 @@ using SlotLockOperation = std::function<core::SetTattooLockedResult(
 using FavoriteOperation = std::function<runtime::FavoriteResult(
     const repository::FavoriteIdentity& identity,
     bool enabled)>;
+using RecentTattooLoadOperation = std::function<runtime::RecentTattooResult()>;
+using RecentTattooRecordOperation = std::function<runtime::RecentTattooResult(
+    const repository::RecentTattooIdentity& identity)>;
 
 class NativeSlotWorkflowRuntime {
 public:
@@ -44,7 +47,9 @@ public:
         SlotLockOperation setLocked,
         NativeSlotScheduler scheduler,
         LivePreviewClock livePreviewClock,
-        FavoriteOperation favoriteOperation = {});
+        FavoriteOperation favoriteOperation = {},
+        RecentTattooLoadOperation recentTattooLoadOperation = {},
+        RecentTattooRecordOperation recentTattooRecordOperation = {});
 
     void pump();
 
@@ -56,7 +61,9 @@ private:
     void scheduleAppearance(SlotAppearanceTicket ticket);
     void scheduleLock(SlotLockTicket ticket);
     void scheduleFavorite(FavoriteTicket ticket);
+    void scheduleRecentTattoo(RecentTattooTicket ticket);
     void drainFavoriteCompletions();
+    void drainRecentTattooCompletions();
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
@@ -68,8 +75,13 @@ private:
     NativeSlotScheduler m_scheduler;
     LivePreviewClock m_livePreviewClock;
     FavoriteOperation m_favoriteOperation;
+    RecentTattooLoadOperation m_recentTattooLoadOperation;
+    RecentTattooRecordOperation m_recentTattooRecordOperation;
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
+    std::mutex m_recentTattooCompletionMutex;
+    std::vector<std::pair<std::uint64_t, runtime::RecentTattooResult>>
+        m_recentTattooCompletions;
     std::atomic_bool m_inFlight{false};
 };
 

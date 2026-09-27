@@ -983,6 +983,27 @@ void classifiesEmptyCatalogSeparatelyFromNoMatches() {
             stui::native::catalogBrowserEmptyMessage(noFavoriteAppliedMatches) ==
                 "No favorite applied tattoos match the current filters.",
         "expected combined filter empty state guidance");
+
+    const auto noRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, false, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noRecentMatches) ==
+            "No recently used tattoos match the current filters.",
+        "expected Recently Used empty state guidance");
+    const auto noFavoriteRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, true, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noFavoriteRecentMatches) ==
+            "No favorite recently used tattoos match the current filters.",
+        "expected Favorites and Recently Used empty state guidance");
+    const auto noAppliedRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, false, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noAppliedRecentMatches) ==
+            "No applied recently used tattoos match the current filters.",
+        "expected Applied and Recently Used empty state guidance");
+    const auto noFavoriteAppliedRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, true, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noFavoriteAppliedRecentMatches) ==
+            "No favorite applied recently used tattoos match the current filters.",
+        "expected combined Recently Used empty state guidance");
 }
 
 void sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds() {
