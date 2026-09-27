@@ -4,13 +4,15 @@
 
 **Goal:** Add persistent, shared Favorites with independent star actions on Picker cards and a composable Favorites-only filter.
 
-**Status:** Implementation in progress. Move this plan to `plans/active/` with the approved implementation commit; deployment remains deferred.
+**Status:** Implemented, committed, and deployed for in-game acceptance. Automated Debug and Release suites pass; manual Favorites and Applied-only acceptance remains open.
+
+**Acceptance record (2026-09-27):** The user confirmed the deployed feature works in game. Treat Picker interaction, ordinary filtering, and normal persistence as functionally accepted. Shared-profile path equality, pack disable/re-enable restoration, and deliberately induced load/save failure recovery were not explicitly reported and remain open before archival.
 
 **Architecture:** A separate runtime `FavoriteStore` owns favorite persistence through a shared JSON transaction writer also used by `HotkeyBinding`. The workflow queues explicit desired-state requests; the runtime scheduler executes storage operations, and the presentation thread consumes copied completions. The repository filters by full favorite identities before pagination without reading files.
 
 **Tech Stack:** Existing Windows C++, CMake/Ninja/MSVC, nlohmann JSON, native ImGui adapter, injected scheduler, standalone CTest executables. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-09-24-native-favorites-design.md` (approved; implementation deferred). The Design Contract below summarizes the conversational decisions. Read `ROADMAP.md`, `CONTEXT.md`, and the domain/slot-first specs for surrounding contracts. This plan does not authorize execution.
+**Spec:** `docs/superpowers/specs/2026-09-24-native-favorites-design.md` (approved). The Design Contract below summarizes the conversational decisions. Read `ROADMAP.md`, `CONTEXT.md`, and the domain/slot-first specs for surrounding contracts. The remaining unchecked work is acceptance and documentation closure; it does not authorize new feature implementation.
 
 ## Design Contract
 
@@ -252,9 +254,15 @@ git diff --check
 - [ ] Register all new sources and test targets in CMake, linking nlohmann JSON where needed. Compiler checks provide C++ type validation; run repository lint tooling if configured, otherwise explicitly report no dedicated linter. Report vcpkg dependency-scan warnings separately from test outcomes.
 - [ ] Review the scoped diff for unrelated actor/appearance changes, credential-like data, ownership violations, and storage failure behavior. Present exact commit messages and diffs before asking for commit approval. Do not push or deploy automatically.
 - [ ] Keep Favorites unchecked in the Roadmap until intended validation passes; annotate implemented/automated validation versus pending in-game acceptance. Record Applied-only's pending in-game acceptance accurately alongside it.
-- [ ] After separate deployment approval, verify stars, filter intersections, pagination, duplicate-name identities, error/retry, and thumbnail consistency in game. Restart to verify persistence. Change profiles and verify the logged absolute configuration path and same stars. Disable/re-enable a pack and verify restoration. Confirm Hotkey and Favorites survive alternating saves and a restart.
-- [ ] Complete the deferred Applied-only acceptance in the same session: Actor/Area switches, empty results, external exclusions, Back/Preview, and Filters layout.
-- [ ] Only after acceptance, update roadmap status and archive the completed plan under `docs/superpowers/plans/archive/`. If deployment remains deferred, leave the manual checklist open and report that limitation.
+- [ ] **Phase A — Picker interaction smoke test:** verify outline and filled stars render completely at the top-left of each card without overlapping `In Use`; star clicks must not open Preview, while clicking the remaining card area must still open Preview. Confirm pending state blocks duplicate star writes without blocking ordinary navigation.
+- [ ] **Phase B — Filter and presentation regression:** open Filters and confirm the overlay does not move the thumbnail grid. Exercise Favorites-only and Applied-only separately and together with search, domain, source, section, Actor Target, and Selected Area changes. Confirm matched counts, pagination, empty-state text, visible thumbnails, Back, and Preview remain consistent; external overlays must never appear as Applied-only matches.
+- [ ] **Phase C — Restart persistence:** favorite and unfavorite distinct tattoos, including same-named entries from different sources when available. Restart the game and confirm exact membership is restored. Alternate a Hotkey change with Favorite changes, restart again, and confirm both settings survive.
+- [ ] **Phase D — Catalog availability:** favorite an entry from a pack, close the game, disable the pack, and confirm ordinary browsing remains usable without pruning the stored identity. Re-enable the same pack and confirm its star returns automatically.
+- [ ] **Phase E — Shared-profile scope:** launch two MO2 profiles sequentially, capture the absolute `SlaveTatsUI.json` path logged by each launch, and confirm both paths are identical and non-relative. Confirm the same Favorites appear in both profiles. If paths differ, stop acceptance and report the environment conflict; do not migrate or copy configuration automatically.
+- [ ] **Phase F — Recoverable failure:** using a disposable backup and a reversible test setup, trigger one Favorites load or save failure. Confirm the prior star state remains unchanged, the error is separate from tattoo-operation errors, Retry is visible, and a successful Retry recovers without repeated writes. Restore the original configuration after the check.
+- [ ] Record each phase as Pass, Fail, or Blocked with the game/profile used and concise reproduction notes for failures. A failed phase returns to a focused fix, automated regression coverage, fresh commit approval, and fresh deployment approval before only the affected phase plus the smoke test is repeated.
+- [ ] Only after Phases A–F pass, update `ROADMAP.md` to mark Favorites complete, update the spec status to accepted, and archive this plan under `docs/superpowers/plans/archive/`. Keep Applied-only acceptance recorded separately if any of its checks remain open.
+- [ ] After closure, start a separate design decision for the next vNext.4 candidate. The current roadmap order suggests Recently Used, but do not write its implementation plan until its identity, retention limit, persistence scope, ordering, and interaction with Favorites are approved in a focused spec.
 
 ## Planning Review Record
 

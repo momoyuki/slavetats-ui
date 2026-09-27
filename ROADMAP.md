@@ -152,8 +152,8 @@ Add convenience features only after the full appearance model and actor-scoped r
 Candidates:
 
 - [x] Live actor preview with throttling/debounce and explicit synchronization policy
-- [ ] Favorites — implementation in progress; in-game acceptance pending
-- [ ] Recently used tattoos
+- [ ] Favorites — implemented and functional in-game acceptance passed; extended profile, pack-restoration, and recovery acceptance pending
+- [ ] Recently used tattoos — implemented; in-game acceptance pending
 - [ ] Appearance presets
 - [ ] Saved tattoo sets / loadouts
 - [x] Applied-only browser filter

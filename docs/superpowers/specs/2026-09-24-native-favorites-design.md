@@ -1,6 +1,6 @@
 # Native Favorites Design
 
-**Status:** Approved. Implementation in progress; deployment and in-game acceptance remain deferred.
+**Status:** Implemented and deployed. User-confirmed functional in-game acceptance passed; extended shared-profile, pack-restoration, and recoverable-failure acceptance remains pending.
 
 **Milestone:** vNext.4 — Workflow Quality of Life.
 
@@ -176,7 +176,7 @@ Automated coverage must include:
 
 In-game acceptance requires persistence after restart; identical resolved configuration paths and Favorites across two sequential profile launches; pack disable/re-enable; independent star/card clicks; visible pending/error/retry behavior; filtering and thumbnail consistency; and alternating Hotkey/Favorites updates surviving restart.
 
-Deployment remains deferred. Automated success does not complete manual acceptance. Keep Favorites unchecked in the Roadmap until intended validation passes, and retain the previously deferred Applied-only acceptance as a separate open checklist item.
+Automated Debug and Release validation and user-confirmed functional in-game acceptance have passed. Keep Favorites unchecked in the Roadmap until the remaining shared-profile, pack-restoration, and recoverable-failure checks pass, and retain the previously deferred Applied-only acceptance as a separate open checklist item.
 
 ## Document Relationship
 

@@ -47,3 +47,7 @@ _Avoid_: Global applied filter, external overlay filter
 **Favorite**:
 A persistent personal catalog preference identified by the exact tuple `(domain, sourceId, section, name)`. Favorites are independent of Actor, savegame, and applied state; unavailable catalog entries remain stored until explicitly removed.
 _Avoid_: Per-Actor favorite, applied tattoo
+
+**Recently Used**:
+A persistent personal history identified by the exact tuple `(domain, sourceId, section, name, area)`. It records only successful Apply/Replace operations after synchronization, retains the ten newest identities independently for Body, Face, Hands, and Feet, and presents matching installed tattoos newest-first. It is independent of Actor Target and savegame.
+_Avoid_: Preview history, per-Actor history, global unscoped history
