@@ -58,7 +58,8 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     LivePreviewClock livePreviewClock,
     FavoriteOperation favoriteOperation,
     RecentTattooLoadOperation recentTattooLoadOperation,
-    RecentTattooRecordOperation recentTattooRecordOperation)
+    RecentTattooRecordOperation recentTattooRecordOperation,
+    AppearancePresetOperation appearancePresetOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
@@ -70,11 +71,13 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_livePreviewClock(std::move(livePreviewClock)),
       m_favoriteOperation(std::move(favoriteOperation)),
       m_recentTattooLoadOperation(std::move(recentTattooLoadOperation)),
-      m_recentTattooRecordOperation(std::move(recentTattooRecordOperation)) {}
+      m_recentTattooRecordOperation(std::move(recentTattooRecordOperation)),
+      m_appearancePresetOperation(std::move(appearancePresetOperation)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
     drainFavoriteCompletions();
     drainRecentTattooCompletions();
+    drainAppearancePresetCompletions();
     m_model.advanceLivePreview(m_livePreviewClock());
 
     bool expected = false;
@@ -114,8 +117,23 @@ void NativeSlotWorkflowRuntime::pump() {
         scheduleRecentTattoo(std::move(*recentTattoo));
         return;
     }
+    if (auto appearancePreset = m_model.takeAppearancePresetRequest()) {
+        scheduleAppearancePreset(std::move(*appearancePreset));
+        return;
+    }
 
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::drainAppearancePresetCompletions() {
+    std::vector<std::pair<std::uint64_t, runtime::AppearancePresetResult>> completions;
+    {
+        const std::scoped_lock lock(m_appearancePresetCompletionMutex);
+        completions.swap(m_appearancePresetCompletions);
+    }
+    for (auto& [requestId, result] : completions) {
+        m_model.completeAppearancePreset(requestId, std::move(result));
+    }
 }
 
 void NativeSlotWorkflowRuntime::drainRecentTattooCompletions() {
@@ -358,6 +376,37 @@ void NativeSlotWorkflowRuntime::scheduleRecentTattoo(RecentTattooTicket ticket) 
             const std::scoped_lock lock(m_recentTattooCompletionMutex);
             m_recentTattooCompletions.emplace_back(requestId, std::unexpected(
                 runtime::ConfigError{.message = "Failed to schedule recent tattoo storage."}));
+        }
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleAppearancePreset(AppearancePresetTicket ticket) {
+    const std::uint64_t requestId = ticket.requestId;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        runtime::AppearancePresetResult result = std::unexpected(runtime::ConfigError{
+            .message = "Appearance preset storage operation failed."});
+        try {
+            if (m_appearancePresetOperation) {
+                result = m_appearancePresetOperation(ticket);
+            } else {
+                result = std::unexpected(runtime::ConfigError{
+                    .message = "Appearance preset storage is unavailable."});
+            }
+        } catch (...) {
+        }
+        const std::scoped_lock lock(m_appearancePresetCompletionMutex);
+        m_appearancePresetCompletions.emplace_back(ticket.requestId, std::move(result));
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        {
+            const std::scoped_lock lock(m_appearancePresetCompletionMutex);
+            m_appearancePresetCompletions.emplace_back(requestId, std::unexpected(
+                runtime::ConfigError{
+                    .message = "Failed to schedule appearance preset storage."}));
         }
         m_inFlight.store(false);
     }

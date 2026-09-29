@@ -34,6 +34,8 @@ using FavoriteOperation = std::function<runtime::FavoriteResult(
 using RecentTattooLoadOperation = std::function<runtime::RecentTattooResult()>;
 using RecentTattooRecordOperation = std::function<runtime::RecentTattooResult(
     const repository::RecentTattooIdentity& identity)>;
+using AppearancePresetOperation = std::function<runtime::AppearancePresetResult(
+    const AppearancePresetTicket& ticket)>;
 
 class NativeSlotWorkflowRuntime {
 public:
@@ -49,7 +51,8 @@ public:
         LivePreviewClock livePreviewClock,
         FavoriteOperation favoriteOperation = {},
         RecentTattooLoadOperation recentTattooLoadOperation = {},
-        RecentTattooRecordOperation recentTattooRecordOperation = {});
+        RecentTattooRecordOperation recentTattooRecordOperation = {},
+        AppearancePresetOperation appearancePresetOperation = {});
 
     void pump();
 
@@ -62,8 +65,10 @@ private:
     void scheduleLock(SlotLockTicket ticket);
     void scheduleFavorite(FavoriteTicket ticket);
     void scheduleRecentTattoo(RecentTattooTicket ticket);
+    void scheduleAppearancePreset(AppearancePresetTicket ticket);
     void drainFavoriteCompletions();
     void drainRecentTattooCompletions();
+    void drainAppearancePresetCompletions();
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
@@ -77,11 +82,15 @@ private:
     FavoriteOperation m_favoriteOperation;
     RecentTattooLoadOperation m_recentTattooLoadOperation;
     RecentTattooRecordOperation m_recentTattooRecordOperation;
+    AppearancePresetOperation m_appearancePresetOperation;
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::mutex m_recentTattooCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::RecentTattooResult>>
         m_recentTattooCompletions;
+    std::mutex m_appearancePresetCompletionMutex;
+    std::vector<std::pair<std::uint64_t, runtime::AppearancePresetResult>>
+        m_appearancePresetCompletions;
     std::atomic_bool m_inFlight{false};
 };
 

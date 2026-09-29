@@ -10,6 +10,7 @@
 #include "native/NativeThumbnailRuntime.h"
 #include "native/OfficialMenuFrameworkAdapter.h"
 #include "runtime/ApplicationRuntime.h"
+#include "runtime/AppearancePresetStore.h"
 #include "runtime/HotkeyBinding.h"
 #include "runtime/PluginConfigFile.h"
 #include "runtime/FavoriteStore.h"
@@ -34,6 +35,7 @@ native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
 std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
 std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
 std::unique_ptr<runtime::RecentTattooStore> g_recentTattooStore;
+std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
     [] { return native::resolveCrosshairActorTarget(); },
@@ -80,6 +82,32 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
                 .message = "Recent tattoo storage is unavailable."}));
         }
         return g_recentTattooStore->record(identity);
+    },
+    [](const native::AppearancePresetTicket& ticket) {
+        if (!g_appearancePresetStore) {
+            return runtime::AppearancePresetResult(std::unexpected(runtime::ConfigError{
+                .message = "Appearance preset storage is unavailable."}));
+        }
+        switch (ticket.kind) {
+        case native::AppearancePresetRequestKind::load:
+            return g_appearancePresetStore->load();
+        case native::AppearancePresetRequestKind::create:
+            if (ticket.preset) return g_appearancePresetStore->create(*ticket.preset);
+            break;
+        case native::AppearancePresetRequestKind::overwrite:
+            if (ticket.preset) return g_appearancePresetStore->overwrite(*ticket.preset);
+            break;
+        case native::AppearancePresetRequestKind::rename:
+            if (ticket.preset) {
+                return g_appearancePresetStore->rename(
+                    ticket.existingName, ticket.preset->name);
+            }
+            break;
+        case native::AppearancePresetRequestKind::erase:
+            return g_appearancePresetStore->erase(ticket.existingName);
+        }
+        return runtime::AppearancePresetResult(std::unexpected(runtime::ConfigError{
+            .message = "Appearance preset request is incomplete."}));
     });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
@@ -327,8 +355,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
             logger::warn("SlaveTatsUI: failed to load favorites: {}", favorites.error().message);
         }
         g_recentTattooStore = std::make_unique<runtime::RecentTattooStore>(g_pluginConfig);
+        g_appearancePresetStore =
+            std::make_unique<runtime::AppearancePresetStore>(g_pluginConfig);
     }
     g_nativeSlotWorkflow.initializeRecentTattoos();
+    g_nativeSlotWorkflow.initializeAppearancePresets();
 
     static native::OfficialMenuFrameworkAdapter menuFrameworkAdapter;
     static native::NativeMenu nativeMenu([](native::NativeMenu& menu) {

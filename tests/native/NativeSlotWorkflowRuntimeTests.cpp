@@ -183,6 +183,14 @@ struct Fixture {
                   ++recentRecordCount;
                   recordedRecentIdentity = identity;
                   return recentRecordResult;
+              },
+              [this](const stui::native::AppearancePresetTicket& ticket) {
+                  ++appearancePresetCount;
+                  appearancePresetTicket = ticket;
+                  if (appearancePresetThrows) {
+                      throw std::runtime_error("appearance preset failed");
+                  }
+                  return appearancePresetResult;
               }) {}
 
     stui::repository::TattooCatalogSnapshot snapshot =
@@ -204,6 +212,7 @@ struct Fixture {
     std::size_t favoriteCount{};
     std::size_t recentLoadCount{};
     std::size_t recentRecordCount{};
+    std::size_t appearancePresetCount{};
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
@@ -219,9 +228,13 @@ struct Fixture {
     bool appearanceSyncFails{};
     bool schedulerThrows{};
     bool favoriteThrows{};
+    bool appearancePresetThrows{};
     stui::runtime::FavoriteResult favoriteResult{stui::runtime::FavoriteList{}};
     stui::runtime::RecentTattooResult recentLoadResult{stui::runtime::RecentTattooList{}};
     stui::runtime::RecentTattooResult recentRecordResult{stui::runtime::RecentTattooList{}};
+    stui::runtime::AppearancePresetResult appearancePresetResult{
+        stui::runtime::AppearancePresetList{}};
+    stui::native::AppearancePresetTicket appearancePresetTicket;
     stui::repository::RecentTattooIdentity recordedRecentIdentity;
     std::chrono::steady_clock::time_point now{};
     NativeSlotWorkflowRuntime runtime;
@@ -954,6 +967,63 @@ void successfulApplySchedulesRecentRecordThroughTheMailbox() {
         "expected next presentation pump to publish recorded history");
 }
 
+void appearancePresetCompletionPublishesOnlyOnNextPumpAndMapsFailures() {
+    for (int failure = 0; failure < 3; ++failure) {
+        Fixture fixture;
+        fixture.model.initializeAppearancePresets();
+        fixture.appearancePresetResult = stui::runtime::AppearancePresetList{
+            stui::runtime::AppearancePreset{.name = "First"}};
+        fixture.appearancePresetThrows = failure == 1;
+        fixture.schedulerThrows = failure == 2;
+
+        fixture.runtime.pump();
+        if (failure == 2) {
+            expect(fixture.model.appearancePresetPending(),
+                "expected scheduler rejection completion held in mailbox");
+        } else {
+            expect(fixture.scheduled.size() == 1 && fixture.model.appearancePresetPending(),
+                "expected preset storage scheduled");
+            fixture.scheduled.front()();
+            expect(fixture.appearancePresetCount == 1 &&
+                    fixture.appearancePresetTicket.kind ==
+                        stui::native::AppearancePresetRequestKind::load &&
+                    fixture.model.appearancePresetPending(),
+                "expected worker result held until presentation pump");
+        }
+        fixture.runtime.pump();
+        if (failure == 0) {
+            expect(!fixture.model.appearancePresetPending() &&
+                    fixture.model.appearancePresets().size() == 1 &&
+                    !fixture.model.appearancePresetError(),
+                "expected successful preset completion published on next pump");
+        } else {
+            expect(!fixture.model.appearancePresetPending() &&
+                    fixture.model.appearancePresetError(),
+                "expected exception and scheduler rejection mapped to preset error");
+        }
+    }
+}
+
+void missingAppearancePresetOperationCompletesAsRetryableError() {
+    auto snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({}), .sourceCount = 0});
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    std::vector<NativeSlotTask> scheduled;
+    NativeSlotWorkflowRuntime runtime(
+        model, {}, {}, {}, {}, {}, {},
+        [&](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
+        [] { return std::chrono::steady_clock::time_point{}; });
+
+    model.initializeAppearancePresets();
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected unavailable preset operation scheduled");
+    scheduled.front()();
+    runtime.pump();
+    expect(model.appearancePresetError() && model.retryAppearancePreset(),
+        "expected missing preset operation exposed as retryable error");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -1005,5 +1075,9 @@ int main() {
         recentLoadCompletionPublishesOnlyOnTheNextPump);
     failures += run("successful Apply schedules recent record through mailbox",
         successfulApplySchedulesRecentRecordThroughTheMailbox);
+    failures += run("appearance preset completion publishes on next pump and maps failures",
+        appearancePresetCompletionPublishesOnlyOnNextPumpAndMapsFailures);
+    failures += run("missing appearance preset operation is retryable",
+        missingAppearancePresetOperationCompletesAsRetryableError);
     return failures == 0 ? 0 : 1;
 }
