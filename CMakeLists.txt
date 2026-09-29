@@ -38,6 +38,7 @@ set(headers
     src/runtime/PluginConfigFile.h
     src/runtime/FavoriteStore.h
     src/runtime/RecentTattooStore.h
+    src/runtime/AppearancePresetStore.h
     src/runtime/UpdateTattooAppearanceOrchestration.h
     src/runtime/SlaveTatsRuntime.h
     src/repository/TattooCatalogLoader.h
@@ -73,6 +74,7 @@ set(sources
     src/runtime/PluginConfigFile.cpp
     src/runtime/FavoriteStore.cpp
     src/runtime/RecentTattooStore.cpp
+    src/runtime/AppearancePresetStore.cpp
     src/runtime/UpdateTattooAppearanceOrchestration.cpp
     src/runtime/SlaveTatsRuntime.cpp
     src/repository/TattooCatalogLoader.cpp
@@ -143,6 +145,18 @@ if(BUILD_TESTING)
     target_include_directories(RecentTattooStoreTests PRIVATE src)
     target_link_libraries(RecentTattooStoreTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME RecentTattooStoreTests COMMAND RecentTattooStoreTests)
+
+    add_executable(AppearancePresetStoreTests
+        src/runtime/PluginConfigFile.cpp
+        src/runtime/AppearancePresetStore.cpp
+        src/runtime/HotkeyBinding.cpp
+        src/runtime/FavoriteStore.cpp
+        src/runtime/RecentTattooStore.cpp
+        tests/runtime/AppearancePresetStoreTests.cpp
+    )
+    target_include_directories(AppearancePresetStoreTests PRIVATE src)
+    target_link_libraries(AppearancePresetStoreTests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME AppearancePresetStoreTests COMMAND AppearancePresetStoreTests)
 
     add_executable(NativeThumbnailRuntimeTests
         src/native/NativeThumbnailController.cpp
