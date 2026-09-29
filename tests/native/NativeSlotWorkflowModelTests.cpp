@@ -31,6 +31,7 @@ using stui::core::UpdateTattooAppearanceSuccess;
 using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
 using stui::native::AppearanceOperationPurpose;
+using stui::native::AppearancePresetRequestKind;
 using stui::native::LivePreviewStatus;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotWorkflowModel;
@@ -966,6 +967,152 @@ void appearancePresetSupersedesPendingPreviewAndRestoresOriginalAfterPreview() {
                 restore->request.specularStrength == 1.25F,
             "expected Cancel and Close to restore exact pre-preset snapshot");
     }
+}
+
+void appearancePresetRequestsPublishOnlySuccessfulCurrentCompletion() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+
+    model.initializeAppearancePresets();
+    const auto load = model.takeAppearancePresetRequest();
+    expect(load && load->kind == AppearancePresetRequestKind::load &&
+            model.appearancePresetPending(),
+        "expected asynchronous initial preset load");
+    model.completeAppearancePreset(load->requestId + 1,
+        stui::runtime::AppearancePresetList{appearancePreset("Stale")});
+    expect(model.appearancePresets().empty() && model.appearancePresetPending(),
+        "expected stale completion ignored");
+    const stui::runtime::AppearancePresetList loaded{
+        appearancePreset("First"), appearancePreset("Second")};
+    model.completeAppearancePreset(load->requestId, loaded);
+    expect(model.appearancePresets() == loaded && !model.appearancePresetPending() &&
+            !model.appearancePresetError(),
+        "expected successful current completion to publish ordered list");
+}
+
+void appearancePresetCreateOverwriteRenameAndDeleteRequireCorrectIntent() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.initializeAppearancePresets();
+    const auto load = model.takeAppearancePresetRequest();
+    model.completeAppearancePreset(load->requestId,
+        stui::runtime::AppearancePresetList{appearancePreset("First"), appearancePreset("Second")});
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.beginEditAppearance(), "expected edit session");
+    model.setEditedAppearance(0x112233, 0.5F, 0x445566, 12.0F, 13.0F, 4.0F);
+
+    expect(model.requestCreateAppearancePreset("Third"), "expected unique create request");
+    const auto create = model.takeAppearancePresetRequest();
+    expect(create && create->kind == AppearancePresetRequestKind::create && create->preset &&
+            create->preset->name == "Third" && create->preset->color == 0x112233,
+        "expected create ticket to capture edited appearance");
+    model.completeAppearancePreset(create->requestId,
+        stui::runtime::AppearancePresetList{
+            appearancePreset("First"), appearancePreset("Second"), *create->preset});
+
+    expect(model.requestCreateAppearancePreset(" first "),
+        "expected duplicate create to open overwrite confirmation");
+    expect(model.appearancePresetOverwriteConfirmation() &&
+            !model.takeAppearancePresetRequest(),
+        "expected no optimistic overwrite ticket before confirmation");
+    expect(model.confirmAppearancePresetOverwrite(), "expected overwrite confirmation");
+    const auto overwrite = model.takeAppearancePresetRequest();
+    expect(overwrite && overwrite->kind == AppearancePresetRequestKind::overwrite &&
+            overwrite->preset && overwrite->preset->name == "first" &&
+            overwrite->preset->color == 0x112233 && overwrite->preset->alpha == 0.5F &&
+            overwrite->preset->glow == 0x445566 &&
+            overwrite->preset->glossiness == 12.0F &&
+            overwrite->preset->specularStrength == 13.0F &&
+            overwrite->preset->emissiveMult == 4.0F,
+        "expected overwrite ticket to capture current six edited values");
+    expect(model.appearancePresets().at(0).name == "First",
+        "expected list unchanged while overwrite pending");
+    model.completeAppearancePreset(overwrite->requestId,
+        stui::runtime::AppearancePresetList{
+            *overwrite->preset, appearancePreset("Second"), *create->preset});
+
+    model.selectAppearancePreset(1);
+    expect(!model.requestRenameAppearancePreset("FIRST") &&
+            model.appearancePresetError(),
+        "expected folded rename collision rejected locally");
+    expect(model.requestRenameAppearancePreset("Renamed"), "expected valid rename request");
+    const auto rename = model.takeAppearancePresetRequest();
+    expect(rename && rename->kind == AppearancePresetRequestKind::rename &&
+            rename->existingName == "Second" && rename->preset &&
+            rename->preset->name == "Renamed",
+        "expected rename ticket to retain old name and requested spelling");
+    model.completeAppearancePreset(rename->requestId,
+        stui::runtime::AppearancePresetList{
+            appearancePreset("first"), appearancePreset("Renamed"), *create->preset});
+
+    expect(model.requestDeleteAppearancePreset() &&
+            model.appearancePresetDeleteConfirmation() &&
+            !model.takeAppearancePresetRequest(),
+        "expected explicit delete confirmation before ticket");
+    expect(model.confirmAppearancePresetDelete(), "expected delete confirmation accepted");
+    const auto erase = model.takeAppearancePresetRequest();
+    expect(erase && erase->kind == AppearancePresetRequestKind::erase &&
+            erase->existingName == "Renamed",
+        "expected exact selected preset delete ticket");
+}
+
+void appearancePresetFailureRetriesExactRequestWithFreshId() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.initializeAppearancePresets();
+    const auto first = model.takeAppearancePresetRequest();
+    model.completeAppearancePreset(first->requestId,
+        std::unexpected(stui::runtime::ConfigError{.message = "disk failure"}));
+
+    expect(model.appearancePresetError() && !model.appearancePresetPending(),
+        "expected separate preset persistence error");
+    expect(model.retryAppearancePreset(), "expected failed preset request retryable");
+    const auto retry = model.takeAppearancePresetRequest();
+    expect(retry && retry->requestId > first->requestId &&
+            retry->kind == AppearancePresetRequestKind::load &&
+            !model.appearancePresetError(),
+        "expected exact failed request retried with fresh ID");
+    model.completeAppearancePreset(first->requestId,
+        stui::runtime::AppearancePresetList{appearancePreset("Stale")});
+    expect(model.appearancePresets().empty() && model.appearancePresetPending(),
+        "expected old completion ignored after retry");
+}
+
+void appearancePresetLimitAndConfirmationCancellationStayLocal() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.initializeAppearancePresets();
+    const auto load = model.takeAppearancePresetRequest();
+    stui::runtime::AppearancePresetList full;
+    for (int index = 0; index < 20; ++index) {
+        full.push_back(appearancePreset("Preset " + std::to_string(index)));
+    }
+    model.completeAppearancePreset(load->requestId, full);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.beginEditAppearance(), "expected edit session");
+
+    expect(!model.requestCreateAppearancePreset("Twenty First") &&
+            model.appearancePresetError() && !model.takeAppearancePresetRequest(),
+        "expected unique create rejected locally at limit");
+    expect(model.requestCreateAppearancePreset("Preset 0") &&
+            model.appearancePresetOverwriteConfirmation(),
+        "expected overwrite still available at limit");
+    model.cancelAppearancePresetConfirmation();
+    expect(!model.appearancePresetOverwriteConfirmation() &&
+            !model.takeAppearancePresetRequest(),
+        "expected overwrite cancellation to remain local");
+    model.selectAppearancePreset(0);
+    expect(model.requestDeleteAppearancePreset() &&
+            model.appearancePresetDeleteConfirmation(),
+        "expected delete confirmation at limit");
+    model.cancelAppearancePresetConfirmation();
+    expect(!model.appearancePresetDeleteConfirmation() &&
+            !model.takeAppearancePresetRequest(),
+        "expected delete cancellation to remain local");
 }
 
 void lockTicketRefreshesSnapshotAndGuardsLockedMutations() {
@@ -2131,6 +2278,14 @@ int main() {
         appearancePresetLoadsOnlyEditableValuesAndUsesExistingSaveCancelContracts);
     failures += run("appearance preset supersedes pending preview and restores original",
         appearancePresetSupersedesPendingPreviewAndRestoresOriginalAfterPreview);
+    failures += run("appearance preset requests publish only current completion",
+        appearancePresetRequestsPublishOnlySuccessfulCurrentCompletion);
+    failures += run("appearance preset mutations require correct intent",
+        appearancePresetCreateOverwriteRenameAndDeleteRequireCorrectIntent);
+    failures += run("appearance preset failure retries exact request",
+        appearancePresetFailureRetriesExactRequestWithFreshId);
+    failures += run("appearance preset limit and confirmation cancellation stay local",
+        appearancePresetLimitAndConfirmationCancellationStayLocal);
     failures += run("lock ticket refreshes snapshot and guards locked mutations", lockTicketRefreshesSnapshotAndGuardsLockedMutations);
     failures += run("Current Slots lock toggle does not navigate to Slot Actions", currentSlotLockToggleDoesNotNavigateToSlotActions);
     failures += run("changing area invalidates Lock completion", changingAreaInvalidatesLockCompletion);

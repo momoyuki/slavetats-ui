@@ -43,6 +43,16 @@ bool equalsFoldedASCII(std::string_view left, std::string_view right) noexcept {
     return true;
 }
 
+std::string trimASCII(std::string value) {
+    const auto whitespace = [](const char character) {
+        return character == ' ' || character == '\t' || character == '\r' ||
+            character == '\n' || character == '\f' || character == '\v';
+    };
+    const auto first = std::find_if_not(value.begin(), value.end(), whitespace);
+    const auto last = std::find_if_not(value.rbegin(), value.rend(), whitespace).base();
+    return first < last ? std::string(first, last) : std::string{};
+}
+
 }  // namespace
 
 NativeSlotWorkflowModel::NativeSlotWorkflowModel(NativeCatalogBrowserModel& catalog) noexcept :
@@ -841,6 +851,145 @@ bool NativeSlotWorkflowModel::retryRecentTattoo() {
     return true;
 }
 
+void NativeSlotWorkflowModel::initializeAppearancePresets() {
+    if (appearancePresetPending()) {
+        return;
+    }
+    m_appearancePresetError.reset();
+    m_failedAppearancePreset.reset();
+    (void)queueAppearancePresetRequest(AppearancePresetTicket{
+        .kind = AppearancePresetRequestKind::load,
+    });
+}
+
+bool NativeSlotWorkflowModel::requestCreateAppearancePreset(std::string name) {
+    if (!m_editAppearance || m_screen != SlotWorkflowScreen::editAppearance ||
+        appearancePresetPending() || m_appearancePresetOverwriteConfirmation ||
+        m_appearancePresetDeleteConfirmation) {
+        return false;
+    }
+    name = trimASCII(std::move(name));
+    if (name.empty()) {
+        m_appearancePresetError = runtime::ConfigError{
+            .message = "Appearance preset name must not be empty."};
+        return false;
+    }
+    runtime::AppearancePreset preset{
+        .name = std::move(name),
+        .color = static_cast<std::uint32_t>(m_editAppearance->edited.color),
+        .alpha = m_editAppearance->edited.alpha,
+        .glow = static_cast<std::uint32_t>(m_editAppearance->edited.glow),
+        .emissiveMult = m_editAppearance->edited.emissiveMult,
+        .glossiness = m_editAppearance->edited.glossiness,
+        .specularStrength = m_editAppearance->edited.specularStrength,
+    };
+    const auto duplicate = std::ranges::find_if(m_appearancePresets,
+        [&](const runtime::AppearancePreset& existing) {
+            return equalsFoldedASCII(existing.name, preset.name);
+        });
+    m_appearancePresetError.reset();
+    if (duplicate != m_appearancePresets.end()) {
+        m_appearancePresetOverwriteConfirmation = std::move(preset);
+        return true;
+    }
+    if (m_appearancePresets.size() >= runtime::kAppearancePresetLimit) {
+        m_appearancePresetError = runtime::ConfigError{
+            .message = "Appearance preset limit reached."};
+        return false;
+    }
+    return queueAppearancePresetRequest(AppearancePresetTicket{
+        .kind = AppearancePresetRequestKind::create,
+        .preset = std::move(preset),
+    });
+}
+
+bool NativeSlotWorkflowModel::confirmAppearancePresetOverwrite() {
+    if (!m_appearancePresetOverwriteConfirmation || appearancePresetPending()) {
+        return false;
+    }
+    auto preset = std::move(*m_appearancePresetOverwriteConfirmation);
+    m_appearancePresetOverwriteConfirmation.reset();
+    return queueAppearancePresetRequest(AppearancePresetTicket{
+        .kind = AppearancePresetRequestKind::overwrite,
+        .preset = std::move(preset),
+    });
+}
+
+bool NativeSlotWorkflowModel::requestRenameAppearancePreset(std::string newName) {
+    if (!m_selectedAppearancePreset || *m_selectedAppearancePreset >= m_appearancePresets.size() ||
+        appearancePresetPending() || m_appearancePresetOverwriteConfirmation ||
+        m_appearancePresetDeleteConfirmation) {
+        return false;
+    }
+    newName = trimASCII(std::move(newName));
+    if (newName.empty()) {
+        m_appearancePresetError = runtime::ConfigError{
+            .message = "Appearance preset name must not be empty."};
+        return false;
+    }
+    const auto selected = *m_selectedAppearancePreset;
+    for (std::size_t index = 0; index < m_appearancePresets.size(); ++index) {
+        if (index != selected && equalsFoldedASCII(m_appearancePresets[index].name, newName)) {
+            m_appearancePresetError = runtime::ConfigError{
+                .message = "Appearance preset name already exists."};
+            return false;
+        }
+    }
+    m_appearancePresetError.reset();
+    return queueAppearancePresetRequest(AppearancePresetTicket{
+        .kind = AppearancePresetRequestKind::rename,
+        .preset = runtime::AppearancePreset{.name = std::move(newName)},
+        .existingName = m_appearancePresets[selected].name,
+    });
+}
+
+bool NativeSlotWorkflowModel::requestDeleteAppearancePreset() {
+    if (!m_selectedAppearancePreset || *m_selectedAppearancePreset >= m_appearancePresets.size() ||
+        appearancePresetPending() || m_appearancePresetOverwriteConfirmation) {
+        return false;
+    }
+    m_appearancePresetDeleteConfirmation = true;
+    m_appearancePresetError.reset();
+    return true;
+}
+
+bool NativeSlotWorkflowModel::confirmAppearancePresetDelete() {
+    if (!m_appearancePresetDeleteConfirmation || !m_selectedAppearancePreset ||
+        *m_selectedAppearancePreset >= m_appearancePresets.size() || appearancePresetPending()) {
+        return false;
+    }
+    const auto name = m_appearancePresets[*m_selectedAppearancePreset].name;
+    m_appearancePresetDeleteConfirmation = false;
+    return queueAppearancePresetRequest(AppearancePresetTicket{
+        .kind = AppearancePresetRequestKind::erase,
+        .existingName = name,
+    });
+}
+
+void NativeSlotWorkflowModel::cancelAppearancePresetConfirmation() noexcept {
+    m_appearancePresetOverwriteConfirmation.reset();
+    m_appearancePresetDeleteConfirmation = false;
+}
+
+bool NativeSlotWorkflowModel::retryAppearancePreset() {
+    if (!m_failedAppearancePreset || appearancePresetPending()) {
+        return false;
+    }
+    auto retry = *m_failedAppearancePreset;
+    retry.requestId = 0;
+    m_appearancePresetError.reset();
+    return queueAppearancePresetRequest(std::move(retry));
+}
+
+bool NativeSlotWorkflowModel::queueAppearancePresetRequest(AppearancePresetTicket ticket) {
+    if (m_pendingAppearancePreset || m_activeAppearancePresetRequestId) {
+        return false;
+    }
+    ticket.requestId = ++m_appearancePresetRequestId;
+    m_pendingAppearancePreset = std::move(ticket);
+    return true;
+}
+
 std::optional<FavoriteTicket> NativeSlotWorkflowModel::takeFavoriteRequest() {
     auto ticket = std::move(m_pendingFavorite);
     m_pendingFavorite.reset();
@@ -857,6 +1006,16 @@ std::optional<RecentTattooTicket> NativeSlotWorkflowModel::takeRecentTattooReque
     if (ticket) {
         m_activeRecentTattooRequestId = ticket->requestId;
         m_activeRecentTattoo = *ticket;
+    }
+    return ticket;
+}
+
+std::optional<AppearancePresetTicket> NativeSlotWorkflowModel::takeAppearancePresetRequest() {
+    auto ticket = std::move(m_pendingAppearancePreset);
+    m_pendingAppearancePreset.reset();
+    if (ticket) {
+        m_activeAppearancePresetRequestId = ticket->requestId;
+        m_activeAppearancePreset = *ticket;
     }
     return ticket;
 }
@@ -1064,6 +1223,39 @@ void NativeSlotWorkflowModel::completeRecentTattoo(
     queueNextRecentTattoo();
 }
 
+void NativeSlotWorkflowModel::completeAppearancePreset(
+    const std::uint64_t requestId,
+    runtime::AppearancePresetResult result) {
+    if (!m_activeAppearancePresetRequestId ||
+        requestId != *m_activeAppearancePresetRequestId) {
+        return;
+    }
+    m_activeAppearancePresetRequestId.reset();
+    if (!result) {
+        m_appearancePresetError = std::move(result.error());
+        m_failedAppearancePreset = std::move(m_activeAppearancePreset);
+        return;
+    }
+
+    const auto completed = std::move(m_activeAppearancePreset);
+    m_appearancePresets = std::move(*result);
+    m_activeAppearancePreset.reset();
+    m_failedAppearancePreset.reset();
+    m_appearancePresetError.reset();
+    m_selectedAppearancePreset.reset();
+    if (completed && completed->kind != AppearancePresetRequestKind::load &&
+        completed->kind != AppearancePresetRequestKind::erase && completed->preset) {
+        const auto found = std::ranges::find_if(m_appearancePresets,
+            [&](const runtime::AppearancePreset& preset) {
+                return equalsFoldedASCII(preset.name, completed->preset->name);
+            });
+        if (found != m_appearancePresets.end()) {
+            m_selectedAppearancePreset = static_cast<std::size_t>(
+                std::distance(m_appearancePresets.begin(), found));
+        }
+    }
+}
+
 SlotWorkflowScreen NativeSlotWorkflowModel::screen() const noexcept {
     return m_screen;
 }
@@ -1154,6 +1346,25 @@ bool NativeSlotWorkflowModel::recentlyUsedPending() const noexcept {
 
 const runtime::ConfigError* NativeSlotWorkflowModel::recentlyUsedError() const noexcept {
     return m_recentTattooError ? &*m_recentTattooError : nullptr;
+}
+
+bool NativeSlotWorkflowModel::appearancePresetPending() const noexcept {
+    return m_pendingAppearancePreset.has_value() ||
+        m_activeAppearancePresetRequestId.has_value();
+}
+
+const runtime::ConfigError* NativeSlotWorkflowModel::appearancePresetError() const noexcept {
+    return m_appearancePresetError ? &*m_appearancePresetError : nullptr;
+}
+
+const runtime::AppearancePreset*
+NativeSlotWorkflowModel::appearancePresetOverwriteConfirmation() const noexcept {
+    return m_appearancePresetOverwriteConfirmation ?
+        &*m_appearancePresetOverwriteConfirmation : nullptr;
+}
+
+bool NativeSlotWorkflowModel::appearancePresetDeleteConfirmation() const noexcept {
+    return m_appearancePresetDeleteConfirmation;
 }
 
 bool NativeSlotWorkflowModel::favoritePending() const noexcept {

@@ -3,8 +3,8 @@
 #include "core/TattooModels.h"
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
-#include "runtime/FavoriteStore.h"
 #include "runtime/AppearancePresetStore.h"
+#include "runtime/FavoriteStore.h"
 #include "runtime/RecentTattooStore.h"
 
 #include <array>
@@ -126,6 +126,15 @@ struct RecentTattooTicket {
     std::optional<repository::RecentTattooIdentity> identity;
 };
 
+enum class AppearancePresetRequestKind { load, create, overwrite, rename, erase };
+
+struct AppearancePresetTicket {
+    std::uint64_t requestId{};
+    AppearancePresetRequestKind kind{AppearancePresetRequestKind::load};
+    std::optional<runtime::AppearancePreset> preset;
+    std::string existingName;
+};
+
 class NativeSlotWorkflowModel {
 public:
     static constexpr std::size_t kPageSize = 6;
@@ -185,6 +194,14 @@ public:
     [[nodiscard]] bool retryFavorite();
     void initializeRecentTattoos();
     [[nodiscard]] bool retryRecentTattoo();
+    void initializeAppearancePresets();
+    [[nodiscard]] bool requestCreateAppearancePreset(std::string name);
+    [[nodiscard]] bool confirmAppearancePresetOverwrite();
+    [[nodiscard]] bool requestRenameAppearancePreset(std::string newName);
+    [[nodiscard]] bool requestDeleteAppearancePreset();
+    [[nodiscard]] bool confirmAppearancePresetDelete();
+    void cancelAppearancePresetConfirmation() noexcept;
+    [[nodiscard]] bool retryAppearancePreset();
 
     [[nodiscard]] std::optional<SlotQueryTicket> takeSlotQuery();
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
@@ -193,6 +210,7 @@ public:
     [[nodiscard]] std::optional<SlotLockTicket> takeLockRequest();
     [[nodiscard]] std::optional<FavoriteTicket> takeFavoriteRequest();
     [[nodiscard]] std::optional<RecentTattooTicket> takeRecentTattooRequest();
+    [[nodiscard]] std::optional<AppearancePresetTicket> takeAppearancePresetRequest();
     void completeSlotQuery(std::uint64_t generation, core::TattooSlotsResult result);
     void completeApply(std::uint64_t generation, core::ApplyTattooResult result);
     void completeRemove(std::uint64_t generation, core::RemoveTattooResult result);
@@ -202,6 +220,9 @@ public:
     void completeLockStateChange(std::uint64_t generation, core::SetTattooLockedResult result);
     void completeFavorite(std::uint64_t requestId, runtime::FavoriteResult result);
     void completeRecentTattoo(std::uint64_t requestId, runtime::RecentTattooResult result);
+    void completeAppearancePreset(
+        std::uint64_t requestId,
+        runtime::AppearancePresetResult result);
 
     [[nodiscard]] SlotWorkflowScreen screen() const noexcept;
     [[nodiscard]] core::TattooArea selectedArea() const noexcept;
@@ -224,6 +245,10 @@ public:
     [[nodiscard]] bool recentlyUsedOnly() const noexcept;
     [[nodiscard]] bool recentlyUsedPending() const noexcept;
     [[nodiscard]] const runtime::ConfigError* recentlyUsedError() const noexcept;
+    [[nodiscard]] bool appearancePresetPending() const noexcept;
+    [[nodiscard]] const runtime::ConfigError* appearancePresetError() const noexcept;
+    [[nodiscard]] const runtime::AppearancePreset* appearancePresetOverwriteConfirmation() const noexcept;
+    [[nodiscard]] bool appearancePresetDeleteConfirmation() const noexcept;
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(
         const repository::TattooDefinition& tattoo) const;
     [[nodiscard]] const core::ServiceError* error() const noexcept;
@@ -258,6 +283,7 @@ private:
     [[nodiscard]] bool queueSlotLockToggle(
         std::int32_t slot,
         SlotWorkflowScreen originScreen);
+    [[nodiscard]] bool queueAppearancePresetRequest(AppearancePresetTicket ticket);
 
     NativeCatalogBrowserModel& m_catalog;
     ActorTargetKind m_selectedTargetKind{ActorTargetKind::player};
@@ -299,6 +325,14 @@ private:
     std::optional<runtime::ConfigError> m_recentTattooError;
     std::deque<repository::RecentTattooIdentity> m_recentTattooQueue;
     std::uint64_t m_recentTattooRequestId{};
+    std::optional<AppearancePresetTicket> m_pendingAppearancePreset;
+    std::optional<std::uint64_t> m_activeAppearancePresetRequestId;
+    std::optional<AppearancePresetTicket> m_activeAppearancePreset;
+    std::optional<AppearancePresetTicket> m_failedAppearancePreset;
+    std::optional<runtime::AppearancePreset> m_appearancePresetOverwriteConfirmation;
+    bool m_appearancePresetDeleteConfirmation{};
+    std::optional<runtime::ConfigError> m_appearancePresetError;
+    std::uint64_t m_appearancePresetRequestId{};
     bool m_applyRequiresSynchronizationOnly{};
     bool m_removeRequiresSynchronizationOnly{};
     std::optional<AppearanceEditSession> m_editAppearance;
