@@ -51,3 +51,7 @@ _Avoid_: Per-Actor favorite, applied tattoo
 **Recently Used**:
 A persistent personal history identified by the exact tuple `(domain, sourceId, section, name, area)`. It records only successful Apply/Replace operations after synchronization, retains the ten newest identities independently for Body, Face, Hands, and Feet, and presents matching installed tattoos newest-first. It is independent of Actor Target and savegame.
 _Avoid_: Preview history, per-Actor history, global unscoped history
+
+**Appearance Preset**:
+A persistent, globally shared, ordered set of six editable appearance values: color, alpha, glow color, emission strength, glossiness, and specular strength. Loading an Appearance Preset updates only the current Edit Appearance session for preview; it does not identify a tattoo, change texture metadata or lock state, or save the tattoo until the user chooses `Save`.
+_Avoid_: Tattoo preset, Actor preset, appearance loadout

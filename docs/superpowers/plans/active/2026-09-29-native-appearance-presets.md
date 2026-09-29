@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-29-native-appearance-presets-design.md`
 
+**Execution status (2026-09-29):** Tasks 1–5 are implemented in commits
+`239fdb3`, `5caaa33`, `874f440`, `427cd4f`, and `d411ea7`. Debug and Release
+builds and all 35 tests pass. Task 6 documentation is in progress; deployment
+and in-game acceptance remain pending.
+
 ## Global Constraints
 
 - Persist in the existing absolute `SlaveTatsUI.json` through the shared `PluginConfigFile` only.

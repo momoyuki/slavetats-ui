@@ -1,6 +1,6 @@
 # Native Appearance Presets Design
 
-**Status:** Approved in conversation; awaiting written-spec review.
+**Status:** Implemented; in-game acceptance pending.
 
 **Roadmap milestone:** vNext.4 — Workflow Quality of Life
 
