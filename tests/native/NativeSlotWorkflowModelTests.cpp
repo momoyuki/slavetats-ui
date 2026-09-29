@@ -1035,7 +1035,8 @@ void appearancePresetCreateOverwriteRenameAndDeleteRequireCorrectIntent() {
 
     model.selectAppearancePreset(1);
     expect(!model.requestRenameAppearancePreset("FIRST") &&
-            model.appearancePresetError(),
+            model.appearancePresetError() &&
+            !model.appearancePresetRetryAvailable(),
         "expected folded rename collision rejected locally");
     expect(model.requestRenameAppearancePreset("Renamed"), "expected valid rename request");
     const auto rename = model.takeAppearancePresetRequest();
@@ -1067,7 +1068,8 @@ void appearancePresetFailureRetriesExactRequestWithFreshId() {
     model.completeAppearancePreset(first->requestId,
         std::unexpected(stui::runtime::ConfigError{.message = "disk failure"}));
 
-    expect(model.appearancePresetError() && !model.appearancePresetPending(),
+    expect(model.appearancePresetError() && !model.appearancePresetPending() &&
+            model.appearancePresetRetryAvailable(),
         "expected separate preset persistence error");
     expect(model.retryAppearancePreset(), "expected failed preset request retryable");
     const auto retry = model.takeAppearancePresetRequest();

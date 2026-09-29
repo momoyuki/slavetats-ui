@@ -300,6 +300,14 @@ struct EditAppearanceControlRanges {
     float specularStrengthMax{};
 };
 
+enum class AppearancePresetUiState { unavailable, empty, ready, limitReached, pending };
+
+[[nodiscard]] std::string_view appearancePresetStatusMessage(
+    AppearancePresetUiState state) noexcept;
+[[nodiscard]] bool canCreateAppearancePreset(
+    std::size_t count,
+    bool pending) noexcept;
+
 [[nodiscard]] TattooColorComponents tattooColorComponents(
     std::int32_t color) noexcept;
 [[nodiscard]] std::int32_t tattooColorValue(

@@ -247,6 +247,7 @@ public:
     [[nodiscard]] const runtime::ConfigError* recentlyUsedError() const noexcept;
     [[nodiscard]] bool appearancePresetPending() const noexcept;
     [[nodiscard]] const runtime::ConfigError* appearancePresetError() const noexcept;
+    [[nodiscard]] bool appearancePresetRetryAvailable() const noexcept;
     [[nodiscard]] const runtime::AppearancePreset* appearancePresetOverwriteConfirmation() const noexcept;
     [[nodiscard]] bool appearancePresetDeleteConfirmation() const noexcept;
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(

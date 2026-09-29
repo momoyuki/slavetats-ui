@@ -558,6 +558,25 @@ void editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges() {
         "expected expanded material slider ranges");
 }
 
+void appearancePresetPresentationCoversEmptyLimitAndPendingStates() {
+    using namespace stui::native;
+    expect(appearancePresetStatusMessage(AppearancePresetUiState::unavailable) ==
+            "Unavailable" &&
+            appearancePresetStatusMessage(AppearancePresetUiState::empty) ==
+                "No appearance presets saved." &&
+            appearancePresetStatusMessage(AppearancePresetUiState::ready).empty() &&
+            appearancePresetStatusMessage(AppearancePresetUiState::limitReached) ==
+                "20 preset limit reached" &&
+            appearancePresetStatusMessage(AppearancePresetUiState::pending) ==
+                "Updating appearance presets...",
+        "expected deterministic preset status copy");
+    expect(canCreateAppearancePreset(0, false) &&
+            canCreateAppearancePreset(19, false) &&
+            !canCreateAppearancePreset(20, false) &&
+            !canCreateAppearancePreset(1, true),
+        "expected create enabled only below limit while idle");
+}
+
 void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
     stui::native::NativeCatalogBrowserModel catalog([] { return nullptr; });
     stui::native::NativeSlotWorkflowModel workflow(catalog);
@@ -1285,6 +1304,8 @@ int main() {
         std::cout << "PASS Edit Appearance uses session save and thumbnail state\n";
         editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges();
         std::cout << "PASS Edit Appearance layout and expanded ranges\n";
+        appearancePresetPresentationCoversEmptyLimitAndPendingStates();
+        std::cout << "PASS Appearance Preset presentation states\n";
         editAppearanceRendererOrchestrationOrdersInputAndCancel();
         std::cout << "PASS Edit Appearance renderer orders input and Cancel\n";
         livePreviewPresentationMatchesTransactionState();

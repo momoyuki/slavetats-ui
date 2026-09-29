@@ -39,6 +39,29 @@ bool equalsFoldedASCII(std::string_view left, std::string_view right) noexcept {
     });
 }
 
+int resizeInputTextString(ImGuiMCP::ImGuiInputTextCallbackData* data) {
+    if (!data || data->EventFlag != ImGuiMCP::ImGuiInputTextFlags_CallbackResize) {
+        return 0;
+    }
+    auto* value = static_cast<std::string*>(data->UserData);
+    value->resize(static_cast<std::size_t>(data->BufTextLen));
+    data->Buf = value->data();
+    return 0;
+}
+
+bool inputTextString(const char* label, std::string& value) {
+    if (value.capacity() == 0) {
+        value.reserve(32);
+    }
+    return ImGuiMCP::InputText(
+        label,
+        value.data(),
+        value.capacity() + 1,
+        ImGuiMCP::ImGuiInputTextFlags_CallbackResize,
+        &resizeInputTextString,
+        &value);
+}
+
 void addOfficialSectionItem(const char* path, MenuCallback callback) {
     g_addSectionItem(
         path, reinterpret_cast<SKSEMenuFramework::Model::RenderFunction>(callback));
@@ -630,6 +653,27 @@ EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
 
 EditAppearanceControlRanges editAppearanceControlRanges() noexcept {
     return {.glossinessMax = 1000.0F, .specularStrengthMax = 100.0F};
+}
+
+std::string_view appearancePresetStatusMessage(
+    const AppearancePresetUiState state) noexcept {
+    switch (state) {
+    case AppearancePresetUiState::unavailable:
+        return "Unavailable";
+    case AppearancePresetUiState::empty:
+        return "No appearance presets saved.";
+    case AppearancePresetUiState::ready:
+        return {};
+    case AppearancePresetUiState::limitReached:
+        return "20 preset limit reached";
+    case AppearancePresetUiState::pending:
+        return "Updating appearance presets...";
+    }
+    return {};
+}
+
+bool canCreateAppearancePreset(const std::size_t count, const bool pending) noexcept {
+    return !pending && count < runtime::kAppearancePresetLimit;
 }
 
 std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
@@ -1745,6 +1789,196 @@ void renderEditAppearance(
     float emissiveMult = session ? session->edited.emissiveMult : 1.0F;
     float glossiness = session ? session->edited.glossiness : 0.0F;
     float specularStrength = session ? session->edited.specularStrength : 0.0F;
+
+    const auto& appearancePresets = workflow.appearancePresets();
+    const auto selectedAppearancePreset = workflow.selectedAppearancePreset();
+    const bool appearancePresetPending = workflow.appearancePresetPending();
+    const bool hasSelectedAppearancePreset = selectedAppearancePreset &&
+        *selectedAppearancePreset < appearancePresets.size();
+    const auto* appearancePresetError = workflow.appearancePresetError();
+    const auto presetState = appearancePresetPending
+        ? AppearancePresetUiState::pending
+        : appearancePresetError && appearancePresets.empty()
+            ? AppearancePresetUiState::unavailable
+        : appearancePresets.empty()
+            ? AppearancePresetUiState::empty
+            : appearancePresets.size() >= runtime::kAppearancePresetLimit
+                ? AppearancePresetUiState::limitReached
+                : AppearancePresetUiState::ready;
+
+    ImGuiMCP::SeparatorText("Appearance Preset");
+    const char* selectedPresetLabel = hasSelectedAppearancePreset
+        ? appearancePresets[*selectedAppearancePreset].name.c_str()
+        : "Select preset";
+    ImGuiMCP::BeginDisabled(appearancePresetPending || appearancePresets.empty());
+    if (ImGuiMCP::BeginCombo("Preset", selectedPresetLabel)) {
+        for (std::size_t index = 0; index < appearancePresets.size(); ++index) {
+            const bool selected = selectedAppearancePreset == index;
+            if (ImGuiMCP::Selectable(appearancePresets[index].name.c_str(), selected)) {
+                workflow.selectAppearancePreset(index);
+            }
+            if (selected) {
+                ImGuiMCP::SetItemDefaultFocus();
+            }
+        }
+        ImGuiMCP::EndCombo();
+    }
+    ImGuiMCP::EndDisabled();
+
+    ImGuiMCP::BeginDisabled(
+        appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
+    if (ImGuiMCP::Button("Load")) {
+        (void)workflow.loadAppearancePreset(
+            appearancePresets[*selectedAppearancePreset]);
+    }
+    ImGuiMCP::EndDisabled();
+
+    static std::string presetName;
+    static std::string renamedPresetName;
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(appearancePresetPending || !targetActionsEnabled || !session);
+    if (ImGuiMCP::Button("Save Preset")) {
+        presetName.clear();
+        ImGuiMCP::OpenPopup("Save Appearance Preset");
+    }
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(
+        appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
+    if (ImGuiMCP::Button("Manage")) {
+        renamedPresetName = appearancePresets[*selectedAppearancePreset].name;
+        ImGuiMCP::OpenPopup("Manage Appearance Preset");
+    }
+    ImGuiMCP::EndDisabled();
+
+    const auto statusMessage = appearancePresetStatusMessage(presetState);
+    if (!statusMessage.empty()) {
+        ImGuiMCP::TextUnformatted(statusMessage.data());
+    }
+    if (appearancePresetError) {
+        const auto message = std::format(
+            "Appearance Presets: {}", appearancePresetError->message);
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (workflow.appearancePresetRetryAvailable()) {
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::Button("Retry##AppearancePreset")) {
+                (void)workflow.retryAppearancePreset();
+            }
+        }
+    }
+
+    if (ImGuiMCP::BeginPopupModal("Save Appearance Preset")) {
+        ImGuiMCP::TextUnformatted("Save the current appearance values as:");
+        ImGuiMCP::SetNextItemWidth(320.0F);
+        (void)inputTextString("Name##SaveAppearancePreset", presetName);
+        auto candidateName = std::string_view(presetName);
+        while (!candidateName.empty() &&
+            (candidateName.front() == ' ' || candidateName.front() == '\t' ||
+                candidateName.front() == '\r' || candidateName.front() == '\n')) {
+            candidateName.remove_prefix(1);
+        }
+        while (!candidateName.empty() &&
+            (candidateName.back() == ' ' || candidateName.back() == '\t' ||
+                candidateName.back() == '\r' || candidateName.back() == '\n')) {
+            candidateName.remove_suffix(1);
+        }
+        const bool overwritesExisting = std::ranges::any_of(
+            appearancePresets, [&](const runtime::AppearancePreset& preset) {
+                return equalsFoldedASCII(preset.name, candidateName);
+            });
+        const bool createEnabled = !candidateName.empty() &&
+            (overwritesExisting || canCreateAppearancePreset(
+                appearancePresets.size(), appearancePresetPending));
+        ImGuiMCP::BeginDisabled(!createEnabled);
+        if (ImGuiMCP::Button("Save##ConfirmAppearancePreset")) {
+            if (workflow.requestCreateAppearancePreset(presetName)) {
+                ImGuiMCP::CloseCurrentPopup();
+            }
+        }
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##SaveAppearancePreset")) {
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (ImGuiMCP::BeginPopupModal("Manage Appearance Preset")) {
+        if (hasSelectedAppearancePreset) {
+            ImGuiMCP::TextUnformatted(
+                appearancePresets[*selectedAppearancePreset].name.c_str());
+            ImGuiMCP::SetNextItemWidth(320.0F);
+            (void)inputTextString("Name##RenameAppearancePreset", renamedPresetName);
+            if (appearancePresetError &&
+                !workflow.appearancePresetRetryAvailable()) {
+                ImGuiMCP::TextUnformatted(appearancePresetError->message.c_str());
+            }
+            ImGuiMCP::BeginDisabled(renamedPresetName.empty());
+            if (ImGuiMCP::Button("Rename")) {
+                if (workflow.requestRenameAppearancePreset(renamedPresetName)) {
+                    ImGuiMCP::CloseCurrentPopup();
+                }
+            }
+            ImGuiMCP::EndDisabled();
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::Button("Delete")) {
+                if (workflow.requestDeleteAppearancePreset()) {
+                    ImGuiMCP::CloseCurrentPopup();
+                }
+            }
+            ImGuiMCP::SameLine();
+        }
+        if (ImGuiMCP::Button("Cancel##ManageAppearancePreset")) {
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (workflow.appearancePresetOverwriteConfirmation() &&
+        !ImGuiMCP::IsPopupOpen("Overwrite Appearance Preset")) {
+        ImGuiMCP::OpenPopup("Overwrite Appearance Preset");
+    }
+    if (ImGuiMCP::BeginPopupModal("Overwrite Appearance Preset")) {
+        const auto* overwrite = workflow.appearancePresetOverwriteConfirmation();
+        const auto message = std::format(
+            "Overwrite '{}' with the current appearance?",
+            overwrite ? overwrite->name : std::string{});
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (ImGuiMCP::Button("Overwrite")) {
+            (void)workflow.confirmAppearancePresetOverwrite();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##OverwriteAppearancePreset")) {
+            workflow.cancelAppearancePresetConfirmation();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (workflow.appearancePresetDeleteConfirmation() &&
+        !ImGuiMCP::IsPopupOpen("Delete Appearance Preset")) {
+        ImGuiMCP::OpenPopup("Delete Appearance Preset");
+    }
+    if (ImGuiMCP::BeginPopupModal("Delete Appearance Preset")) {
+        const auto message = std::format(
+            "Delete '{}' permanently?",
+            hasSelectedAppearancePreset
+                ? appearancePresets[*selectedAppearancePreset].name
+                : std::string{});
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (ImGuiMCP::Button("Delete##ConfirmAppearancePreset")) {
+            (void)workflow.confirmAppearancePresetDelete();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##DeleteAppearancePreset")) {
+            workflow.cancelAppearancePresetConfirmation();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
     ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
         !isAppearanceEditingEnabled(workflow.screen(), session));
     ImGuiMCP::SeparatorText("Basic");

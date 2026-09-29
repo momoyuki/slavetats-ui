@@ -1357,6 +1357,10 @@ const runtime::ConfigError* NativeSlotWorkflowModel::appearancePresetError() con
     return m_appearancePresetError ? &*m_appearancePresetError : nullptr;
 }
 
+bool NativeSlotWorkflowModel::appearancePresetRetryAvailable() const noexcept {
+    return m_failedAppearancePreset.has_value() && !appearancePresetPending();
+}
+
 const runtime::AppearancePreset*
 NativeSlotWorkflowModel::appearancePresetOverwriteConfirmation() const noexcept {
     return m_appearancePresetOverwriteConfirmation ?
