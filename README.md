@@ -7,6 +7,16 @@ tattoos without using MCM.
 > Building from source or contributing? See [DEVELOPMENT.md](DEVELOPMENT.md) and
 > [DEPLOY.md](DEPLOY.md).
 
+## License
+
+SlaveTats UI is copyright 2026 mskmktx and is licensed under the
+[GNU General Public License v3.0 or later](LICENSE). Distributions of compiled
+binaries must provide recipients access to the corresponding source under the
+same license terms.
+
+Third-party components remain subject to their respective licenses. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution.
+
 ## Requirements
 
 Install and enable all of these before loading SlaveTats UI:
