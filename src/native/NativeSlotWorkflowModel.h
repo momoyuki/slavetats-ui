@@ -4,6 +4,7 @@
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
 #include "runtime/FavoriteStore.h"
+#include "runtime/AppearancePresetStore.h"
 #include "runtime/RecentTattooStore.h"
 
 #include <array>
@@ -169,6 +170,10 @@ public:
         float glossiness,
         float specularStrength,
         float emissiveMult) noexcept;
+    [[nodiscard]] bool loadAppearancePreset(const runtime::AppearancePreset& preset);
+    [[nodiscard]] const runtime::AppearancePresetList& appearancePresets() const noexcept;
+    [[nodiscard]] std::optional<std::size_t> selectedAppearancePreset() const noexcept;
+    void selectAppearancePreset(std::optional<std::size_t> index);
     void cancelEditAppearance();
     [[nodiscard]] bool confirmAppearanceUpdate();
     void advanceLivePreview(std::chrono::steady_clock::time_point now);
@@ -297,6 +302,8 @@ private:
     bool m_applyRequiresSynchronizationOnly{};
     bool m_removeRequiresSynchronizationOnly{};
     std::optional<AppearanceEditSession> m_editAppearance;
+    runtime::AppearancePresetList m_appearancePresets;
+    std::optional<std::size_t> m_selectedAppearancePreset;
     bool m_menuCloseRequested{};
     std::uint64_t m_generation{};
     bool m_started{false};

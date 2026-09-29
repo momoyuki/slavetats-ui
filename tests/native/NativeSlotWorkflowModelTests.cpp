@@ -38,6 +38,7 @@ using stui::native::SlotWorkflowScreen;
 using stui::repository::TattooCatalog;
 using stui::repository::TattooCatalogSnapshot;
 using stui::repository::TattooDefinition;
+using stui::runtime::AppearancePreset;
 using namespace std::chrono_literals;
 
 void expect(bool condition, std::string_view message) {
@@ -113,6 +114,18 @@ TattooSlots slotsWithEditableOwnedTattoo() {
         .emissiveMult = 3.0F,
     };
     return result;
+}
+
+AppearancePreset appearancePreset(std::string name = "Warm Glow") {
+    return AppearancePreset{
+        .name = std::move(name),
+        .color = 0xFFFFFF,
+        .alpha = 0.75F,
+        .glow = 0xABCDEF,
+        .emissiveMult = 8.0F,
+        .glossiness = 500.0F,
+        .specularStrength = 50.0F,
+    };
 }
 
 void startSchedulesOnePlayerBodyQuery() {
@@ -857,6 +870,102 @@ void advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues() {
             ticket->request.glow == 0xABCDEF && ticket->request.glossiness == 4.0F &&
             ticket->request.specularStrength == 2.0F && ticket->request.emissiveMult == 5.0F,
         "expected full update ticket to forward every editable appearance value");
+}
+
+void appearancePresetLoadsOnlyEditableValuesAndUsesExistingSaveCancelContracts() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel outsideEditor(catalog);
+    expect(outsideEditor.appearancePresets().empty() &&
+            !outsideEditor.selectedAppearancePreset(),
+        "expected empty preset list and selection before persistence load");
+    outsideEditor.selectAppearancePreset(0);
+    expect(!outsideEditor.selectedAppearancePreset(),
+        "expected unavailable preset index rejected");
+    expect(!outsideEditor.loadAppearancePreset(appearancePreset()),
+        "expected preset load rejected outside Edit Appearance");
+
+    for (bool save : {false, true}) {
+        NativeSlotWorkflowModel model(catalog);
+        auto bodySlots = slotsWithEditableOwnedTattoo();
+        bodySlots.slots[1].tattoo->locked = false;
+        completeInitialQuery(model, bodySlots);
+        expect(model.selectSlot(1) && model.beginEditAppearance(), "expected edit session");
+        const auto original = *model.editAppearance();
+
+        expect(model.loadAppearancePreset(appearancePreset()), "expected preset load");
+        const auto* edited = model.editAppearance();
+        expect(edited && edited->edited.color == 0xFFFFFF && edited->edited.alpha == 0.75F &&
+                edited->edited.glow == 0xABCDEF && edited->edited.emissiveMult == 8.0F &&
+                edited->edited.glossiness == 500.0F && edited->edited.specularStrength == 50.0F,
+            "expected exactly six preset values copied");
+        expect(edited->original == original.original &&
+                edited->actorFormId == original.actorFormId &&
+                edited->targetGeneration == original.targetGeneration &&
+                edited->area == original.area && edited->slot == original.slot &&
+                edited->runtimeHandle == original.runtimeHandle &&
+                edited->texturePath == original.texturePath &&
+                edited->glowTexture == original.glowTexture && edited->bump == original.bump,
+            "expected original snapshot identity and texture metadata preserved");
+
+        if (!save) {
+            model.cancelEditAppearance();
+            expect(model.screen() == SlotWorkflowScreen::slotActions &&
+                    !model.editAppearance() && !model.takeAppearanceRequest(),
+                "expected unpreviewed preset Cancel to discard local values");
+            continue;
+        }
+
+        expect(model.confirmAppearanceUpdate(), "expected preset Save");
+        const auto ticket = model.takeAppearanceRequest();
+        expect(ticket && ticket->purpose == AppearanceOperationPurpose::commit &&
+                ticket->request.actorFormId == 0x14 && ticket->request.runtimeHandle == 73 &&
+                ticket->request.color == 0xFFFFFF && ticket->request.alpha == 0.75F &&
+                ticket->request.glow == 0xABCDEF && ticket->request.emissiveMult == 8.0F &&
+                ticket->request.glossiness == 500.0F &&
+                ticket->request.specularStrength == 50.0F,
+            "expected existing Save request to contain preset values and exact target identity");
+    }
+}
+
+void appearancePresetSupersedesPendingPreviewAndRestoresOriginalAfterPreview() {
+    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    for (bool close : {false, true}) {
+        NativeSlotWorkflowModel model(catalog);
+        completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+        expect(model.selectSlot(1) && model.beginEditAppearance(), "expected edit session");
+        const auto start = std::chrono::steady_clock::time_point{};
+        model.setEditedAppearance(0x111111, 0.1F, 0x222222, 1.0F, 2.0F, 3.0F);
+        model.advanceLivePreview(start);
+        expect(model.loadAppearancePreset(appearancePreset()),
+            "expected preset to supersede pending local preview");
+        model.advanceLivePreview(start + 100ms);
+        model.advanceLivePreview(start + 1099ms);
+        expect(!model.takeAppearanceRequest(),
+            "expected preset load to restart debounce from latest observation");
+        model.advanceLivePreview(start + 1100ms);
+        const auto preview = model.takeAppearanceRequest();
+        expect(preview && preview->purpose == AppearanceOperationPurpose::preview &&
+                preview->request.color == 0xFFFFFF && preview->request.alpha == 0.75F &&
+                preview->request.glow == 0xABCDEF && preview->request.emissiveMult == 8.0F,
+            "expected only latest preset values previewed");
+        model.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+
+        if (close) {
+            expect(model.requestEditAppearanceClose(), "expected Close after preset preview");
+        } else {
+            model.cancelEditAppearance();
+        }
+        const auto restore = model.takeAppearanceRequest();
+        expect(restore && restore->purpose == AppearanceOperationPurpose::restore &&
+                restore->request.actorFormId == 0x14 && restore->request.runtimeHandle == 73 &&
+                restore->request.color == 0x2468AC && restore->request.alpha == 0.42F &&
+                restore->request.glow == 0x102030 && restore->request.emissiveMult == 3.0F &&
+                restore->request.glossiness == 2.5F &&
+                restore->request.specularStrength == 1.25F,
+            "expected Cancel and Close to restore exact pre-preset snapshot");
+    }
 }
 
 void lockTicketRefreshesSnapshotAndGuardsLockedMutations() {
@@ -2018,6 +2127,10 @@ int main() {
     failures += run("edit appearance requires owned slot with handle and copies snapshot", editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot);
     failures += run("local appearance edits normalize track dirty and Cancel without ticket", localAppearanceEditsNormalizeTrackDirtyAndCancelWithoutTicket);
     failures += run("advanced appearance edits track dirty normalize and forward all values", advancedAppearanceEditsTrackDirtyNormalizeAndForwardAllValues);
+    failures += run("appearance preset loads only editable values and reuses Save Cancel",
+        appearancePresetLoadsOnlyEditableValuesAndUsesExistingSaveCancelContracts);
+    failures += run("appearance preset supersedes pending preview and restores original",
+        appearancePresetSupersedesPendingPreviewAndRestoresOriginalAfterPreview);
     failures += run("lock ticket refreshes snapshot and guards locked mutations", lockTicketRefreshesSnapshotAndGuardsLockedMutations);
     failures += run("Current Slots lock toggle does not navigate to Slot Actions", currentSlotLockToggleDoesNotNavigateToSlotActions);
     failures += run("changing area invalidates Lock completion", changingAreaInvalidatesLockCompletion);

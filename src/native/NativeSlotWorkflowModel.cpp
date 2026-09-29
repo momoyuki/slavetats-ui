@@ -453,6 +453,7 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
     m_pendingSlotQuery.reset();
     m_activeSlotQueryGeneration.reset();
     m_error.reset();
+    m_selectedAppearancePreset.reset();
     m_screen = SlotWorkflowScreen::editAppearance;
     return true;
 }
@@ -553,6 +554,37 @@ void NativeSlotWorkflowModel::setEditedAppearance(
             updateLivePreviewStatus();
         }
     }
+}
+
+bool NativeSlotWorkflowModel::loadAppearancePreset(
+    const runtime::AppearancePreset& preset) {
+    if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+        m_editAppearance->exitIntent != AppearanceExitIntent::none) {
+        return false;
+    }
+    setEditedAppearance(
+        static_cast<std::int32_t>(preset.color),
+        preset.alpha,
+        static_cast<std::int32_t>(preset.glow),
+        preset.glossiness,
+        preset.specularStrength,
+        preset.emissiveMult);
+    return true;
+}
+
+const runtime::AppearancePresetList& NativeSlotWorkflowModel::appearancePresets() const noexcept {
+    return m_appearancePresets;
+}
+
+std::optional<std::size_t> NativeSlotWorkflowModel::selectedAppearancePreset() const noexcept {
+    return m_selectedAppearancePreset;
+}
+
+void NativeSlotWorkflowModel::selectAppearancePreset(
+    const std::optional<std::size_t> index) {
+    m_selectedAppearancePreset = index && *index < m_appearancePresets.size()
+        ? index : std::nullopt;
 }
 
 void NativeSlotWorkflowModel::advanceLivePreview(std::chrono::steady_clock::time_point now) {
@@ -659,6 +691,7 @@ void NativeSlotWorkflowModel::finishAppearanceSession(bool saved) {
     const auto area = m_editAppearance->area;
     m_menuCloseRequested = m_editAppearance->exitIntent == AppearanceExitIntent::close;
     m_editAppearance.reset();
+    m_selectedAppearancePreset.reset();
     m_pendingAppearance.reset();
     m_error.reset();
     m_screen = saved ? SlotWorkflowScreen::currentSlots : SlotWorkflowScreen::slotActions;
