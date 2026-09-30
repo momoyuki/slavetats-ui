@@ -1,6 +1,6 @@
 # Native Appearance Presets Design
 
-**Status:** Implemented; in-game acceptance pending.
+**Status:** Accepted.
 
 **Roadmap milestone:** vNext.4 — Workflow Quality of Life
 
@@ -294,3 +294,10 @@ The committed list changes only after a successful persistence completion.
 Do not mark Appearance Presets complete in `ROADMAP.md` until implementation,
 automated Debug and Release verification, deployment, and intended in-game
 acceptance pass. Keep Saved Tattoo Sets / Loadouts as a separate roadmap item.
+
+## Acceptance Record
+
+Accepted in-game on 2026-09-30 after Release deployment. The user confirmed
+that loading an Appearance Preset onto a different tattoo works; a reported
+no-visible-change case was traced to a preset containing neutral/default
+appearance values rather than a failed Load operation.

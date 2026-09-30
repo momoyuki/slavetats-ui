@@ -10,10 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-29-native-appearance-presets-design.md`
 
-**Execution status (2026-09-29):** Tasks 1–5 are implemented in commits
+**Execution status (2026-09-30):** Tasks 1–5 are implemented in commits
 `239fdb3`, `5caaa33`, `874f440`, `427cd4f`, and `d411ea7`. Debug and Release
-builds and all 35 tests pass. Task 6 documentation is in progress; deployment
-and in-game acceptance remain pending.
+builds and all 35 tests pass. The Release DLL was deployed with matching
+source/destination SHA-256, and the user accepted the in-game preset workflow.
+Task 6 is complete; this plan is archived as the implementation record.
 
 ## Global Constraints
 
