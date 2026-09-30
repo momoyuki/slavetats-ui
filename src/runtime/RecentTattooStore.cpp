@@ -11,6 +11,7 @@ namespace stui::runtime {
 namespace {
 
 constexpr int kRecentlyUsedVersion = 1;
+constexpr std::size_t kLegacyRecentTattooLimitPerArea = 10;
 constexpr std::array<std::string_view, 5> kIdentityFields{
     "domain", "sourceId", "section", "name", "area"};
 
@@ -49,6 +50,8 @@ RecentTattooResult parseEntries(const nlohmann::json& entries) {
 
     RecentTattooList recent;
     recent.reserve(entries.size());
+    RecentTattooList seen;
+    seen.reserve(entries.size());
     std::array<std::size_t, 4> areaCounts{};
     for (const auto& entry : entries) {
         if (!entry.is_object()) {
@@ -73,14 +76,18 @@ RecentTattooResult parseEntries(const nlohmann::json& entries) {
             .name = entry.at("name").get<std::string>(),
             .area = *area,
         };
-        if (std::ranges::find(recent, identity) != recent.end()) {
+        if (std::ranges::find(seen, identity) != seen.end()) {
             continue;
         }
+        seen.push_back(identity);
         const auto areaIndex = static_cast<std::size_t>(*area);
-        if (++areaCounts.at(areaIndex) > kRecentTattooLimitPerArea) {
+        const auto areaCount = ++areaCounts.at(areaIndex);
+        if (areaCount > kLegacyRecentTattooLimitPerArea) {
             return std::unexpected(error("Recently Used area exceeds its entry limit."));
         }
-        recent.push_back(std::move(identity));
+        if (areaCount <= kRecentTattooLimitPerArea) {
+            recent.push_back(std::move(identity));
+        }
     }
     return recent;
 }

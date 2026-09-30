@@ -98,7 +98,7 @@ void persistsNewestFirstAndPromotesDuplicate() {
     expect(loaded && *loaded == expected, "expected newest-first order to persist");
 }
 
-void evictsOnlyBeyondTenInRecordedArea() {
+void evictsOnlyBeyondSixInRecordedArea() {
     TemporaryDirectory directory;
     auto config = std::make_shared<PluginConfigFile>(directory.path() / "SlaveTatsUI.json");
     RecentTattooStore store(config);
@@ -111,9 +111,9 @@ void evictsOnlyBeyondTenInRecordedArea() {
 
     const auto loaded = store.load();
 
-    expect(loaded && countArea(*loaded, TattooArea::body) == 10 &&
+    expect(loaded && countArea(*loaded, TattooArea::body) == 6 &&
             countArea(*loaded, TattooArea::face) == 1,
-        "expected ten entries per area without cross-area eviction");
+        "expected six entries per area without cross-area eviction");
     expect(loaded->front().name == "Body 10" &&
             std::ranges::none_of(*loaded, [](const auto& entry) {
                 return entry.name == "Body 0";
@@ -156,6 +156,41 @@ void preservesOtherConfigurationAndUnknownHistoryMembers() {
             document->at("recentlyUsed").at("future") == "keep" &&
             document->at("other").at("keep") == true,
         "expected shared configuration members preserved");
+}
+
+void loadsLegacyTenAndCanonicalizesOnNextRecord() {
+    TemporaryDirectory directory;
+    const auto path = directory.path() / "SlaveTatsUI.json";
+    nlohmann::json entries = nlohmann::json::array();
+    for (int index = 0; index < 10; ++index) {
+        entries.push_back({
+            {"domain", "default"},
+            {"sourceId", "marks.json"},
+            {"section", "Marks"},
+            {"name", "Body " + std::to_string(index)},
+            {"area", "Body"},
+        });
+    }
+    {
+        std::ofstream output(path);
+        output << nlohmann::json{
+            {"recentlyUsed", {{"version", 1}, {"entries", entries}}},
+        }.dump();
+    }
+    auto config = std::make_shared<PluginConfigFile>(path);
+    RecentTattooStore store(config);
+
+    const auto loaded = store.load();
+    const auto recorded = store.record(recent("New", TattooArea::body, "marks.json"));
+    RecentTattooStore reopened(config);
+    const auto persisted = reopened.load();
+
+    expect(loaded && loaded->size() == 6 && loaded->front().name == "Body 0" &&
+            loaded->back().name == "Body 5",
+        "expected legacy history to expose only the six newest entries");
+    expect(recorded && persisted && *recorded == *persisted && persisted->size() == 6 &&
+            persisted->front().name == "New" && persisted->back().name == "Body 4",
+        "expected next record to persist the canonical six-entry history");
 }
 
 void rejectsInvalidOrOverflowingSchemaWithoutOverwrite() {
@@ -212,12 +247,14 @@ int main() {
         missingHistoryLoadsWithoutCreatingConfiguration);
     failures += run("persists newest first and promotes duplicate",
         persistsNewestFirstAndPromotesDuplicate);
-    failures += run("evicts only beyond ten in recorded area",
-        evictsOnlyBeyondTenInRecordedArea);
+    failures += run("evicts only beyond six in recorded area",
+        evictsOnlyBeyondSixInRecordedArea);
     failures += run("distinguishes source domain and area",
         distinguishesSourceDomainAndArea);
     failures += run("preserves shared configuration members",
         preservesOtherConfigurationAndUnknownHistoryMembers);
+    failures += run("loads legacy ten and canonicalizes on next record",
+        loadsLegacyTenAndCanonicalizesOnNextRecord);
     failures += run("rejects overflowing schema without overwrite",
         rejectsInvalidOrOverflowingSchemaWithoutOverwrite);
     return failures == 0 ? 0 : 1;

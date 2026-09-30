@@ -13,7 +13,7 @@ Let users quickly return to tattoos they successfully applied or replaced withou
 Included:
 
 - Record a tattoo only after Apply or Replace and its required synchronization complete successfully.
-- Keep the ten most recently used identities per Body, Face, Hands, and Feet area.
+- Keep the six most recently used identities per Body, Face, Hands, and Feet area.
 - Move a repeated identity to the newest position without creating a duplicate.
 - Persist history in the existing `SlaveTatsUI.json` through the shared configuration transaction boundary.
 - Add a session-local `Recently used only` filter that composes with all existing catalog filters.
@@ -45,19 +45,19 @@ This identity does not change the section/name `TattooIdentity` used by SlaveTat
 
 ## Retention and Ordering
 
-The store keeps at most ten entries per supported area in one ordered history.
+The store keeps at most six entries per supported area in one ordered history.
 
 When recording a successful use:
 
 1. Read and validate the latest on-disk history inside the shared configuration transaction.
 2. Remove an equal five-field identity if present.
 3. Insert the identity at the front of the ordered list.
-4. Remove entries beyond the tenth item for that identity's area only.
+4. Remove entries beyond the sixth item for that identity's area only.
 5. Preserve the relative order and membership of every other area.
 
 The serialized array represents newest-to-oldest order. The UI derives an area's sequence by retaining that area's entries in serialized order. No timestamp is required and wall-clock changes cannot reorder history.
 
-Unavailable catalog identities count toward the ten-entry area limit and are not pruned during catalog refresh. A later successful use in that area can evict the oldest stored identity whether or not it is currently installed. Re-enabling a pack restores visibility at its retained position when the exact five-field identity matches.
+Unavailable catalog identities count toward the six-entry area limit and are not pruned during catalog refresh. A later successful use in that area can evict the oldest stored identity whether or not it is currently installed. Re-enabling a pack restores visibility at its retained position when the exact five-field identity matches.
 
 ## Recording Boundary
 
@@ -102,7 +102,7 @@ Recently Used is stored as a separate versioned object in the existing shared co
 - The root must remain a JSON object. `recentlyUsed` must contain supported integer version `1` and an entries array.
 - Every entry requires five non-empty string fields and a supported canonical area.
 - Malformed JSON, invalid entries, and unsupported Recently Used versions fail the complete history load/update. Do not discard invalid entries and then overwrite recoverable data.
-- Load canonicalizes exact duplicate identities by keeping the first, newest occurrence. It rejects more than ten entries for an area rather than silently choosing data to discard; updates produce canonical bounded output.
+- Load canonicalizes exact duplicate identities by keeping the first, newest occurrence. For compatibility, version 1 histories containing seven through ten unique entries in an area load only the six newest entries without rewriting the file; the next successful record persists canonical six-entry output. More than ten unique entries in an area remain invalid and must not be overwritten.
 - Preserve Unicode exactly and preserve unrelated root keys, Favorites, Hotkey, and unknown members of the supported `recentlyUsed` object.
 - Unknown members inside version-1 entries have no defined meaning and are not guaranteed to survive canonical serialization.
 - A supported root with an unsupported Recently Used version must still permit Hotkey and Favorites edits that preserve the unsupported payload unchanged. Recently Used operations themselves fail until the schema is supported.
@@ -196,7 +196,7 @@ Automated coverage must include:
 
 - Missing/legacy config, real save/reopen, malformed JSON, invalid identities/areas, unsupported versions, duplicate entries, overflow rejection, Unicode, and checked write/replacement failure.
 - Interleaved Hotkey, Favorites, and Recently Used transactions preserving every supported setting and unrelated root keys.
-- Newest-first ordering, duplicate promotion, exactly ten entries per area, independent area eviction, and unavailable-pack retention/restoration.
+- Newest-first ordering, duplicate promotion, exactly six entries per area, legacy ten-entry compatibility, independent area eviction, and unavailable-pack retention/restoration.
 - Exact distinctions for source, domain, section, name, and area, including same-named catalog entries.
 - Successful Apply and Replace recording; Preview, Cancel, stale/rejected/failed operations not recording.
 - Synchronization failure followed by synchronization-only retry recording once without repeating mutation.
@@ -208,7 +208,7 @@ In-game acceptance requires:
 
 - Apply and Replace add the expected entry only after visible success.
 - Reusing an entry moves it to the newest position without duplication.
-- Body, Face, Hands, and Feet histories remain separate and stop at ten entries each.
+- Body, Face, Hands, and Feet histories remain separate and stop at six entries each.
 - History survives restart and matches across two sequential MO2 profiles that log the same absolute configuration path.
 - Recently Used composes correctly with Favorites, Applied-only, search, domain, source, and section.
 - A recoverable history persistence failure leaves Apply successful, preserves committed history, and retries without repeating tattoo mutation.

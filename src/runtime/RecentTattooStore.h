@@ -10,7 +10,7 @@
 
 namespace stui::runtime {
 
-inline constexpr std::size_t kRecentTattooLimitPerArea = 10;
+inline constexpr std::size_t kRecentTattooLimitPerArea = 6;
 using RecentTattooList = std::vector<repository::RecentTattooIdentity>;
 using RecentTattooResult = std::expected<RecentTattooList, ConfigError>;
 

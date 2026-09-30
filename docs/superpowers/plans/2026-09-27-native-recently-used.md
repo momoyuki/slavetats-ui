@@ -15,7 +15,7 @@
 - SlaveTatsNG remains authoritative for tattoo mutation and synchronization.
 - Native UI and deterministic workflow models perform no filesystem, JContainers, or SlaveTatsNG access.
 - Recent identity is exactly `(domain, sourceId, section, name, area)`; area values serialize as `Body`, `Face`, `Hands`, or `Feet`.
-- Keep at most ten newest entries per area; repeat use promotes without duplication and does not reorder other areas.
+- Keep at most six newest entries per area; repeat use promotes without duplication and does not reorder other areas.
 - Record only after Apply or Replace and required synchronization succeed. Preview, Cancel, Remove, Edit Appearance, Lock, rejected/stale operations, and failed mutation do not record.
 - A synchronization-only retry must never repeat a completed Apply mutation.
 - Hotkey, Favorites, and Recently Used share one `PluginConfigFile` transaction boundary and preserve unrelated JSON keys.
@@ -160,7 +160,7 @@ RecentTattooIdentity recentTattooIdentity(
 }
 
 namespace stui::runtime {
-inline constexpr std::size_t kRecentTattooLimitPerArea = 10;
+inline constexpr std::size_t kRecentTattooLimitPerArea = 6;
 using RecentTattooList = std::vector<repository::RecentTattooIdentity>;
 using RecentTattooResult = std::expected<RecentTattooList, ConfigError>;
 class RecentTattooStore {
@@ -175,7 +175,7 @@ public:
 
 - [ ] **Step 1: Write failing persistence and validation tests**
 
-Cover missing file/key without creation, save/reopen, canonical area strings, Unicode, exact five-field distinctions, duplicate promotion, newest-first order, ten-item per-area eviction, preservation of other-area order, unavailable identities, malformed roots, invalid/empty fields, unsupported versions, duplicate canonicalization, and overflow rejection.
+Cover missing file/key without creation, save/reopen, canonical area strings, Unicode, exact five-field distinctions, duplicate promotion, newest-first order, six-item per-area eviction, legacy ten-item compatibility, preservation of other-area order, unavailable identities, malformed roots, invalid/empty fields, unsupported versions, duplicate canonicalization, and overflow rejection.
 
 ```cpp
 for (int index = 0; index < 11; ++index) {
@@ -185,9 +185,9 @@ for (int index = 0; index < 11; ++index) {
 expect(store.record(recent("Face 0", TattooArea::face)),
        "expected independent Face history update");
 const auto loaded = store.load();
-expect(countArea(*loaded, TattooArea::body) == 10 &&
+expect(countArea(*loaded, TattooArea::body) == 6 &&
        countArea(*loaded, TattooArea::face) == 1,
-       "expected ten entries per area without cross-area eviction");
+       "expected six entries per area without cross-area eviction");
 ```
 
 - [ ] **Step 2: Add interleaving tests against the shared file**
@@ -207,7 +207,7 @@ Expected: configuration/build failure until the new files and target exist.
 
 - [ ] **Step 4: Implement schema parsing and atomic record updates**
 
-Use `PluginConfigFile::read()` for load and `PluginConfigFile::update()` for record. Re-read on every record, remove the exact duplicate, insert at the front, erase only the eleventh-and-later entries of the same area, serialize newest-first, and return the committed canonical list only after checked replacement succeeds. Do not add a second mutex around the shared document.
+Use `PluginConfigFile::read()` for load and `PluginConfigFile::update()` for record. Re-read on every record, remove the exact duplicate, insert at the front, erase only the seventh-and-later entries of the same area, serialize newest-first, and return the committed canonical list only after checked replacement succeeds. Accept legacy version 1 histories with up to ten unique entries per area by exposing the six newest and canonicalizing on the next successful record. Do not add a second mutex around the shared document.
 
 - [ ] **Step 5: Register sources and run persistence tests**
 
@@ -513,7 +513,7 @@ feat: add recently used picker filter
 
 - [x] **Step 1: Update terminology and implementation status without claiming acceptance**
 
-Add `Recently Used` to `CONTEXT.md` with the exact five-field identity, per-area ten-item retention, newest-first ordering, and successful Apply/Replace boundary. Update the Roadmap line to `implemented; in-game acceptance pending` only after code exists and automated checks pass. Keep unresolved Favorites acceptance text unchanged.
+Add `Recently Used` to `CONTEXT.md` with the exact five-field identity, per-area six-item retention, newest-first ordering, and successful Apply/Replace boundary. Update the Roadmap line to `implemented; in-game acceptance pending` only after code exists and automated checks pass. Keep unresolved Favorites acceptance text unchanged.
 
 - [x] **Step 2: Run full Debug verification**
 
@@ -556,7 +556,7 @@ Follow `DEPLOY.md`; copy only the verified Release DLL to the configured MO2 mod
 
 - [ ] **Step 7: Complete in-game acceptance**
 
-Verify Add and Replace recording, duplicate promotion, ten entries per Body/Face/Hands/Feet, restart persistence, identical logged path and history across two sequential MO2 profiles, all filter intersections, pagination/thumbnails, Filters overlay geometry, synchronization-only Apply retry without duplication, and recoverable history save Retry without repeating Apply.
+Verify Add and Replace recording, duplicate promotion, six entries per Body/Face/Hands/Feet, restart persistence, identical logged path and history across two sequential MO2 profiles, all filter intersections, pagination/thumbnails, Filters overlay geometry, synchronization-only Apply retry without duplication, and recoverable history save Retry without repeating Apply.
 
 - [ ] **Step 8: Close the milestone slice only after acceptance**
 
