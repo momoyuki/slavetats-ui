@@ -1,10 +1,10 @@
 # Native Recently Used Design
 
-**Status:** Implementation complete; automated verification passed; in-game acceptance pending.
+**Status:** Accepted.
 
 **Milestone:** vNext.4 — Workflow Quality of Life.
 
-**Implementation plan:** Not written. This spec must be approved before implementation planning begins.
+**Implementation plan:** `docs/superpowers/plans/archive/2026-09-27-native-recently-used.md`
 
 ## Purpose and Agreed Scope
 
@@ -220,4 +220,12 @@ Do not mark Recently Used complete in `ROADMAP.md` until implementation, automat
 
 ## Document Relationship
 
-This spec defines intended behavior and architectural boundaries. A later approved implementation plan will define exact files, interfaces, task order, and commands. Writing this spec does not authorize implementation, commit, deployment, migration, or roadmap completion.
+This spec defines the accepted behavior and architectural boundaries. The
+archived implementation plan records the files, interfaces, task order, and
+verification used to deliver it.
+
+## Acceptance Record
+
+Accepted in-game on 2026-09-30 after deploying the six-entry-per-area
+retention update. The user confirmed the Recently Used workflow works and
+authorized closing the roadmap item.

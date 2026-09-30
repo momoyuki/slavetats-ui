@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-27-native-recently-used-design.md`
 
+**Execution status (2026-09-30):** Implementation, Debug and Release
+verification, Release deployment, and in-game acceptance are complete. The
+final retention contract keeps the six newest entries per area while accepting
+legacy version 1 histories containing up to ten entries. This plan is archived
+as the implementation record.
+
 ## Global Constraints
 
 - SlaveTatsNG remains authoritative for tattoo mutation and synchronization.

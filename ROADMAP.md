@@ -153,7 +153,7 @@ Candidates:
 
 - [x] Live actor preview with throttling/debounce and explicit synchronization policy
 - [ ] Favorites — implemented and functional in-game acceptance passed; extended profile, pack-restoration, and recovery acceptance pending
-- [ ] Recently used tattoos — implemented; in-game acceptance pending
+- [x] Recently used tattoos
 - [x] Appearance presets
 - [ ] Saved tattoo sets / loadouts
 - [x] Applied-only browser filter
