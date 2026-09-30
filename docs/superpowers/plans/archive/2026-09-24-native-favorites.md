@@ -4,9 +4,15 @@
 
 **Goal:** Add persistent, shared Favorites with independent star actions on Picker cards and a composable Favorites-only filter.
 
-**Status:** Implemented, committed, and deployed for in-game acceptance. Automated Debug and Release suites pass; manual Favorites and Applied-only acceptance remains open.
+**Status:** Accepted and ready for archival.
 
-**Acceptance record (2026-09-27):** The user confirmed the deployed feature works in game. Treat Picker interaction, ordinary filtering, and normal persistence as functionally accepted. Shared-profile path equality, pack disable/re-enable restoration, and deliberately induced load/save failure recovery were not explicitly reported and remain open before archival.
+**Acceptance record (2026-09-30):** The user confirmed restart persistence,
+shared-profile behavior with the same resolved configuration path, pack
+disable/re-enable restoration, and exact identity separation. Recoverable
+storage failure and Retry remain covered by automated tests rather than a
+deliberately induced failure against the active configuration. Implementation,
+verification, deployment, and intended acceptance are complete; this plan is
+archived as the execution record.
 
 **Architecture:** A separate runtime `FavoriteStore` owns favorite persistence through a shared JSON transaction writer also used by `HotkeyBinding`. The workflow queues explicit desired-state requests; the runtime scheduler executes storage operations, and the presentation thread consumes copied completions. The repository filters by full favorite identities before pagination without reading files.
 

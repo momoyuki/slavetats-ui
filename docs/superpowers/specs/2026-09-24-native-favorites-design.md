@@ -1,10 +1,10 @@
 # Native Favorites Design
 
-**Status:** Implemented and deployed. User-confirmed functional in-game acceptance passed; extended shared-profile, pack-restoration, and recoverable-failure acceptance remains pending.
+**Status:** Accepted.
 
 **Milestone:** vNext.4 — Workflow Quality of Life.
 
-**Implementation plan:** `docs/superpowers/plans/2026-09-24-native-favorites.md` (execution record until the approved implementation commit moves it active).
+**Implementation plan:** `docs/superpowers/plans/archive/2026-09-24-native-favorites.md`
 
 ## Purpose and Agreed Scope
 
@@ -176,8 +176,16 @@ Automated coverage must include:
 
 In-game acceptance requires persistence after restart; identical resolved configuration paths and Favorites across two sequential profile launches; pack disable/re-enable; independent star/card clicks; visible pending/error/retry behavior; filtering and thumbnail consistency; and alternating Hotkey/Favorites updates surviving restart.
 
-Automated Debug and Release validation and user-confirmed functional in-game acceptance have passed. Keep Favorites unchecked in the Roadmap until the remaining shared-profile, pack-restoration, and recoverable-failure checks pass, and retain the previously deferred Applied-only acceptance as a separate open checklist item.
+Automated Debug and Release validation and user-confirmed in-game acceptance have passed. Recoverable storage failure behavior remains covered at automated seams rather than by deliberately damaging the active game configuration.
 
 ## Document Relationship
 
-This spec defines intended behavior and architectural boundaries. The linked plan defines implementation order and tests. Implementation has been authorized; commit and deployment remain separate approval gates. If execution discovers a conflict between shared-profile scope and the resolved configuration path, surface it before changing the agreed persistence location.
+This spec defines the accepted behavior and architectural boundaries. The archived plan records implementation order, verification, deployment, and acceptance.
+
+## Acceptance Record
+
+Accepted in-game on 2026-09-30. The user confirmed restart persistence,
+shared membership across sequential MO2 profiles resolving the same
+configuration path, pack disable/re-enable restoration, and exact separation
+of same-named tattoos from different sources. Recoverable load/save failure
+and Retry behavior remain protected by automated coverage.
