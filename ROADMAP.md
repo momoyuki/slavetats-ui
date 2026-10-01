@@ -157,7 +157,7 @@ Candidates:
 - [x] Appearance presets
 - [ ] Saved tattoo sets / loadouts
 - [x] Applied-only browser filter
-- [ ] Glow / Bump / Gloss catalog badges and filters
+- [x] Glow / Bump / Gloss catalog badges and filters
 - [ ] Controlled alternate glow/bump texture selection
 
 These are convenience features, not compatibility prerequisites.

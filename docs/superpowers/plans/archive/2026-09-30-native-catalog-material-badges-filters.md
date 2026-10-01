@@ -1,5 +1,10 @@
 # Native Catalog Material Badges and Filters Implementation Plan
 
+**Execution status (2026-10-01):** Implementation, Debug and Release
+verification, Release deployment, and in-game acceptance are complete. The
+deployed Release DLL SHA-256 was
+`D506590317121ABDBABE497E6BC73650A5FDBB7C7A2D72660A4B52E2242C89D2`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let users identify and filter catalog tattoos by Glow, Bump, and Gloss metadata without changing apply behavior or persisted user data.
