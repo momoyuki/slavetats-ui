@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: windows-2022
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      is_prerelease: ${{ steps.metadata.outputs.is_prerelease }}
+      release_title: ${{ steps.metadata.outputs.release_title }}
+      asset_stem: ${{ steps.metadata.outputs.asset_stem }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        id: metadata
+        shell: pwsh
+        run: ./scripts/release/Validate-ReleaseTag.ps1 -Tag '${{ github.ref_name }}'
+
+      - name: Verify tag is on main
+        shell: pwsh
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          ./scripts/release/Assert-TagOnMain.ps1 -Commit '${{ github.sha }}' -MainRef origin/main
+
+      - name: Configure vcpkg environment
+        shell: pwsh
+        run: '"VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append'
+
+      - name: Build Release
+        shell: pwsh
+        run: ./build.ps1 -Config release
+
+      - name: Test Release
+        shell: pwsh
+        run: ctest --test-dir build/release --output-on-failure
+
+      - name: Test release tooling
+        shell: pwsh
+        run: |
+          ./tests/release/ReleaseMetadataTests.ps1
+          ./tests/release/PackageReleaseTests.ps1
+          ./tests/release/ReleaseGuardsTests.ps1
+          ./tests/release/WorkflowPolicyTests.ps1
+
+      - name: Package release
+        shell: pwsh
+        run: ./scripts/release/Package-Release.ps1 -AssetStem '${{ steps.metadata.outputs.asset_stem }}'
+
+      - name: Upload release package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.metadata.outputs.asset_stem }}
+          path: |
+            artifacts/release/${{ steps.metadata.outputs.asset_stem }}.zip
+            artifacts/release/${{ steps.metadata.outputs.asset_stem }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+
+  publish:
+    needs: prepare
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Download release package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.prepare.outputs.asset_stem }}
+          path: artifacts/release
+
+      - name: Verify release checksum
+        shell: pwsh
+        env:
+          ASSET_STEM: ${{ needs.prepare.outputs.asset_stem }}
+        run: |
+          $zipPath = "artifacts/release/$env:ASSET_STEM.zip"
+          $checksumPath = "$zipPath.sha256"
+          $expected = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          if ($expected -ne $actual) {
+              throw "Release checksum mismatch: expected $expected, got $actual."
+          }
+
+      - name: Verify release does not exist
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/release/Assert-ReleaseAbsent.ps1 -Repository '${{ github.repository }}' -Tag '${{ github.ref_name }}'
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TITLE: ${{ needs.prepare.outputs.release_title }}
+          ASSET_STEM: ${{ needs.prepare.outputs.asset_stem }}
+          IS_PRERELEASE: ${{ needs.prepare.outputs.is_prerelease }}
+        run: |
+          $zipPath = "artifacts/release/$env:ASSET_STEM.zip"
+          $checksumPath = "$zipPath.sha256"
+          if ($env:IS_PRERELEASE -eq 'true') {
+              gh release create $env:RELEASE_TAG $zipPath $checksumPath --repo $env:REPOSITORY --verify-tag --generate-notes --title $env:RELEASE_TITLE --prerelease
+          }
+          else {
+              gh release create $env:RELEASE_TAG $zipPath $checksumPath --repo $env:REPOSITORY --verify-tag --generate-notes --title $env:RELEASE_TITLE
+          }
+          if ($LASTEXITCODE -ne 0) {
+              throw "GitHub Release publication failed with exit code $LASTEXITCODE."
+          }

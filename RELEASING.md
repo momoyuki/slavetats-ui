@@ -45,10 +45,25 @@ acceptance.
 ## Publish a Pre-release
 
 1. Confirm the release commit is on `main` and hosted CI is green.
-2. Validate the proposed tag through the release metadata script.
+2. Validate the proposed tag:
+
+   ```powershell
+   .\scripts\release\Validate-ReleaseTag.ps1 -Tag v1.8.0-beta.1
+   ```
+
 3. Present the exact annotated-tag command and obtain explicit approval.
-4. Create annotated tag `v1.8.0-beta.1` from the accepted `main` commit.
+4. Create annotated tag `v1.8.0-beta.1` from the accepted `main` commit:
+
+   ```powershell
+   git tag -a v1.8.0-beta.1 -m "SlaveTats UI 1.8.0 Beta 1"
+   ```
+
 5. Obtain separate publication approval before pushing the tag.
+
+   ```powershell
+   git push origin v1.8.0-beta.1
+   ```
+
 6. Verify the GitHub Release ZIP, checksum, archive layout, and MO2 smoke test.
 
 The tag-triggered workflow builds the Release DLL again; it never publishes a
@@ -69,4 +84,10 @@ SlaveTatsUI/
 Do not move or rewrite a published tag. Fix the source on `main` and increment
 the pre-release number. Inspect and resolve any partial or draft GitHub Release
 before rerunning publication; automation must not overwrite an existing release
-or asset silently.
+or asset silently. Use the GitHub `Release` Actions run to distinguish build,
+test, packaging, artifact transfer, and publication failures. Download both the
+ZIP and `.sha256` asset and compare the sidecar value with:
+
+```powershell
+Get-FileHash .\SlaveTatsUI-1.8.0-beta.1.zip -Algorithm SHA256
+```
