@@ -6,6 +6,7 @@
 #include "native/NativeThumbnailRuntime.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
+#include "repository/TattooMaterialClassification.h"
 
 #include <algorithm>
 #include <array>
@@ -555,6 +556,71 @@ CatalogBadgeLayout calculateCatalogBadgeLayout(
         .textX = x + horizontalPadding,
         .textY = y + verticalPadding,
     };
+}
+
+std::vector<std::string_view> catalogMaterialBadgeLabels(
+    const repository::TattooDefinition& tattoo) {
+    const auto material = repository::classifyTattooMaterial(tattoo);
+    std::vector<std::string_view> labels;
+    labels.reserve(3);
+    if (material.glow) {
+        labels.emplace_back("Glow");
+    }
+    if (material.bump) {
+        labels.emplace_back("Bump");
+    }
+    if (material.gloss) {
+        labels.emplace_back("Gloss");
+    }
+    return labels;
+}
+
+std::vector<CatalogMaterialBadgeLayout> calculateCatalogMaterialBadgeLayouts(
+    const std::vector<std::pair<std::string_view, float>>& labelsAndWidths,
+    const float containerWidth,
+    const float containerHeight,
+    const float textHeight,
+    const float horizontalPadding,
+    const float verticalPadding,
+    const float margin,
+    const float spacing,
+    const float minimumY) {
+    std::vector<CatalogMaterialBadgeLayout> layouts;
+    layouts.reserve(labelsAndWidths.size());
+    float x = std::max(0.0F, margin);
+    const float height = std::max(0.0F, textHeight + verticalPadding * 2.0F);
+    const float y = std::max(0.0F, containerHeight - margin - height);
+    const float rightEdge = std::max(0.0F, containerWidth - margin);
+    if (y < minimumY || y + height > containerHeight - margin) {
+        return layouts;
+    }
+    for (const auto& [label, textWidth] : labelsAndWidths) {
+        const float width = std::max(0.0F, textWidth + horizontalPadding * 2.0F);
+        if (x + width > rightEdge) {
+            break;
+        }
+        layouts.push_back({
+            .label = label,
+            .bounds = {
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+                .textX = x + horizontalPadding,
+                .textY = y + verticalPadding,
+            },
+        });
+        x += width + spacing;
+    }
+    return layouts;
+}
+
+bool catalogControlFitsOnSameLine(
+    const float contentRightX,
+    const float previousItemRightX,
+    const float spacing,
+    const float nextControlWidth) noexcept {
+    return previousItemRightX + spacing + nextControlWidth <= contentRightX;
 }
 
 float calculateCatalogCardMetadataHeight(
@@ -2353,6 +2419,47 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Material");
+        ImGuiMCP::TableSetColumnIndex(1);
+        const float materialRowRight =
+            ImGuiMCP::GetCursorScreenPos().x + ImGuiMCP::GetContentRegionAvail().x;
+        const auto* materialStyle = ImGuiMCP::GetStyle();
+        const float materialSpacing =
+            materialStyle ? materialStyle->ItemSpacing.x : 8.0F;
+        const auto materialControlWidth = [](const char* label) {
+            return ImGuiMCP::GetFrameHeightWithSpacing() +
+                ImGuiMCP::CalcTextSize(label).x;
+        };
+        bool glowOnly = workflow.glowOnly();
+        if (ImGuiMCP::Checkbox("Glow only", &glowOnly)) {
+            workflow.setGlowOnly(glowOnly);
+        }
+        if (catalogControlFitsOnSameLine(
+                materialRowRight,
+                ImGuiMCP::GetItemRectMax().x,
+                materialSpacing,
+                materialControlWidth("Bump only"))) {
+            ImGuiMCP::SameLine();
+        }
+        bool bumpOnly = workflow.bumpOnly();
+        if (ImGuiMCP::Checkbox("Bump only", &bumpOnly)) {
+            workflow.setBumpOnly(bumpOnly);
+        }
+        if (catalogControlFitsOnSameLine(
+                materialRowRight,
+                ImGuiMCP::GetItemRectMax().x,
+                materialSpacing,
+                materialControlWidth("Gloss only"))) {
+            ImGuiMCP::SameLine();
+        }
+        bool glossOnly = workflow.glossOnly();
+        if (ImGuiMCP::Checkbox("Gloss only", &glossOnly)) {
+            workflow.setGlossOnly(glossOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
         ImGuiMCP::TextUnformatted("Domain");
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
@@ -2582,6 +2689,54 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             },
                             0xFFFFFFFF,
                             badgeText);
+                    }
+                    const auto materialLabels = catalogMaterialBadgeLabels(tattoo);
+                    std::vector<std::pair<std::string_view, float>> materialLabelWidths;
+                    materialLabelWidths.reserve(materialLabels.size());
+                    for (const auto label : materialLabels) {
+                        materialLabelWidths.emplace_back(
+                            label,
+                            ImGuiMCP::CalcTextSize(label.data()).x);
+                    }
+                    const float materialTextHeight = materialLabels.empty()
+                        ? 0.0F
+                        : ImGuiMCP::CalcTextSize(materialLabels.front().data()).y;
+                    const auto materialBadges = calculateCatalogMaterialBadgeLayouts(
+                        materialLabelWidths,
+                        imageRegion.x,
+                        imageRegion.y,
+                        materialTextHeight,
+                        4.0F,
+                        2.0F,
+                        4.0F,
+                        4.0F,
+                        4.0F + favoriteButtonSize + 4.0F);
+                    if (!materialBadges.empty()) {
+                        auto* drawList = ImGuiMCP::GetWindowDrawList();
+                        for (const auto& materialBadge : materialBadges) {
+                            const auto& badge = materialBadge.bounds;
+                            ImGuiMCP::ImDrawListManager::AddRectFilled(
+                                drawList,
+                                {
+                                    imageScreenOrigin.x + badge.x,
+                                    imageScreenOrigin.y + badge.y,
+                                },
+                                {
+                                    imageScreenOrigin.x + badge.x + badge.width,
+                                    imageScreenOrigin.y + badge.y + badge.height,
+                                },
+                                0xB8000000,
+                                3.0F,
+                                0);
+                            ImGuiMCP::ImDrawListManager::AddText(
+                                drawList,
+                                {
+                                    imageScreenOrigin.x + badge.textX,
+                                    imageScreenOrigin.y + badge.textY,
+                                },
+                                0xFFFFFFFF,
+                                materialBadge.label.data());
+                        }
                     }
                     if (!domainLabel.empty()) {
                         const auto domainTextSize = ImGuiMCP::CalcTextSize(domainLabel.data());

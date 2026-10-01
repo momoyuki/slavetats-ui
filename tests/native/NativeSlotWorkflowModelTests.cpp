@@ -458,6 +458,39 @@ void filtersPickerToAppliedTattoosAndPreservesToggleAcrossNavigation() {
         "expected Applied-only state preserved across Picker navigation");
 }
 
+void materialFiltersDelegateAndPersistAcrossPreviewNavigation() {
+    auto allThree = tattoo("All Three", 0);
+    allThree.glow = 1;
+    allThree.bump = "marks/all_n.dds";
+    allThree.glossiness = 1.0F;
+    const auto legacy = tattoo("Legacy", 1);
+    TattooCatalogSnapshot snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({allThree, legacy}),
+        .sourceCount = 1,
+    });
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slots(TattooArea::body, 2));
+    expect(model.selectSlot(1), "expected empty slot to open Picker");
+
+    model.setGlowOnly(true);
+    model.setBumpOnly(true);
+    model.setGlossOnly(true);
+    expect(model.glowOnly() && model.bumpOnly() && model.glossOnly() &&
+            catalog.page().matchedEntries == 1 &&
+            catalog.page().entries.front().name == "All Three",
+        "expected workflow material filters to delegate to the catalog");
+
+    model.selectTattoo(catalog.page().entries.front());
+    model.backToPicker();
+    expect(model.screen() == SlotWorkflowScreen::picker && model.glowOnly() &&
+            model.bumpOnly() && model.glossOnly(),
+        "expected material toggles preserved after Preview Back");
+    expect(!model.takeApplyRequest(),
+        "expected material filtering and Preview Back to create no mutation");
+}
+
 void previewDoesNotApplyAndCancelReturnsToSlots() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(13);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -2260,6 +2293,9 @@ int main() {
     failures += run(
         "filters Picker to applied tattoos and preserves toggle across navigation",
         filtersPickerToAppliedTattoosAndPreservesToggleAcrossNavigation);
+    failures += run(
+        "material filters delegate and persist across Preview navigation",
+        materialFiltersDelegateAndPersistAcrossPreviewNavigation);
     failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);

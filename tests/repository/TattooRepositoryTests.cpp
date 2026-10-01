@@ -1,4 +1,5 @@
 #include "repository/TattooRepository.h"
+#include "repository/TattooMaterialClassification.h"
 
 #include <algorithm>
 #include <exception>
@@ -15,7 +16,10 @@ using stui::repository::TattooDefinition;
 using stui::repository::RecentTattooIdentity;
 using stui::repository::TattooFilter;
 using stui::repository::TattooIdentity;
+using stui::repository::TattooMaterialClassification;
 using stui::repository::TattooRepository;
+using stui::repository::classifyTattooMaterial;
+using stui::repository::kTattooMaterialFloatTolerance;
 
 TattooDefinition definition(
     std::string sourceId,
@@ -217,6 +221,115 @@ void filtersDomainsAndBuildsDeterministicDomainFacets() {
         "expected case-insensitive domain filter");
     expect(repository.query(TattooFilter{}).matchedEntries == 3,
         "expected empty domain filter to retain all entries");
+}
+
+void classifiesMaterialMetadataWithoutTreatingDefaultsAsCapabilities() {
+    const auto legacy = definition(
+        "legacy.json", "Pack", "Marks", "Legacy", "legacy.dds", "Body");
+    expect(classifyTattooMaterial(legacy) == TattooMaterialClassification{},
+        "expected missing legacy metadata to produce no material capabilities");
+
+    auto defaults = definition(
+        "defaults.json", "Pack", "Marks", "Defaults", "defaults.dds", "Body");
+    defaults.glow = 0;
+    defaults.glowTexture = "";
+    defaults.emissiveMult = 1.0F;
+    defaults.glossiness = 0.0F;
+    defaults.specularStrength = 0.0F;
+    defaults.bump = "";
+    expect(classifyTattooMaterial(defaults) == TattooMaterialClassification{},
+        "expected explicit defaults and empty paths to produce no capabilities");
+
+    auto nearDefaultEmission = definition(
+        "near.json", "Pack", "Marks", "Near", "near.dds", "Body");
+    nearDefaultEmission.emissiveMult =
+        1.0F + kTattooMaterialFloatTolerance / 2.0F;
+    expect(!classifyTattooMaterial(nearDefaultEmission).glow,
+        "expected emission within tolerance to remain default");
+}
+
+void classifiesIndependentMaterialSignals() {
+    auto glowColor = definition(
+        "color.json", "Pack", "Marks", "Glow Color", "color.dds", "Body");
+    glowColor.glow = 0x010203;
+    expect(classifyTattooMaterial(glowColor) == TattooMaterialClassification{.glow = true},
+        "expected nonzero glow color to classify as Glow");
+
+    auto glowTexture = definition(
+        "texture.json", "Pack", "Marks", "Glow Texture", "texture.dds", "Body");
+    glowTexture.glowTexture = "Pack\\texture_g.dds";
+    expect(classifyTattooMaterial(glowTexture).glow,
+        "expected non-empty glow texture to classify as Glow");
+
+    auto emission = definition(
+        "emission.json", "Pack", "Marks", "Emission", "emission.dds", "Body");
+    emission.emissiveMult = 1.0F + kTattooMaterialFloatTolerance * 2.0F;
+    expect(classifyTattooMaterial(emission).glow,
+        "expected materially non-default emission to classify as Glow");
+
+    auto bump = definition(
+        "bump.json", "Pack", "Marks", "Bump", "bump.dds", "Body");
+    bump.bump = "Pack\\bump_n.dds";
+    expect(classifyTattooMaterial(bump).bump,
+        "expected non-empty bump path to classify as Bump");
+
+    auto glossiness = definition(
+        "gloss.json", "Pack", "Marks", "Glossiness", "gloss.dds", "Body");
+    glossiness.glossiness = 0.5F;
+    expect(classifyTattooMaterial(glossiness).gloss,
+        "expected positive glossiness to classify as Gloss");
+
+    auto specular = definition(
+        "specular.json", "Pack", "Marks", "Specular", "specular.dds", "Body");
+    specular.specularStrength = 0.25F;
+    expect(classifyTattooMaterial(specular).gloss,
+        "expected positive specular strength to classify as Gloss");
+}
+
+void materialFiltersComposeWithAndSemanticsAndContextualFacets() {
+    auto glowOnly = definition(
+        "glow.json", "Glow Pack", "Marks", "Glow", "glow.dds", "Body");
+    glowOnly.glow = 1;
+    auto bumpOnly = definition(
+        "bump.json", "Bump Pack", "Marks", "Bump", "bump.dds", "Body");
+    bumpOnly.bump = "Pack\\bump_n.dds";
+    auto glossOnly = definition(
+        "gloss.json", "Gloss Pack", "Marks", "Gloss", "gloss.dds", "Body");
+    glossOnly.glossiness = 1.0F;
+    auto allThree = definition(
+        "all.json", "All Pack", "Runes", "All Three", "all.dds", "Body");
+    allThree.glowTexture = "Pack\\all_g.dds";
+    allThree.bump = "Pack\\all_n.dds";
+    allThree.specularStrength = 1.0F;
+    const auto legacy = definition(
+        "legacy.json", "Legacy Pack", "Marks", "Legacy", "legacy.dds", "Body");
+    TattooRepository repository({glowOnly, bumpOnly, glossOnly, allThree, legacy});
+
+    expect(repository.query(TattooFilter{.glowOnly = true}).matchedEntries == 2,
+        "expected Glow filter to retain every Glow definition");
+    expect(repository.query(TattooFilter{.bumpOnly = true}).matchedEntries == 2,
+        "expected Bump filter to retain every Bump definition");
+    expect(repository.query(TattooFilter{.glossOnly = true}).matchedEntries == 2,
+        "expected Gloss filter to retain every Gloss definition");
+
+    const TattooFilter combined{
+        .area = "Body",
+        .glowOnly = true,
+        .bumpOnly = true,
+        .glossOnly = true,
+    };
+    const auto page = repository.query(combined);
+    const auto facets = repository.contextualFacets(combined);
+    expect(page.matchedEntries == 1 && page.entries.front().name == "All Three",
+        "expected enabled material filters to compose with AND semantics");
+    expect(facets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "all.json", .packName = "All Pack"},
+           } && facets.sections == std::vector<std::string>{"Runes"},
+        "expected material filters to narrow contextual facets");
+
+    const auto unfiltered = repository.query();
+    expect(unfiltered.matchedEntries == 5 && unfiltered.entries.front().name == "All Three",
+        "expected disabled material filters to preserve catalog results and ordering");
 }
 
 void contextualFacetsFollowAreaThenSource() {
@@ -425,6 +538,15 @@ int main() {
     failures += run("empty match resets paging", emptyMatchResetsPaging);
     failures += run("builds stable source-aware facets", buildsStableSourceAwareFacets);
     failures += run("filters domains and builds deterministic domain facets", filtersDomainsAndBuildsDeterministicDomainFacets);
+    failures += run(
+        "classifies defaults without false material capabilities",
+        classifiesMaterialMetadataWithoutTreatingDefaultsAsCapabilities);
+    failures += run(
+        "classifies independent material signals",
+        classifiesIndependentMaterialSignals);
+    failures += run(
+        "material filters use AND semantics and narrow facets",
+        materialFiltersComposeWithAndSemanticsAndContextualFacets);
     failures += run(
         "contextual facets follow Area then Source",
         contextualFacetsFollowAreaThenSource);

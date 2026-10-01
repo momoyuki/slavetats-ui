@@ -1,4 +1,5 @@
 #include "repository/TattooRepository.h"
+#include "repository/TattooMaterialClassification.h"
 
 #include <algorithm>
 #include <string>
@@ -110,6 +111,15 @@ std::size_t recentPosition(
     return static_cast<std::size_t>(std::distance(recentIdentities.begin(), found));
 }
 
+bool matchesMaterialFilter(
+    const TattooDefinition& definition,
+    const TattooFilter& filter) noexcept {
+    const auto material = classifyTattooMaterial(definition);
+    return (!filter.glowOnly || material.glow) &&
+        (!filter.bumpOnly || material.bump) &&
+        (!filter.glossOnly || material.gloss);
+}
+
 }  // namespace
 
 TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
@@ -197,7 +207,8 @@ TattooPage TattooRepository::query(const TattooFilter& filter) const {
             (!foldedArea.empty() && entry.foldedArea != foldedArea) ||
             !matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
             !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities) ||
-            !matchesRecentIdentity(entry.definition, filter.recentIdentities)) {
+            !matchesRecentIdentity(entry.definition, filter.recentIdentities) ||
+            !matchesMaterialFilter(entry.definition, filter)) {
             continue;
         }
         matches.push_back(&entry);
@@ -250,7 +261,8 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
     for (const auto& entry : m_entries) {
         if (!matchesAppliedIdentity(entry.definition, filter.appliedIdentities) ||
             !matchesFavoriteIdentity(entry.definition, filter.favoriteIdentities) ||
-            !matchesRecentIdentity(entry.definition, filter.recentIdentities)) {
+            !matchesRecentIdentity(entry.definition, filter.recentIdentities) ||
+            !matchesMaterialFilter(entry.definition, filter)) {
             continue;
         }
         areas.emplace_back(entry.foldedArea, entry.definition.area);

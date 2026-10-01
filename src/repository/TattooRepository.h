@@ -29,6 +29,9 @@ struct TattooFilter {
     std::optional<std::vector<TattooIdentity>> appliedIdentities;
     std::optional<std::vector<FavoriteIdentity>> favoriteIdentities;
     std::optional<std::vector<RecentTattooIdentity>> recentIdentities;
+    bool glowOnly{};
+    bool bumpOnly{};
+    bool glossOnly{};
     std::size_t pageIndex{};
     std::size_t pageSize{kDefaultTattooPageSize};
 };

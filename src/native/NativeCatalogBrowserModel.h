@@ -31,6 +31,9 @@ public:
     void setRecentlyUsedOnly(bool value);
     void setRecentTattooIdentities(
         std::vector<repository::RecentTattooIdentity> identities);
+    void setGlowOnly(bool value);
+    void setBumpOnly(bool value);
+    void setGlossOnly(bool value);
     void previousPage();
     void nextPage();
     void setPageNumber(std::size_t oneBasedPage);
@@ -42,6 +45,9 @@ public:
     [[nodiscard]] bool appliedOnly() const noexcept;
     [[nodiscard]] bool favoritesOnly() const noexcept;
     [[nodiscard]] bool recentlyUsedOnly() const noexcept;
+    [[nodiscard]] bool glowOnly() const noexcept;
+    [[nodiscard]] bool bumpOnly() const noexcept;
+    [[nodiscard]] bool glossOnly() const noexcept;
     [[nodiscard]] bool isFavorite(const repository::TattooDefinition& tattoo) const;
 
 private:

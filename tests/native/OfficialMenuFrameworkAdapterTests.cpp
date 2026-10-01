@@ -356,6 +356,61 @@ void catalogBadgeAnchorsInsideThumbnailTopRightCorner() {
         "expected area text inset inside the badge background");
 }
 
+void catalogMaterialBadgesUseStableOrderAndIgnoreLegacyMetadata() {
+    stui::repository::TattooDefinition allThree;
+    allThree.glow = 1;
+    allThree.bump = "marks/all_n.dds";
+    allThree.glossiness = 1.0F;
+
+    expect(stui::native::catalogMaterialBadgeLabels(allThree) ==
+            std::vector<std::string_view>{"Glow", "Bump", "Gloss"},
+        "expected stable Glow Bump Gloss badge order");
+    expect(stui::native::catalogMaterialBadgeLabels({}).empty(),
+        "expected legacy metadata to produce no material badges");
+}
+
+void catalogMaterialBadgesAnchorBottomLeftAndOmitOverflow() {
+    const std::vector<std::pair<std::string_view, float>> labels{
+        {"Glow", 32.0F},
+        {"Bump", 36.0F},
+        {"Gloss", 38.0F},
+    };
+    const auto layouts = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 120.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+
+    expect(layouts.size() == 3 && layouts[0].label == "Glow" &&
+            layouts[1].label == "Bump" && layouts[2].label == "Gloss",
+        "expected every fitting material badge in label order");
+    expect(layouts[0].bounds.x == 4.0F && layouts[0].bounds.y == 96.0F,
+        "expected first material badge anchored to the thumbnail bottom-left");
+    expect(layouts[1].bounds.x == 48.0F && layouts[2].bounds.x == 96.0F,
+        "expected material badges to advance horizontally with spacing");
+    expect(layouts.back().bounds.x + layouts.back().bounds.width <= 156.0F,
+        "expected material badges to remain inside the right margin");
+
+    const auto constrained = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 90.0F, 120.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+    expect(constrained.size() == 1 && constrained.front().label == "Glow",
+        "expected a narrow thumbnail to omit rather than clip overflow badges");
+
+    const auto shortThumbnail = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 40.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+    expect(shortThumbnail.empty(),
+        "expected a short thumbnail to omit badges that overlap top indicators");
+    const auto smallerThanBadge = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 16.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 0.0F);
+    expect(smallerThanBadge.empty(),
+        "expected a thumbnail shorter than a badge to omit material badges");
+}
+
+void catalogFilterControlsWrapAgainstTheActualRemainingRowWidth() {
+    expect(stui::native::catalogControlFitsOnSameLine(300.0F, 180.0F, 8.0F, 100.0F),
+        "expected next filter control to fit in the actual remaining row width");
+    expect(!stui::native::catalogControlFitsOnSameLine(
+               300.0F, 220.0F, 8.0F, 100.0F),
+        "expected next filter control to wrap when previous controls consume the row");
+}
+
 void thumbnailCardsReserveNoPersistentMetadataRow() {
     const float metadataHeight =
         stui::native::calculateCatalogCardMetadataHeight(24.0F, 4.0F);
@@ -1288,6 +1343,12 @@ int main() {
         std::cout << "PASS browser grid uses remaining height without scrolling\n";
         catalogBadgeAnchorsInsideThumbnailTopRightCorner();
         std::cout << "PASS catalog badge anchors inside thumbnail top-right\n";
+        catalogMaterialBadgesUseStableOrderAndIgnoreLegacyMetadata();
+        std::cout << "PASS catalog material badges use stable order\n";
+        catalogMaterialBadgesAnchorBottomLeftAndOmitOverflow();
+        std::cout << "PASS catalog material badges anchor bottom-left\n";
+        catalogFilterControlsWrapAgainstTheActualRemainingRowWidth();
+        std::cout << "PASS catalog filters wrap against remaining row width\n";
         thumbnailCardsReserveNoPersistentMetadataRow();
         std::cout << "PASS thumbnail cards reserve no persistent metadata row\n";
         footerControlAlignsToRightContentEdge();

@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace stui::runtime {
@@ -199,6 +200,30 @@ struct CatalogBadgeLayout {
     float horizontalPadding,
     float verticalPadding,
     float margin) noexcept;
+
+struct CatalogMaterialBadgeLayout {
+    std::string_view label;
+    CatalogBadgeLayout bounds;
+};
+
+[[nodiscard]] std::vector<std::string_view> catalogMaterialBadgeLabels(
+    const repository::TattooDefinition& tattoo);
+[[nodiscard]] std::vector<CatalogMaterialBadgeLayout>
+calculateCatalogMaterialBadgeLayouts(
+    const std::vector<std::pair<std::string_view, float>>& labelsAndWidths,
+    float containerWidth,
+    float containerHeight,
+    float textHeight,
+    float horizontalPadding,
+    float verticalPadding,
+    float margin,
+    float spacing,
+    float minimumY);
+[[nodiscard]] bool catalogControlFitsOnSameLine(
+    float contentRightX,
+    float previousItemRightX,
+    float spacing,
+    float nextControlWidth) noexcept;
 
 [[nodiscard]] float calculateCatalogCardMetadataHeight(
     float textLineHeight,

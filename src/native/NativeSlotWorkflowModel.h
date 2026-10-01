@@ -243,6 +243,12 @@ public:
     [[nodiscard]] const runtime::ConfigError* favoriteError() const noexcept;
     void setRecentlyUsedOnly(bool value);
     [[nodiscard]] bool recentlyUsedOnly() const noexcept;
+    void setGlowOnly(bool value);
+    [[nodiscard]] bool glowOnly() const noexcept;
+    void setBumpOnly(bool value);
+    [[nodiscard]] bool bumpOnly() const noexcept;
+    void setGlossOnly(bool value);
+    [[nodiscard]] bool glossOnly() const noexcept;
     [[nodiscard]] bool recentlyUsedPending() const noexcept;
     [[nodiscard]] const runtime::ConfigError* recentlyUsedError() const noexcept;
     [[nodiscard]] bool appearancePresetPending() const noexcept;

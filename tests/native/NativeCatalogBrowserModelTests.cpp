@@ -315,6 +315,46 @@ void recentUpdateClampsPageWithoutClearingOtherFilters() {
         "expected recent update to clamp page without clearing filters");
 }
 
+void materialFiltersComposeAndPersistAcrossCatalogRefresh() {
+    auto glowOnly = tattoo("source-a.json", "Marks", "Body", "Glow", 0);
+    glowOnly.glow = 1;
+    auto bumpOnly = tattoo("source-a.json", "Marks", "Body", "Bump", 1);
+    bumpOnly.bump = "marks/bump_n.dds";
+    auto glossOnly = tattoo("source-a.json", "Marks", "Body", "Gloss", 2);
+    glossOnly.glossiness = 1.0F;
+    auto allThree = tattoo("source-a.json", "Marks", "Body", "All Three", 3);
+    allThree.glowTexture = "marks/all_g.dds";
+    allThree.bump = "marks/all_n.dds";
+    allThree.specularStrength = 1.0F;
+    const auto legacy = tattoo("source-a.json", "Marks", "Body", "Legacy", 4);
+    TattooCatalogSnapshot current = snapshot({glowOnly, bumpOnly, glossOnly, allThree, legacy});
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+
+    model.setGlowOnly(true);
+    model.setBumpOnly(true);
+    model.setGlossOnly(true);
+    expect(model.glowOnly() && model.bumpOnly() && model.glossOnly(),
+        "expected independent material toggles enabled");
+    expect(model.filter().pageIndex == 0 && model.page().matchedEntries == 1 &&
+            model.page().entries.front().name == "All Three",
+        "expected material toggles to reset pagination and use AND semantics");
+
+    current = snapshot({allThree, legacy});
+    model.refresh();
+    expect(model.glowOnly() && model.bumpOnly() && model.glossOnly() &&
+            model.page().matchedEntries == 1 &&
+            model.page().entries.front().name == "All Three",
+        "expected replacement snapshot to preserve transient material toggles");
+
+    model.setGlossOnly(false);
+    model.setBumpOnly(false);
+    model.setGlowOnly(false);
+    expect(!model.glowOnly() && !model.bumpOnly() && !model.glossOnly() &&
+            model.page().matchedEntries == 2,
+        "expected disabling material filters to restore legacy entries");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -351,5 +391,7 @@ int main() {
         filtersRecentlyUsedInNewestFirstOrder);
     failures += run("recent update clamps page without clearing filters",
         recentUpdateClampsPageWithoutClearingOtherFilters);
+    failures += run("material filters compose and persist across refresh",
+        materialFiltersComposeAndPersistAcrossCatalogRefresh);
     return failures == 0 ? 0 : 1;
 }

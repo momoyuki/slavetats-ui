@@ -158,6 +158,36 @@ void NativeCatalogBrowserModel::setRecentTattooIdentities(
     }
 }
 
+void NativeCatalogBrowserModel::setGlowOnly(const bool value) {
+    if (m_filter.glowOnly == value) {
+        return;
+    }
+    m_filter.glowOnly = value;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setBumpOnly(const bool value) {
+    if (m_filter.bumpOnly == value) {
+        return;
+    }
+    m_filter.bumpOnly = value;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setGlossOnly(const bool value) {
+    if (m_filter.glossOnly == value) {
+        return;
+    }
+    m_filter.glossOnly = value;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
 void NativeCatalogBrowserModel::previousPage() {
     if (m_filter.pageIndex == 0) {
         return;
@@ -211,6 +241,18 @@ bool NativeCatalogBrowserModel::recentlyUsedOnly() const noexcept {
     return m_recentlyUsedOnly;
 }
 
+bool NativeCatalogBrowserModel::glowOnly() const noexcept {
+    return m_filter.glowOnly;
+}
+
+bool NativeCatalogBrowserModel::bumpOnly() const noexcept {
+    return m_filter.bumpOnly;
+}
+
+bool NativeCatalogBrowserModel::glossOnly() const noexcept {
+    return m_filter.glossOnly;
+}
+
 bool NativeCatalogBrowserModel::isFavorite(const repository::TattooDefinition& tattoo) const {
     const auto identity = repository::favoriteIdentity(tattoo);
     return std::ranges::any_of(m_favoriteIdentities, [&identity](const auto& favorite) {
@@ -219,7 +261,15 @@ bool NativeCatalogBrowserModel::isFavorite(const repository::TattooDefinition& t
 }
 
 void NativeCatalogBrowserModel::resetFilter() {
-    m_filter = repository::TattooFilter{.pageSize = kPageSize};
+    const bool glowOnly = m_filter.glowOnly;
+    const bool bumpOnly = m_filter.bumpOnly;
+    const bool glossOnly = m_filter.glossOnly;
+    m_filter = repository::TattooFilter{
+        .glowOnly = glowOnly,
+        .bumpOnly = bumpOnly,
+        .glossOnly = glossOnly,
+        .pageSize = kPageSize,
+    };
     if (m_appliedOnly) {
         m_filter.appliedIdentities = m_appliedTattooIdentities;
     }

@@ -1340,6 +1340,30 @@ bool NativeSlotWorkflowModel::recentlyUsedOnly() const noexcept {
     return m_catalog.recentlyUsedOnly();
 }
 
+void NativeSlotWorkflowModel::setGlowOnly(const bool value) {
+    m_catalog.setGlowOnly(value);
+}
+
+bool NativeSlotWorkflowModel::glowOnly() const noexcept {
+    return m_catalog.glowOnly();
+}
+
+void NativeSlotWorkflowModel::setBumpOnly(const bool value) {
+    m_catalog.setBumpOnly(value);
+}
+
+bool NativeSlotWorkflowModel::bumpOnly() const noexcept {
+    return m_catalog.bumpOnly();
+}
+
+void NativeSlotWorkflowModel::setGlossOnly(const bool value) {
+    m_catalog.setGlossOnly(value);
+}
+
+bool NativeSlotWorkflowModel::glossOnly() const noexcept {
+    return m_catalog.glossOnly();
+}
+
 bool NativeSlotWorkflowModel::recentlyUsedPending() const noexcept {
     return m_pendingRecentTattoo.has_value() || m_activeRecentTattooRequestId.has_value();
 }
