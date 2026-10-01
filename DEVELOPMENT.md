@@ -27,7 +27,8 @@ SlaveTatsRuntime     SlaveTatsService
 - `ApplicationRuntime` owns one concrete runtime and service for the process.
 - `SlaveTatsService` validates transport-independent queries and mutations.
 - `SlaveTatsRuntime` binds SlaveTatsNG and JContainers to Skyrim operations.
-- `NativeSlotWorkflowModel` owns Player slot/picker/preview/edit state.
+- `NativeSlotWorkflowModel` owns Actor Target-scoped slot, picker, preview, and
+  edit state.
 - `NativeSlotWorkflowRuntime` schedules game-thread queries and mutations.
 - `NativeThumbnailRuntime` resolves only requested page textures and publishes
   bounded D3D11 shader-resource views.
@@ -89,14 +90,19 @@ Tests are small C++ executables registered with CTest. New behavior follows
 red-green-refactor: add a behavior test, observe the expected failure, implement
 the minimum change, and rerun focused plus relevant full suites.
 
+GitHub Actions repeats the complete Debug and Release verification on pull
+requests targeting `main` and pushes to `main`. A green local run does not
+replace the hosted check. Release automation and versioning are documented in
+[RELEASING.md](RELEASING.md).
+
 ## Runtime Lifecycle
 
 1. Plugin load initializes logging and registers the native menu.
 2. SKSE, SlaveTatsNG, and JContainers listeners are registered.
 3. `kDataLoaded` scans effective loose/BSA tattoo JSON sources and initializes
    the native D3D11 thumbnail runtime.
-4. The configured hotkey or Menu Framework section item launches the Player
-   workflow and opens the native window.
+4. The configured hotkey or Menu Framework section item launches the selected
+   Actor Target workflow and opens the native window.
 5. External work is scheduled through the SKSE task interface; presentation
    observes model state on later frames.
 

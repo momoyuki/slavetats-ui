@@ -147,6 +147,10 @@ The same browse/apply/edit/remove workflow works for a deliberately selected loa
 
 **Status:** Current priority
 
+**Release baseline:** The accepted capabilities checked below are being prepared
+for public testing as `v1.8.0-beta.1`. This release does not mark the remaining
+unchecked candidates complete.
+
 Add convenience features only after the full appearance model and actor-scoped runtime behavior are stable.
 
 Candidates:
