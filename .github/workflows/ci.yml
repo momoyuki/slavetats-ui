@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Configure vcpkg environment
+        shell: pwsh
+        run: '"VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append'
+
+      - name: Build Debug
+        shell: pwsh
+        run: ./build.ps1 -Config debug
+
+      - name: Test Debug
+        shell: pwsh
+        run: ctest --test-dir build/debug --output-on-failure
+
+      - name: Build Release
+        shell: pwsh
+        run: ./build.ps1 -Config release
+
+      - name: Test Release
+        shell: pwsh
+        run: ctest --test-dir build/release --output-on-failure
+
+      - name: Test release tooling
+        shell: pwsh
+        run: |
+          ./tests/release/ReleaseMetadataTests.ps1
+          ./tests/release/PackageReleaseTests.ps1
+          ./tests/release/WorkflowPolicyTests.ps1

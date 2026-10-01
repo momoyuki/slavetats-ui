@@ -36,8 +36,10 @@ Run every release-script test under `tests/release/` once those tests are
 present. Review the scoped diff and obtain explicit approval before committing,
 pushing, or merging.
 
-GitHub Actions repeats Debug and Release verification for pull requests into
-`main` and pushes to `main`. A green local run does not replace hosted CI
+The GitHub Actions workflow named `CI` repeats Debug and Release verification on
+the `windows-2022` runner for pull requests into `main`, pushes to `main`, and
+manual dispatches. It also runs the release-tool test scripts and has read-only
+repository permissions. A green local run does not replace hosted CI
 acceptance.
 
 ## Publish a Pre-release
