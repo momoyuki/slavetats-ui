@@ -1,4 +1,5 @@
 #include "native/NativeCatalogBrowserModel.h"
+#include "repository/FavoriteIdentity.h"
 
 #include <exception>
 #include <iostream>
@@ -21,12 +22,14 @@ TattooDefinition tattoo(
     std::string section,
     std::string area,
     std::string name,
-    std::size_t sourceIndex) {
+    std::size_t sourceIndex,
+    std::string domain = "default") {
     return TattooDefinition{
         .sourceId = std::move(sourceId),
         .sourceFile = "fixture.json",
         .packName = "Fixture Pack",
         .sourceIndex = sourceIndex,
+        .domain = std::move(domain),
         .name = std::move(name),
         .section = std::move(section),
         .texturePath = "fixture.dds",
@@ -181,6 +184,177 @@ void clearsFiltersThatAreInvalidInTheNewContext() {
         "expected query to use the reconciled Body Source context");
 }
 
+void domainSelectionReconcilesSourceAndSection() {
+    TattooCatalogSnapshot current = snapshot({
+        tattoo("default-a.json", "Default Marks", "Body", "Default A", 0),
+        tattoo("default-b.json", "Default Runes", "Body", "Default B", 1),
+        tattoo("custom.json", "Custom Marks", "Body", "Custom", 2, "custom"),
+    });
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    model.setDomain("custom");
+    model.setSourceId("custom.json");
+    model.setSection("Custom Marks");
+
+    model.setDomain("default");
+    expect(model.filter().domain == "default" && model.filter().pageIndex == 0,
+        "expected Domain change to reset pagination");
+    expect(model.filter().sourceId.empty() && model.filter().section.empty(),
+        "expected incompatible Source and Section cleared after Domain change");
+    expect(model.page().matchedEntries == 2,
+        "expected default Domain entries after reconciliation");
+
+    model.setDomain("");
+    expect(model.filter().domain.empty() && model.page().matchedEntries == 3,
+        "expected empty Domain to restore All Domains");
+
+    model.setDomain("missing");
+    expect(model.filter().domain.empty() && model.page().matchedEntries == 3,
+        "expected unavailable Domain to reconcile to All Domains");
+}
+
+void filtersExactFavoriteIdentitiesBeforePagination() {
+    std::vector<TattooDefinition> definitions;
+    for (std::size_t index = 0; index < 13; ++index) {
+        definitions.push_back(tattoo(
+            index % 2 == 0 ? "favorites.json" : "other.json",
+            "Marks",
+            "Body",
+            "Entry " + std::to_string(index),
+            index,
+            index == 12 ? "custom" : "default"));
+    }
+    TattooCatalogSnapshot current = snapshot(std::move(definitions));
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+
+    std::vector<stui::repository::FavoriteIdentity> favorites;
+    for (std::size_t index = 0; index < 13; index += 2) {
+        favorites.push_back(stui::repository::favoriteIdentity(tattoo(
+            "favorites.json", "Marks", "Body", "Entry " + std::to_string(index), index,
+            index == 12 ? "custom" : "default")));
+    }
+    model.setFavoriteIdentities(favorites);
+    model.setFavoritesOnly(true);
+
+    expect(model.favoritesOnly() && model.page().matchedEntries == favorites.size(),
+        "expected Favorites-only to filter the exact stored identities");
+    expect(std::ranges::all_of(model.page().entries, [&model](const TattooDefinition& entry) {
+        return model.isFavorite(entry);
+    }), "expected every visible Favorites-only entry to have a stored favorite identity");
+}
+
+void favoriteUpdateClampsPageWithoutResettingOtherFilters() {
+    TattooCatalogSnapshot current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    std::vector<stui::repository::FavoriteIdentity> favorites;
+    for (std::size_t index = 0; index < 7; ++index) {
+        favorites.push_back(stui::repository::favoriteIdentity(tattoo(
+            "source-a.json", "Marks", "Body", "Entry " + std::to_string(index), index)));
+    }
+    model.setFavoriteIdentities(favorites);
+    model.setFavoritesOnly(true);
+    model.setPageNumber(2);
+    model.setSearch("Entry");
+    model.setPageNumber(2);
+
+    favorites.pop_back();
+    model.setFavoriteIdentities(favorites);
+
+    expect(model.filter().search == "Entry" && model.page().pageIndex == 0 &&
+            model.page().matchedEntries == 6,
+        "expected membership update to clamp the page without clearing other filters");
+}
+
+void filtersRecentlyUsedInNewestFirstOrder() {
+    TattooCatalogSnapshot current = snapshot({
+        tattoo("source-a.json", "Marks", "Body", "Alpha", 0),
+        tattoo("source-a.json", "Marks", "Body", "Beta", 1),
+        tattoo("source-a.json", "Marks", "Face", "Face Mark", 2),
+    });
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    model.setArea("Body");
+    model.setRecentTattooIdentities({
+        stui::repository::recentTattooIdentity(
+            tattoo("source-a.json", "Marks", "Body", "Beta", 1),
+            stui::core::TattooArea::body),
+        stui::repository::recentTattooIdentity(
+            tattoo("source-a.json", "Marks", "Body", "Alpha", 0),
+            stui::core::TattooArea::body),
+    });
+    model.setRecentlyUsedOnly(true);
+
+    expect(model.recentlyUsedOnly() && model.page().matchedEntries == 2 &&
+            model.page().entries[0].name == "Beta" &&
+            model.page().entries[1].name == "Alpha",
+        "expected Recently Used filter to preserve newest-first history order");
+}
+
+void recentUpdateClampsPageWithoutClearingOtherFilters() {
+    TattooCatalogSnapshot current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    std::vector<stui::repository::RecentTattooIdentity> recent;
+    for (std::size_t index = 0; index < 7; ++index) {
+        recent.push_back(stui::repository::recentTattooIdentity(tattoo(
+            "source-a.json", "Marks", "Body", "Entry " + std::to_string(index), index),
+            stui::core::TattooArea::body));
+    }
+    model.setRecentTattooIdentities(recent);
+    model.setRecentlyUsedOnly(true);
+    model.setSearch("Entry");
+    model.setPageNumber(2);
+
+    recent.pop_back();
+    model.setRecentTattooIdentities(recent);
+
+    expect(model.filter().search == "Entry" && model.page().pageIndex == 0 &&
+            model.page().matchedEntries == 6,
+        "expected recent update to clamp page without clearing filters");
+}
+
+void materialFiltersComposeAndPersistAcrossCatalogRefresh() {
+    auto glowOnly = tattoo("source-a.json", "Marks", "Body", "Glow", 0);
+    glowOnly.glow = 1;
+    auto bumpOnly = tattoo("source-a.json", "Marks", "Body", "Bump", 1);
+    bumpOnly.bump = "marks/bump_n.dds";
+    auto glossOnly = tattoo("source-a.json", "Marks", "Body", "Gloss", 2);
+    glossOnly.glossiness = 1.0F;
+    auto allThree = tattoo("source-a.json", "Marks", "Body", "All Three", 3);
+    allThree.glowTexture = "marks/all_g.dds";
+    allThree.bump = "marks/all_n.dds";
+    allThree.specularStrength = 1.0F;
+    const auto legacy = tattoo("source-a.json", "Marks", "Body", "Legacy", 4);
+    TattooCatalogSnapshot current = snapshot({glowOnly, bumpOnly, glossOnly, allThree, legacy});
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+
+    model.setGlowOnly(true);
+    model.setBumpOnly(true);
+    model.setGlossOnly(true);
+    expect(model.glowOnly() && model.bumpOnly() && model.glossOnly(),
+        "expected independent material toggles enabled");
+    expect(model.filter().pageIndex == 0 && model.page().matchedEntries == 1 &&
+            model.page().entries.front().name == "All Three",
+        "expected material toggles to reset pagination and use AND semantics");
+
+    current = snapshot({allThree, legacy});
+    model.refresh();
+    expect(model.glowOnly() && model.bumpOnly() && model.glossOnly() &&
+            model.page().matchedEntries == 1 &&
+            model.page().entries.front().name == "All Three",
+        "expected replacement snapshot to preserve transient material toggles");
+
+    model.setGlossOnly(false);
+    model.setBumpOnly(false);
+    model.setGlowOnly(false);
+    expect(!model.glowOnly() && !model.bumpOnly() && !model.glossOnly() &&
+            model.page().matchedEntries == 2,
+        "expected disabling material filters to restore legacy entries");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -206,5 +380,18 @@ int main() {
     failures += run(
         "clears filters invalid in the new context",
         clearsFiltersThatAreInvalidInTheNewContext);
+    failures += run(
+        "domain selection reconciles Source and Section",
+        domainSelectionReconcilesSourceAndSection);
+    failures += run("filters exact favorite identities before pagination",
+        filtersExactFavoriteIdentitiesBeforePagination);
+    failures += run("favorite update clamps page without resetting filters",
+        favoriteUpdateClampsPageWithoutResettingOtherFilters);
+    failures += run("filters Recently Used in newest-first order",
+        filtersRecentlyUsedInNewestFirstOrder);
+    failures += run("recent update clamps page without clearing filters",
+        recentUpdateClampsPageWithoutClearingOtherFilters);
+    failures += run("material filters compose and persist across refresh",
+        materialFiltersComposeAndPersistAcrossCatalogRefresh);
     return failures == 0 ? 0 : 1;
 }

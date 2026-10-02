@@ -19,6 +19,141 @@ void expect(bool condition, std::string_view message) {
     }
 }
 
+void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
+    using namespace stui::native;
+    expect(formatActorTargetIdentity({ActorTargetKind::crosshair, 0xA2C8E, "Lydia"}) ==
+               "Lydia [0x000A2C8E]",
+        "expected exact actor name and eight-digit uppercase form ID");
+    expect(formatActorTargetIdentity(ActorTarget{}) == "Player [0x00000014]",
+        "expected Player identity to retain leading zeroes");
+    expect(formatActorTargetIdentity({ActorTargetKind::crosshair, 0xFFFFFFFF, ""}) ==
+               "Unnamed Actor [0xFFFFFFFF]",
+        "expected fallback actor name and full-width form ID");
+    const ActorTarget player;
+    expect(currentTattoosTitle(&player) == "Current Tattoos - Player",
+        "expected Current Slots title to identify Player");
+    const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(currentTattoosTitle(&lydia) == "Current Tattoos - Lydia",
+        "expected Current Slots title to use the selected Actor name");
+    const ActorTarget unnamed{ActorTargetKind::crosshair, 0x1234, ""};
+    expect(currentTattoosTitle(&unnamed) == "Current Tattoos - Unnamed Actor" &&
+               currentTattoosTitle(nullptr) == "Current Tattoos",
+        "expected unnamed and missing targets never to use a Player title");
+}
+
+void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
+    using namespace stui::native;
+    const ActorTarget actor;
+    expect(actorTargetStatusLabel(true, nullptr) == "Resolving target..." &&
+               actorTargetStatusLabel(true, &actor) == "Resolving target...",
+        "expected resolution status to take precedence over an identity");
+    expect(actorTargetStatusLabel(false, nullptr) == "No valid crosshair Actor",
+        "expected explicit missing-target status");
+    expect(actorTargetStatusLabel(false, &actor).empty(),
+        "expected no target error for a resolved Actor");
+    expect(actorTargetActionsEnabled(false, &actor), "expected resolved Actor actions");
+    expect(!actorTargetActionsEnabled(true, &actor) &&
+               !actorTargetActionsEnabled(true, nullptr) &&
+               !actorTargetActionsEnabled(false, nullptr),
+        "expected slot and mutation actions disabled without a resolved Actor");
+}
+
+void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
+    using namespace stui::native;
+    const ActorTarget player;
+    const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &player, LivePreviewStatus::pending) ==
+               "Player [0x00000014] - Preview pending...",
+        "expected pending preview status after the Player identity");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &lydia, LivePreviewStatus::applied) ==
+               "Lydia [0x000A2C8E] - Preview applied",
+        "expected applied preview status after the crosshair target identity");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               false, &player, LivePreviewStatus::clean) ==
+               "Player [0x00000014]",
+        "expected clean preview state not to add redundant text");
+    expect(formatActorTargetIdentityWithPreviewStatus(
+               true, &player, LivePreviewStatus::pending) ==
+               "Resolving target... - Preview pending...",
+        "expected target resolution status to remain visible with preview status");
+}
+
+void actorTargetControlsRespectMutationAndCrosshairMode() {
+    using namespace stui::native;
+    for (const auto kind : {ActorTargetKind::player, ActorTargetKind::crosshair}) {
+        for (const bool resolving : {false, true}) {
+            const auto idle = actorTargetControlPresentation(kind, resolving, false);
+            expect(idle.playerEnabled && idle.crosshairEnabled,
+                "expected explicit target selection while no mutation is in flight");
+            expect(idle.refreshVisible == (kind == ActorTargetKind::crosshair),
+                "expected Refresh only in Crosshair mode");
+            expect(idle.refreshEnabled == (kind == ActorTargetKind::crosshair && !resolving),
+                "expected Refresh to wait for existing target resolution");
+            const auto busy = actorTargetControlPresentation(kind, resolving, true);
+            expect(!busy.playerEnabled && !busy.crosshairEnabled && !busy.refreshEnabled,
+                "expected every target control disabled during mutation");
+            expect(busy.refreshVisible == (kind == ActorTargetKind::crosshair),
+                "expected mutation not to change Refresh visibility");
+        }
+    }
+}
+
+void actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges() {
+    using namespace stui::native;
+    NativeCatalogBrowserModel catalog([] { return nullptr; });
+    NativeSlotWorkflowModel workflow(catalog);
+    workflow.start();
+    const auto initial = workflow.takeSlotQuery();
+    expect(initial.has_value(), "expected initial query");
+    workflow.completeSlotQuery(initial->generation, stui::core::TattooSlots{
+        .actorFormId = 0x14, .area = stui::core::TattooArea::body,
+        .configuredCount = 1,
+        .slots = {{.index = 0, .occupancy = stui::core::SlotOccupancy::slaveTats,
+            .tattoo = stui::core::TattooEntry{.runtimeHandle = 73, .slot = 0}}},
+    });
+    expect(workflow.selectSlot(0) && workflow.beginEditAppearance(),
+        "expected active edit session before target input");
+    expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::none) &&
+               !applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh),
+        "expected no-op and hidden Refresh to keep the current frame");
+    expect(workflow.editAppearance(), "expected no-op header to preserve edit session");
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::crosshair),
+        "expected accepted Crosshair input to end the old frame");
+    expect(!workflow.editAppearance() && !workflow.slots() && !workflow.actorTarget() &&
+               workflow.screen() == SlotWorkflowScreen::currentSlots,
+        "expected accepted target input to invalidate all captured actor presentation");
+    expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh),
+        "expected resolving Refresh input rejected");
+    auto resolution = workflow.takeActorTargetRequest();
+    expect(resolution.has_value(), "expected explicit Crosshair resolution");
+    workflow.completeActorTargetResolution(resolution->generation,
+        ActorTarget{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"});
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::refresh) &&
+               !workflow.actorTarget(),
+        "expected Refresh to invalidate the previous NPC identity");
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::player) &&
+               workflow.actorTarget() && workflow.actorTarget()->formId == 0x14,
+        "expected explicit Player input to restore exactly Player");
+    const auto playerQuery = workflow.takeSlotQuery();
+    expect(playerQuery.has_value(), "expected query after explicit Player selection");
+    workflow.completeSlotQuery(playerQuery->generation, stui::core::TattooSlots{
+        .actorFormId = 0x14, .area = stui::core::TattooArea::body,
+        .configuredCount = 1,
+        .slots = {{.index = 0, .occupancy = stui::core::SlotOccupancy::slaveTats,
+            .tattoo = stui::core::TattooEntry{.runtimeHandle = 73, .slot = 0}}},
+    });
+    expect(workflow.toggleSlotLock(0), "expected pending mutation fixture");
+    for (const auto intent : {ActorTargetHeaderIntent::player,
+             ActorTargetHeaderIntent::crosshair, ActorTargetHeaderIntent::refresh}) {
+        expect(!applyActorTargetHeaderIntent(workflow, intent),
+            "expected header input rejected while mutation is pending");
+    }
+    expect(workflow.actorTarget() && workflow.actorTarget()->formId == 0x14 && workflow.slots(),
+        "expected rejected header input to preserve the mutation Actor and snapshot");
+}
+
 float returnVersionThree() {
     return 3.13F;
 }
@@ -175,6 +310,20 @@ void thumbnailCardWidgetsHaveStableUniqueIds() {
         "expected equal source indices from different files to remain unique");
 }
 
+void favoriteButtonsUseFontAwesomeStarIcons() {
+    expect(stui::native::catalogFavoriteButtonIcon(false) == 0xF006U,
+        "expected unselected favorite action to use the Font Awesome regular star icon");
+    expect(stui::native::catalogFavoriteButtonIcon(true) == 0xF005U,
+        "expected selected favorite action to use the Font Awesome solid star icon");
+}
+
+void favoriteButtonSizeContainsItsIcon() {
+    expect(stui::native::catalogIconButtonSize(16.0F, 4.0F) == 24.0F,
+        "expected the minimum icon button size for a normal font glyph");
+    expect(stui::native::catalogIconButtonSize(30.0F, 4.0F) == 38.0F,
+        "expected tall icon glyphs to expand the button rather than clip");
+}
+
 void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
     const auto collapsed = stui::native::calculateCatalogBrowserGridLayout(
         700.0F, 40.0F, 60.0F, 3);
@@ -183,12 +332,11 @@ void browserGridUsesRemainingHeightWithoutVerticalScrolling() {
     expect(collapsed.rowHeight == 220.0F && collapsed.thumbnailHeight == 160.0F,
         "expected three equal image-first rows with collapsed filters");
 
-    const auto expanded = stui::native::calculateCatalogBrowserGridLayout(
-        520.0F, 40.0F, 60.0F, 3);
-    expect(expanded.gridHeight == 480.0F,
-        "expected expanded filters to leave a smaller bounded grid");
-    expect(expanded.rowHeight == 160.0F && expanded.thumbnailHeight == 100.0F,
-        "expected all three rows to remain visible with expanded filters");
+    const auto filterOverlay = stui::native::calculateCatalogBrowserGridLayout(
+        700.0F, 40.0F, 60.0F, 3);
+    expect(filterOverlay.gridHeight == collapsed.gridHeight &&
+            filterOverlay.thumbnailHeight == collapsed.thumbnailHeight,
+        "expected filter overlay to preserve the thumbnail grid height");
 
     const auto constrained = stui::native::calculateCatalogBrowserGridLayout(
         80.0F, 40.0F, 60.0F, 3);
@@ -206,6 +354,61 @@ void catalogBadgeAnchorsInsideThumbnailTopRightCorner() {
         "expected area badge padding around its text");
     expect(badge.textX == 150.0F && badge.textY == 7.0F,
         "expected area text inset inside the badge background");
+}
+
+void catalogMaterialBadgesUseStableOrderAndIgnoreLegacyMetadata() {
+    stui::repository::TattooDefinition allThree;
+    allThree.glow = 1;
+    allThree.bump = "marks/all_n.dds";
+    allThree.glossiness = 1.0F;
+
+    expect(stui::native::catalogMaterialBadgeLabels(allThree) ==
+            std::vector<std::string_view>{"Glow", "Bump", "Gloss"},
+        "expected stable Glow Bump Gloss badge order");
+    expect(stui::native::catalogMaterialBadgeLabels({}).empty(),
+        "expected legacy metadata to produce no material badges");
+}
+
+void catalogMaterialBadgesAnchorBottomLeftAndOmitOverflow() {
+    const std::vector<std::pair<std::string_view, float>> labels{
+        {"Glow", 32.0F},
+        {"Bump", 36.0F},
+        {"Gloss", 38.0F},
+    };
+    const auto layouts = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 120.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+
+    expect(layouts.size() == 3 && layouts[0].label == "Glow" &&
+            layouts[1].label == "Bump" && layouts[2].label == "Gloss",
+        "expected every fitting material badge in label order");
+    expect(layouts[0].bounds.x == 4.0F && layouts[0].bounds.y == 96.0F,
+        "expected first material badge anchored to the thumbnail bottom-left");
+    expect(layouts[1].bounds.x == 48.0F && layouts[2].bounds.x == 96.0F,
+        "expected material badges to advance horizontally with spacing");
+    expect(layouts.back().bounds.x + layouts.back().bounds.width <= 156.0F,
+        "expected material badges to remain inside the right margin");
+
+    const auto constrained = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 90.0F, 120.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+    expect(constrained.size() == 1 && constrained.front().label == "Glow",
+        "expected a narrow thumbnail to omit rather than clip overflow badges");
+
+    const auto shortThumbnail = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 40.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 32.0F);
+    expect(shortThumbnail.empty(),
+        "expected a short thumbnail to omit badges that overlap top indicators");
+    const auto smallerThanBadge = stui::native::calculateCatalogMaterialBadgeLayouts(
+        labels, 160.0F, 16.0F, 16.0F, 4.0F, 2.0F, 4.0F, 4.0F, 0.0F);
+    expect(smallerThanBadge.empty(),
+        "expected a thumbnail shorter than a badge to omit material badges");
+}
+
+void catalogFilterControlsWrapAgainstTheActualRemainingRowWidth() {
+    expect(stui::native::catalogControlFitsOnSameLine(300.0F, 180.0F, 8.0F, 100.0F),
+        "expected next filter control to fit in the actual remaining row width");
+    expect(!stui::native::catalogControlFitsOnSameLine(
+               300.0F, 220.0F, 8.0F, 100.0F),
+        "expected next filter control to wrap when previous controls consume the row");
 }
 
 void thumbnailCardsReserveNoPersistentMetadataRow() {
@@ -241,6 +444,13 @@ void unifiedFooterKeepsCloseAtRightEdge() {
     expect(constrained.actionWidth == 0.0F && constrained.closeWidth == 40.0F &&
             constrained.closeX == 0.0F,
         "expected constrained unified footer to keep Close inside available content");
+}
+
+void pinnedFooterReservesTheBottomRowAfterShortContent() {
+    expect(stui::native::calculatePinnedFooterY(220.0F, 180.0F, 24.0F) == 376.0F,
+        "expected a short content region to place its footer at the bottom row");
+    expect(stui::native::calculatePinnedFooterY(220.0F, 12.0F, 24.0F) == 220.0F,
+        "expected an overflowing footer never to move above the current cursor");
 }
 
 void pickerFooterActionsStayRightAlignedInNavigationOrder() {
@@ -305,10 +515,10 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     materialChangedSession.edited = materialChangedSession.original;
     materialChangedSession.edited.glow = 0x203040;
 
-    expect(!stui::native::isAppearanceSaveEnabled(
+    expect(stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &unchangedSession),
-        "unchanged appearance must disable Save");
+        "unchanged appearance must allow Save to exit without writing");
     expect(stui::native::isAppearanceSaveEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &changedSession),
@@ -368,8 +578,8 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     const auto retry = stui::native::appearanceSavePresentation(
         stui::native::SlotWorkflowScreen::editAppearance,
         &retrySession);
-    expect(retry.label == "Retry Sync" && retry.enabled,
-        "expected synchronize-only retries to replace Save with Retry Sync");
+    expect(retry.label == "Save" && retry.enabled,
+        "expected Save label to stay separate from operation retry");
     expect(!stui::native::isAppearanceEditingEnabled(
                stui::native::SlotWorkflowScreen::editAppearance,
                &retrySession),
@@ -378,8 +588,48 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
     const auto savingRetry = stui::native::appearanceSavePresentation(
         stui::native::SlotWorkflowScreen::savingAppearance,
         &retrySession);
-    expect(savingRetry.label == "Retry Sync" && !savingRetry.enabled,
-        "expected saving appearance to disable the Retry Sync submission");
+    expect(savingRetry.label == "Save" && !savingRetry.enabled,
+        "expected saving appearance to disable duplicate Save");
+}
+
+void editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges() {
+    using namespace stui::native;
+    expect(!shouldShowAppearanceTextureMetadata("") &&
+               shouldShowAppearanceTextureMetadata("textures/tattoos/glow.dds"),
+        "expected empty texture metadata to stay hidden");
+
+    const auto spacious = calculateEditAppearanceThumbnailLayout(400.0F, 300.0F, 30.0F);
+    expect(spacious.size == 160.0F && spacious.xOffset == 120.0F,
+        "expected a centered 160-pixel square thumbnail when space permits");
+    const auto narrow = calculateEditAppearanceThumbnailLayout(120.0F, 300.0F, 30.0F);
+    expect(narrow.size == 120.0F && narrow.xOffset == 0.0F,
+        "expected thumbnail size to fit narrow content without overflow");
+    const auto shortLayout = calculateEditAppearanceThumbnailLayout(400.0F, 100.0F, 30.0F);
+    expect(shortLayout.size == 70.0F && shortLayout.xOffset == 165.0F,
+        "expected thumbnail size to preserve footer space");
+
+    const auto ranges = editAppearanceControlRanges();
+    expect(ranges.glossinessMax == 1000.0F && ranges.specularStrengthMax == 100.0F,
+        "expected expanded material slider ranges");
+}
+
+void appearancePresetPresentationCoversEmptyLimitAndPendingStates() {
+    using namespace stui::native;
+    expect(appearancePresetStatusMessage(AppearancePresetUiState::unavailable) ==
+            "Unavailable" &&
+            appearancePresetStatusMessage(AppearancePresetUiState::empty) ==
+                "No appearance presets saved." &&
+            appearancePresetStatusMessage(AppearancePresetUiState::ready).empty() &&
+            appearancePresetStatusMessage(AppearancePresetUiState::limitReached) ==
+                "20 preset limit reached" &&
+            appearancePresetStatusMessage(AppearancePresetUiState::pending) ==
+                "Updating appearance presets...",
+        "expected deterministic preset status copy");
+    expect(canCreateAppearancePreset(0, false) &&
+            canCreateAppearancePreset(19, false) &&
+            !canCreateAppearancePreset(20, false) &&
+            !canCreateAppearancePreset(1, true),
+        "expected create enabled only below limit while idle");
 }
 
 void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
@@ -451,7 +701,7 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
     bool sessionResetBeforeTeardown = false;
     stui::native::orchestrateEditAppearanceFrame(
         workflow,
-        {.cancelRequested = true},
+        {.intent = stui::native::EditAppearanceIntent::cancel},
         [&workflow, &events, &sessionResetBeforeTeardown] {
             sessionResetBeforeTeardown = workflow.editAppearance() == nullptr;
             events.emplace_back("teardown");
@@ -464,6 +714,218 @@ void editAppearanceRendererOrchestrationOrdersInputAndCancel() {
     expect(sessionResetBeforeTeardown &&
                events == std::vector<std::string>{"teardown"},
         "expected teardown before any post-Cancel renderer continuation");
+}
+
+void livePreviewPresentationMatchesTransactionState() {
+    using namespace stui::native;
+    expect(livePreviewStatusLabel(LivePreviewStatus::clean).empty(), "clean has no status");
+    expect(livePreviewStatusLabel(LivePreviewStatus::pending) == "Preview pending...", "pending label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::updating) == "Updating preview...", "updating label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::applied) == "Preview applied", "applied label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::restoring) == "Restoring original appearance...", "restore label");
+    expect(livePreviewStatusLabel(LivePreviewStatus::previewError).empty() &&
+        livePreviewStatusLabel(LivePreviewStatus::restoreError).empty(), "errors use service messages");
+    const auto absent = livePreviewPresentation(SlotWorkflowScreen::currentSlots, nullptr);
+    expect(!absent.save.visible && !absent.cancel.visible && !absent.close.visible && !absent.retry.visible,
+        "no session has no editor actions");
+    AppearanceEditSession session;
+    for (auto status : {LivePreviewStatus::clean, LivePreviewStatus::pending,
+             LivePreviewStatus::updating, LivePreviewStatus::applied}) {
+        session.status = status;
+        const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+        expect(ui.save.visible && ui.save.enabled && ui.cancel.enabled && ui.close.enabled && !ui.retry.visible,
+            "editor allows one Save, Cancel or Close intent even while preview runs");
+    }
+    for (auto status : {LivePreviewStatus::previewError, LivePreviewStatus::restoreError}) {
+        session.status = status;
+        session.exitIntent = status == LivePreviewStatus::restoreError ? AppearanceExitIntent::close : AppearanceExitIntent::none;
+        for (auto mode : {stui::core::UpdateTattooAppearanceMode::updateAndSynchronize,
+                 stui::core::UpdateTattooAppearanceMode::synchronizeOnly}) {
+            session.mode = mode;
+            const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+            const auto expected = status == LivePreviewStatus::restoreError
+                ? (mode == stui::core::UpdateTattooAppearanceMode::synchronizeOnly ? "Retry Restore Sync" : "Retry Restore")
+                : (mode == stui::core::UpdateTattooAppearanceMode::synchronizeOnly ? "Retry Preview Sync" : "Retry Preview");
+            expect(ui.retry.visible && ui.retry.enabled && ui.retryLabel == expected && !ui.save.enabled,
+                "retry matches failed purpose and preserves sync-only mode");
+            expect(ui.cancel.enabled == (status == LivePreviewStatus::previewError) &&
+                ui.close.enabled == (status == LivePreviewStatus::previewError), "restore error retains exit intent");
+        }
+    }
+    for (auto intent : {AppearanceExitIntent::save, AppearanceExitIntent::cancel, AppearanceExitIntent::close}) {
+        session.exitIntent = intent;
+        session.status = intent == AppearanceExitIntent::save ? LivePreviewStatus::updating : LivePreviewStatus::restoring;
+        const auto ui = livePreviewPresentation(SlotWorkflowScreen::editAppearance, &session);
+        expect(!ui.save.enabled && !ui.cancel.enabled && !ui.close.enabled && !ui.retry.enabled,
+            "accepted exit intent disables duplicate actions");
+        expect(!isAppearanceEditingEnabled(SlotWorkflowScreen::editAppearance, &session), "exit blocks edits");
+    }
+}
+
+struct LivePreviewRendererFixture {
+    stui::native::NativeCatalogBrowserModel catalog{[] { return nullptr; }};
+    stui::native::NativeSlotWorkflowModel workflow{catalog};
+
+    LivePreviewRendererFixture() {
+        using namespace stui::core;
+        workflow.start();
+        const auto query = workflow.takeSlotQuery();
+        workflow.completeSlotQuery(query->generation, TattooSlots{
+            .actorFormId = 0x14, .area = TattooArea::body, .configuredCount = 1,
+            .slots = {{.index = 0, .occupancy = SlotOccupancy::slaveTats,
+                .tattoo = TattooEntry{.runtimeHandle = 73, .texturePath = "preview.dds", .slot = 0}}}});
+        expect(workflow.selectSlot(0) && workflow.beginEditAppearance(), "editor fixture");
+        workflow.setEditedAppearance(0x123456, 0.5F);
+    }
+};
+
+void livePreviewFrameRoutesOneIntentAndDefersClose() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (auto intent : {EditAppearanceIntent::save, EditAppearanceIntent::cancel, EditAppearanceIntent::close,
+             EditAppearanceIntent::retry}) {
+        LivePreviewRendererFixture fixture;
+        auto& workflow = fixture.workflow;
+        workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+        workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+        const auto targetControls = actorTargetControlPresentation(
+            workflow.selectedTargetKind(), workflow.isActorTargetResolutionInFlight(), workflow.isMutationInFlight());
+        expect(!targetControls.playerEnabled && !targetControls.crosshairEnabled && !targetControls.refreshEnabled,
+            "real preview ownership disables Actor header actions");
+        expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::crosshair), "preview blocks target transition");
+        workflow.selectArea(TattooArea::hands);
+        workflow.backToSlots();
+        expect(workflow.selectedArea() == TattooArea::body && workflow.screen() == SlotWorkflowScreen::editAppearance &&
+            !workflow.selectSlot(0) && !workflow.requestRemove() && !workflow.toggleSelectedSlotLock(),
+            "preview ownership blocks navigation and unrelated mutations");
+        const auto preview = workflow.takeAppearanceRequest();
+        expect(preview.has_value(), "preview fixture");
+        if (intent == EditAppearanceIntent::retry) {
+            workflow.completeAppearanceUpdate(preview->generation, std::unexpected(ServiceError{
+                ServiceErrorCode::synchronizeFailed, "sync failed"}));
+        } else {
+            workflow.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+        }
+        int teardowns = 0;
+        int continuations = 0;
+        orchestrateEditAppearanceFrame(workflow, {.intent = intent}, [&] { ++teardowns; },
+            [&](const auto& thumbnail) {
+                expect(workflow.editAppearance() && thumbnail.texturePath == "preview.dds", "only live session references are rendered");
+                ++continuations;
+            });
+        int closes = 0;
+        if (intent == EditAppearanceIntent::save) {
+            expect(!workflow.editAppearance() && !workflow.takeAppearanceRequest() && workflow.takeSlotQuery(),
+                "Save commits applied preview with refresh and no duplicate write");
+            expect(teardowns == 1 && continuations == 0, "Save invalidation ends frame before scoped rendering");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "Save never closes menu");
+        } else {
+            expect(teardowns == 0 && continuations == 1, "pending operation retains valid presentation");
+            expect(!applyEditAppearanceIntent(workflow, intent), "duplicate input is rejected");
+            const auto operation = workflow.takeAppearanceRequest();
+            expect(operation && operation->purpose == (intent == EditAppearanceIntent::retry
+                    ? AppearanceOperationPurpose::preview : AppearanceOperationPurpose::restore), "exact intent purpose");
+            expect(operation->request.color == (intent == EditAppearanceIntent::retry ? 0x123456 : 0xFFFFFF), "exact edited or original value");
+            expect(operation->request.mode == (intent == EditAppearanceIntent::retry
+                    ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize), "retry preserves sync-only");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "no close before restore success");
+            workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == (intent == EditAppearanceIntent::close),
+                "only Close emits menu callback after restore success");
+        }
+        expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }) && closes == (intent == EditAppearanceIntent::close ? 1 : 0),
+            "menu close is consumable exactly once");
+    }
+}
+
+void livePreviewExitInputHandlesPendingAndInFlightFrames() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (bool inFlight : {false, true}) {
+        for (auto intent : {EditAppearanceIntent::save, EditAppearanceIntent::cancel, EditAppearanceIntent::close}) {
+            LivePreviewRendererFixture fixture;
+            auto& workflow = fixture.workflow;
+            std::optional<SlotAppearanceTicket> preview;
+            if (inFlight) {
+                workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+                workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+                preview = workflow.takeAppearanceRequest();
+                expect(preview.has_value(), "in-flight fixture");
+            }
+            expect(!applyEditAppearanceIntent(workflow, EditAppearanceIntent::none) &&
+                !applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "unavailable inputs cannot emit work");
+            int teardowns = 0;
+            int continuations = 0;
+            orchestrateEditAppearanceFrame(workflow, {.intent = intent}, [&] { ++teardowns; },
+                [&](const auto&) { ++continuations; });
+            expect(!applyEditAppearanceIntent(workflow, intent), "pending exit rejects duplicate input");
+            if (!inFlight && intent != EditAppearanceIntent::save) {
+                expect(teardowns == 1 && continuations == 0 && !workflow.editAppearance() &&
+                    !workflow.takeAppearanceRequest(), "Cancel and Close before preview end frame without runtime writes");
+            } else {
+                expect(teardowns == 0 && continuations == 1, "active operation keeps editor frame alive");
+                if (inFlight) {
+                    expect(!workflow.takeAppearanceRequest(), "exit waits for exact active preview");
+                    workflow.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+                }
+                const auto operation = workflow.takeAppearanceRequest();
+                if (inFlight && intent == EditAppearanceIntent::save) {
+                    expect(!operation && !workflow.editAppearance(), "Save reuses successful active preview");
+                } else {
+                    expect(operation && operation->purpose == (intent == EditAppearanceIntent::save
+                            ? AppearanceOperationPurpose::commit : AppearanceOperationPurpose::restore), "intent schedules only matching work");
+                    workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+                }
+            }
+            int closes = 0;
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == (intent == EditAppearanceIntent::close),
+                "only Close intent closes after completion");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "duplicate close dispatch is empty");
+        }
+    }
+}
+
+void livePreviewRetryInputPreservesFailedPurposeAndMode() {
+    using namespace stui::native;
+    using namespace stui::core;
+    using namespace std::chrono_literals;
+    for (bool restore : {false, true}) {
+        for (auto error : {ServiceErrorCode::synchronizeFailed, ServiceErrorCode::actorNotFound}) {
+            LivePreviewRendererFixture fixture;
+            auto& workflow = fixture.workflow;
+            workflow.advanceLivePreview(std::chrono::steady_clock::time_point{});
+            workflow.advanceLivePreview(std::chrono::steady_clock::time_point{} + 1000ms);
+            auto operation = workflow.takeAppearanceRequest();
+            expect(operation.has_value(), "preview retry fixture");
+            if (restore) {
+                workflow.completeAppearanceUpdate(operation->generation, UpdateTattooAppearanceSuccess{});
+                expect(applyEditAppearanceIntent(workflow, EditAppearanceIntent::close), "Close starts restore");
+                operation = workflow.takeAppearanceRequest();
+                expect(operation.has_value(), "restore retry fixture");
+            }
+            workflow.completeAppearanceUpdate(operation->generation, std::unexpected(ServiceError{error, "operation failed"}));
+            expect(applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "error offers matching retry input");
+            expect(!applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "retry input cannot duplicate pending work");
+            const auto retry = workflow.takeAppearanceRequest();
+            expect(retry && retry->purpose == operation->purpose && retry->request.actorFormId == 0x14 &&
+                retry->request.runtimeHandle == 73 && retry->request.color == (restore ? 0xFFFFFF : 0x123456),
+                "retry retains purpose and exact appearance identity");
+            expect(retry->request.mode == (error == ServiceErrorCode::synchronizeFailed
+                    ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize),
+                "sync retry cannot repeat a completed write");
+            int closes = 0;
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "failed/pending restore does not close");
+            workflow.completeAppearanceUpdate(retry->generation, UpdateTattooAppearanceSuccess{});
+            if (restore) {
+                expect(!dispatchMenuCloseRequest(workflow, {}), "missing callback does not lose close request");
+            }
+            expect(dispatchMenuCloseRequest(workflow, [&] { ++closes; }) == restore,
+                "successful restore retry preserves requested Close");
+            expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "retry closes at most once");
+        }
+    }
 }
 
 void currentSlotColorSwatchUsesOwnedTattooColorAtBottomRight() {
@@ -574,6 +1036,48 @@ void classifiesEmptyCatalogSeparatelyFromNoMatches() {
     expect(stui::native::classifyCatalogBrowserEmptyState(false, noMatches) ==
                stui::native::CatalogBrowserEmptyState::emptyCatalog,
            "expected no snapshot to remain an empty-catalog state");
+
+    const auto noAppliedMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true);
+    expect(noAppliedMatches == stui::native::CatalogBrowserEmptyState::noAppliedMatches,
+           "expected Applied-only empty results to have a distinct state");
+    expect(stui::native::catalogBrowserEmptyMessage(noAppliedMatches) ==
+               "No applied tattoos match the current filters.",
+           "expected Applied-only empty state guidance");
+
+    const auto noFavoriteMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, true);
+    expect(noFavoriteMatches == stui::native::CatalogBrowserEmptyState::noFavoriteMatches &&
+            stui::native::catalogBrowserEmptyMessage(noFavoriteMatches) ==
+                "No favorite tattoos match the current filters.",
+        "expected Favorites-only empty state guidance");
+    const auto noFavoriteAppliedMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, true);
+    expect(noFavoriteAppliedMatches == stui::native::CatalogBrowserEmptyState::noFavoriteAppliedMatches &&
+            stui::native::catalogBrowserEmptyMessage(noFavoriteAppliedMatches) ==
+                "No favorite applied tattoos match the current filters.",
+        "expected combined filter empty state guidance");
+
+    const auto noRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, false, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noRecentMatches) ==
+            "No recently used tattoos match the current filters.",
+        "expected Recently Used empty state guidance");
+    const auto noFavoriteRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, false, true, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noFavoriteRecentMatches) ==
+            "No favorite recently used tattoos match the current filters.",
+        "expected Favorites and Recently Used empty state guidance");
+    const auto noAppliedRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, false, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noAppliedRecentMatches) ==
+            "No applied recently used tattoos match the current filters.",
+        "expected Applied and Recently Used empty state guidance");
+    const auto noFavoriteAppliedRecentMatches =
+        stui::native::classifyCatalogBrowserEmptyState(true, noMatches, true, true, true);
+    expect(stui::native::catalogBrowserEmptyMessage(noFavoriteAppliedRecentMatches) ==
+            "No favorite applied recently used tattoos match the current filters.",
+        "expected combined Recently Used empty state guidance");
 }
 
 void sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds() {
@@ -668,9 +1172,23 @@ void visibleSlotPathsIncludeOnlyOwnedCardsOnTheCurrentPage() {
 }
 
 void pickerAndPreviewHelpersExposeExactTargetIntent() {
+    const stui::native::ActorTarget player;
     expect(stui::native::formatSlotTargetLabel(
-               stui::core::TattooArea::body, 2) == "Player / BODY / Slot 2",
+               &player, stui::core::TattooArea::body, 2) == "Player / BODY / Slot 2",
         "expected exact Player BODY target label");
+    const stui::native::ActorTarget lydia{
+        stui::native::ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
+    expect(stui::native::formatSlotTargetLabel(
+               &lydia, stui::core::TattooArea::face, 3) == "Lydia / FACE / Slot 3",
+        "expected NPC context to match the active Actor without repeating the form ID");
+    const stui::native::ActorTarget unnamed{
+        stui::native::ActorTargetKind::crosshair, 0x1234, ""};
+    expect(stui::native::formatSlotTargetLabel(
+               &unnamed, stui::core::TattooArea::hands, 1) == "Unnamed Actor / HANDS / Slot 1",
+        "expected empty Actor names normalized consistently with the shared header");
+    expect(stui::native::formatSlotTargetLabel(
+               nullptr, stui::core::TattooArea::feet, 0) == "No active Actor / FEET / Slot 0",
+        "expected absent Actor context never to fall back to Player");
     expect(stui::native::previewApplyButtonLabel(2) == "Apply to Slot 2",
         "expected Apply action to name the target slot");
     expect(stui::native::previewApplyButtonLabel(2, true) == "Retry Slot 2",
@@ -706,6 +1224,39 @@ void removeHelpersRequireExplicitTargetConfirmation() {
     expect(!stui::native::isRemoveConfirmationEnabled(
                stui::native::SlotWorkflowScreen::removeConfirmation, false),
         "expected missing slot target to disable Remove");
+}
+
+void domainPresentationUsesDefaultFallback() {
+    expect(stui::native::domainPresentationLabel("custom") == "custom",
+        "expected explicit domain presentation preserved");
+    expect(stui::native::domainPresentationLabel("") == "default",
+        "expected empty applied domain presented as default");
+    expect(stui::native::domainThumbnailBadgeLabel("default").empty(),
+        "expected default domain omitted from thumbnail badges");
+    expect(stui::native::domainThumbnailBadgeLabel("Default").empty(),
+        "expected default domain matching to ignore ASCII case");
+    expect(stui::native::domainThumbnailBadgeLabel("").empty(),
+        "expected missing domain omitted from thumbnail badges");
+    expect(stui::native::domainThumbnailBadgeLabel("custom") == "custom",
+        "expected non-default domain retained in thumbnail badges");
+}
+
+void domainOptionsStartWithAllDomains() {
+    const auto options = stui::native::buildCatalogBrowserDomainOptions({"custom", "default"});
+    expect(options == std::vector<std::string>{"All Domains", "custom", "default"},
+        "expected All Domains before discovered domain options");
+}
+
+void lockActionPresentationKeepsAppearanceEditable() {
+    const auto unlocked = stui::native::slotLockActionPresentation(false);
+    expect(unlocked.iconCodepoint == 0xF09C && unlocked.tooltip == "Lock tattoo" &&
+            unlocked.mutationsEnabled,
+        "expected unlocked slot to offer the Font Awesome unlock icon and Lock action");
+
+    const auto locked = stui::native::slotLockActionPresentation(true);
+    expect(locked.iconCodepoint == 0xF023 && locked.tooltip == "Unlock tattoo" &&
+            !locked.mutationsEnabled,
+        "expected locked slot to offer the Font Awesome lock icon and Unlock action");
 }
 
 void pickerVisiblePathsFollowOnlyTheSixRenderedCards() {
@@ -758,6 +1309,16 @@ void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
 
 int main() {
     try {
+        actorTargetIdentityUsesFixedWidthUppercaseFormId();
+        std::cout << "PASS actor target identity and Current Slots title\n";
+        actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
+        std::cout << "PASS actor target status and action availability\n";
+        editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity();
+        std::cout << "PASS Edit Appearance header appends Preview status\n";
+        actorTargetControlsRespectMutationAndCrosshairMode();
+        std::cout << "PASS actor target control presentation\n";
+        actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges();
+        std::cout << "PASS actor target header intent frame safety\n";
         rejectsIncompleteExportTable();
         std::cout << "PASS rejects incomplete export table\n";
         translatesSectionAndNonPausingWindowState();
@@ -774,24 +1335,48 @@ int main() {
         std::cout << "PASS thumbnail grid groups two cards into each row\n";
         thumbnailCardWidgetsHaveStableUniqueIds();
         std::cout << "PASS thumbnail card widgets have stable unique IDs\n";
+        favoriteButtonsUseFontAwesomeStarIcons();
+        std::cout << "PASS favorite buttons use Font Awesome star icons\n";
+        favoriteButtonSizeContainsItsIcon();
+        std::cout << "PASS favorite button size contains its icon\n";
         browserGridUsesRemainingHeightWithoutVerticalScrolling();
         std::cout << "PASS browser grid uses remaining height without scrolling\n";
         catalogBadgeAnchorsInsideThumbnailTopRightCorner();
         std::cout << "PASS catalog badge anchors inside thumbnail top-right\n";
+        catalogMaterialBadgesUseStableOrderAndIgnoreLegacyMetadata();
+        std::cout << "PASS catalog material badges use stable order\n";
+        catalogMaterialBadgesAnchorBottomLeftAndOmitOverflow();
+        std::cout << "PASS catalog material badges anchor bottom-left\n";
+        catalogFilterControlsWrapAgainstTheActualRemainingRowWidth();
+        std::cout << "PASS catalog filters wrap against remaining row width\n";
         thumbnailCardsReserveNoPersistentMetadataRow();
         std::cout << "PASS thumbnail cards reserve no persistent metadata row\n";
         footerControlAlignsToRightContentEdge();
         std::cout << "PASS footer control aligns to right content edge\n";
         unifiedFooterKeepsCloseAtRightEdge();
         std::cout << "PASS unified footer keeps Close at right edge\n";
+        pinnedFooterReservesTheBottomRowAfterShortContent();
+        std::cout << "PASS pinned footer reserves the bottom row\n";
         pickerFooterActionsStayRightAlignedInNavigationOrder();
         std::cout << "PASS Picker footer actions stay right-aligned\n";
         tattooColorComponentsPreserveRgbChannelOrder();
         std::cout << "PASS tattoo color components preserve RGB channel order\n";
         editAppearanceUsesSessionStateForSaveAndThumbnailPresentation();
         std::cout << "PASS Edit Appearance uses session save and thumbnail state\n";
+        editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges();
+        std::cout << "PASS Edit Appearance layout and expanded ranges\n";
+        appearancePresetPresentationCoversEmptyLimitAndPendingStates();
+        std::cout << "PASS Appearance Preset presentation states\n";
         editAppearanceRendererOrchestrationOrdersInputAndCancel();
         std::cout << "PASS Edit Appearance renderer orders input and Cancel\n";
+        livePreviewPresentationMatchesTransactionState();
+        std::cout << "PASS Live Preview labels and action presentation\n";
+        livePreviewFrameRoutesOneIntentAndDefersClose();
+        std::cout << "PASS Live Preview routing and deferred Close\n";
+        livePreviewExitInputHandlesPendingAndInFlightFrames();
+        std::cout << "PASS Live Preview pending and in-flight frame safety\n";
+        livePreviewRetryInputPreservesFailedPurposeAndMode();
+        std::cout << "PASS Live Preview retry purpose and mode\n";
         currentSlotColorSwatchUsesOwnedTattooColorAtBottomRight();
         std::cout << "PASS Current Slot color swatch uses owned tattoo color\n";
         currentSlotColorSwatchSkipsEmptyAndExternalSlots();
@@ -816,6 +1401,12 @@ int main() {
         std::cout << "PASS picker and Preview helpers expose exact target intent\n";
         removeHelpersRequireExplicitTargetConfirmation();
         std::cout << "PASS Remove helpers require explicit target confirmation\n";
+        domainPresentationUsesDefaultFallback();
+        std::cout << "PASS domain presentation uses default fallback\n";
+        domainOptionsStartWithAllDomains();
+        std::cout << "PASS Domain options start with All Domains\n";
+        lockActionPresentationKeepsAppearanceEditable();
+        std::cout << "PASS Lock actions preserve Edit Appearance access\n";
         pickerVisiblePathsFollowOnlyTheSixRenderedCards();
         std::cout << "PASS Picker visible paths follow six rendered cards\n";
         nullSnapshotModelHasSafeEmptyPageWithoutImGui();

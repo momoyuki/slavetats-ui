@@ -5,11 +5,16 @@
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
+#include "native/ActorTargetProvider.h"
 #include "native/D3D11NativeThumbnailSource.h"
 #include "native/NativeThumbnailRuntime.h"
 #include "native/OfficialMenuFrameworkAdapter.h"
 #include "runtime/ApplicationRuntime.h"
+#include "runtime/AppearancePresetStore.h"
 #include "runtime/HotkeyBinding.h"
+#include "runtime/PluginConfigFile.h"
+#include "runtime/FavoriteStore.h"
+#include "runtime/RecentTattooStore.h"
 #include "SKSEMenuFramework.h"
 #include "textures/ExactStreamReader.h"
 
@@ -27,8 +32,13 @@ runtime::ApplicationRuntime g_applicationRuntime;
 native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
     [] { return g_tattooCatalogStore.snapshot(); });
 native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
+std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
+std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
+std::unique_ptr<runtime::RecentTattooStore> g_recentTattooStore;
+std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
+    [] { return native::resolveCrosshairActorTarget(); },
     [](std::uint32_t actorFormId, core::TattooArea area) {
         return g_applicationRuntime.service().querySlots(actorFormId, area);
     },
@@ -41,12 +51,63 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     [](const core::UpdateTattooAppearanceRequest& request) {
         return g_applicationRuntime.service().updateAppearance(request);
     },
+    [](const core::SetTattooLockedRequest& request) {
+        return g_applicationRuntime.service().setTattooLocked(request);
+    },
     [](native::NativeSlotTask task) {
         auto* taskInterface = SKSE::GetTaskInterface();
         if (!taskInterface) {
             throw std::runtime_error("SKSE task interface unavailable");
         }
         taskInterface->AddTask(std::move(task));
+    },
+    [] { return std::chrono::steady_clock::now(); },
+    [](const repository::FavoriteIdentity& identity, bool enabled) {
+        if (!g_favoriteStore) {
+            return runtime::FavoriteResult(std::unexpected(runtime::ConfigError{
+                .message = "Favorite storage is unavailable."}));
+        }
+        return g_favoriteStore->setFavorite(identity, enabled);
+    },
+    [] {
+        if (!g_recentTattooStore) {
+            return runtime::RecentTattooResult(std::unexpected(runtime::ConfigError{
+                .message = "Recent tattoo storage is unavailable."}));
+        }
+        return g_recentTattooStore->load();
+    },
+    [](const repository::RecentTattooIdentity& identity) {
+        if (!g_recentTattooStore) {
+            return runtime::RecentTattooResult(std::unexpected(runtime::ConfigError{
+                .message = "Recent tattoo storage is unavailable."}));
+        }
+        return g_recentTattooStore->record(identity);
+    },
+    [](const native::AppearancePresetTicket& ticket) {
+        if (!g_appearancePresetStore) {
+            return runtime::AppearancePresetResult(std::unexpected(runtime::ConfigError{
+                .message = "Appearance preset storage is unavailable."}));
+        }
+        switch (ticket.kind) {
+        case native::AppearancePresetRequestKind::load:
+            return g_appearancePresetStore->load();
+        case native::AppearancePresetRequestKind::create:
+            if (ticket.preset) return g_appearancePresetStore->create(*ticket.preset);
+            break;
+        case native::AppearancePresetRequestKind::overwrite:
+            if (ticket.preset) return g_appearancePresetStore->overwrite(*ticket.preset);
+            break;
+        case native::AppearancePresetRequestKind::rename:
+            if (ticket.preset) {
+                return g_appearancePresetStore->rename(
+                    ticket.existingName, ticket.preset->name);
+            }
+            break;
+        case native::AppearancePresetRequestKind::erase:
+            return g_appearancePresetStore->erase(ticket.existingName);
+        }
+        return runtime::AppearancePresetResult(std::unexpected(runtime::ConfigError{
+            .message = "Appearance preset request is incomplete."}));
     });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
@@ -270,11 +331,35 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         spdlog::set_default_logger(std::move(log));
     } catch (...) {}
 
-    g_hotkeyBinding = std::make_unique<runtime::HotkeyBinding>(
-        pluginDir / "SlaveTatsUI.json");
+    if (!pluginDir.empty()) {
+        std::error_code absoluteError;
+        const auto configPath = std::filesystem::absolute(pluginDir / "SlaveTatsUI.json", absoluteError);
+        if (!absoluteError) {
+            g_pluginConfig = std::make_shared<runtime::PluginConfigFile>(configPath);
+            logger::info("SlaveTatsUI: configuration path is '{}'", configPath.string());
+        }
+    }
+    if (!g_pluginConfig) {
+        logger::warn("SlaveTatsUI: configuration path unavailable; persistence disabled");
+    }
+    g_hotkeyBinding = std::make_unique<runtime::HotkeyBinding>(g_pluginConfig);
     if (!g_hotkeyBinding->load()) {
         logger::warn("SlaveTatsUI: failed to load hotkey configuration; hotkey disabled");
     }
+    if (g_pluginConfig) {
+        g_favoriteStore = std::make_unique<runtime::FavoriteStore>(g_pluginConfig);
+        const auto favorites = g_favoriteStore->load();
+        if (favorites) {
+            g_nativeCatalogBrowser.setFavoriteIdentities(std::move(*favorites));
+        } else {
+            logger::warn("SlaveTatsUI: failed to load favorites: {}", favorites.error().message);
+        }
+        g_recentTattooStore = std::make_unique<runtime::RecentTattooStore>(g_pluginConfig);
+        g_appearancePresetStore =
+            std::make_unique<runtime::AppearancePresetStore>(g_pluginConfig);
+    }
+    g_nativeSlotWorkflow.initializeRecentTattoos();
+    g_nativeSlotWorkflow.initializeAppearancePresets();
 
     static native::OfficialMenuFrameworkAdapter menuFrameworkAdapter;
     static native::NativeMenu nativeMenu([](native::NativeMenu& menu) {
@@ -286,6 +371,20 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
             [&menu] { menu.close(); });
     }, [] {
         return native::OfficialMenuFrameworkAdapter::renderLauncher(*g_hotkeyBinding);
+    });
+    nativeMenu.setOpenGuard([] {
+        auto* ui = RE::UI::GetSingleton();
+        return ui &&
+            !ui->IsMenuOpen(RE::Console::MENU_NAME) &&
+            !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
+    });
+    nativeMenu.setOpenCallback([] { g_nativeSlotWorkflow.resetSession(); });
+    nativeMenu.setCloseRequestCallback([] {
+        if (!g_nativeSlotWorkflow.editAppearance()) {
+            return false;
+        }
+        (void)g_nativeSlotWorkflow.requestEditAppearanceClose();
+        return true;
     });
     g_nativeMenu = &nativeMenu;
     if (const auto result = nativeMenu.registerMenu(menuFrameworkAdapter); !result) {

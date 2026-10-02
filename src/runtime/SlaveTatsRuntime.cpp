@@ -20,6 +20,7 @@ constexpr const char* kApplyExternalPool = "SlaveTatsUI-applyExternal";
 constexpr const char* kApplyAvailablePool = "SlaveTatsUI-applyAvailable";
 constexpr const char* kRemoveExternalPool = "SlaveTatsUI-removeExternal";
 constexpr const char* kUpdateAppearancePool = "SlaveTatsUI-updateAppearance";
+constexpr const char* kSetTattooLockedPool = "SlaveTatsUI-setTattooLocked";
 
 class JContainerPoolGuard {
 public:
@@ -101,14 +102,13 @@ class SlaveTatsAppearanceBackend final : public IUpdateTattooAppearanceBackend {
 public:
     SlaveTatsAppearanceBackend(
         const slavetats::interface::Addresses* api,
-        const SlaveTatsAppearanceBindings* bindings) noexcept :
-        m_api(api), m_bindings(bindings) {}
+        const SlaveTatsAppearanceBindings* bindings,
+        std::function<void*(std::uint32_t)> resolveLoadedActor) noexcept :
+        m_api(api), m_bindings(bindings),
+        m_resolveLoadedActor(std::move(resolveLoadedActor)) {}
 
     ActorHandle resolveActor(std::uint32_t actorFormId) override {
-        if (m_bindings) {
-            return m_bindings->resolveActor ? m_bindings->resolveActor(actorFormId) : nullptr;
-        }
-        return RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+        return m_resolveLoadedActor(actorFormId);
     }
 
     std::expected<std::vector<std::int32_t>, core::ServiceError>
@@ -235,6 +235,7 @@ public:
 private:
     const slavetats::interface::Addresses* m_api;
     const SlaveTatsAppearanceBindings* m_bindings;
+    std::function<void*(std::uint32_t)> m_resolveLoadedActor;
 };
 
 }  // namespace
@@ -268,6 +269,21 @@ std::uint32_t SlaveTatsRuntime::apiVersion() const noexcept {
 
 const slavetats::interface::Addresses* SlaveTatsRuntime::api() const noexcept {
     return m_api;
+}
+
+void* SlaveTatsRuntime::resolveLoadedActor(std::uint32_t actorFormId) const {
+    if (actorFormId == 0) {
+        return nullptr;
+    }
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->resolveActor || !m_appearanceBindings->isActor3DLoaded) {
+            return nullptr;
+        }
+        auto* actor = m_appearanceBindings->resolveActor(actorFormId);
+        return actor && m_appearanceBindings->isActor3DLoaded(actor) ? actor : nullptr;
+    }
+    auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+    return actor && actor->Is3DLoaded() ? actor : nullptr;
 }
 
 core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain) {
@@ -318,9 +334,7 @@ core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain
 core::TattooSlotsResult SlaveTatsRuntime::querySlots(
     std::uint32_t actorFormId,
     core::TattooArea area) {
-    auto* actor = m_appearanceBindings && m_appearanceBindings->resolveActor
-        ? static_cast<RE::Actor*>(m_appearanceBindings->resolveActor(actorFormId))
-        : RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -404,7 +418,7 @@ core::TattooSlotsResult SlaveTatsRuntime::querySlots(
 }
 
 core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooRequest& request) {
-    auto* actor = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(request.actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -420,80 +434,82 @@ core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooReq
         });
     }
 
-    const auto externalSlots = queryExternalSlots(
-        *m_api,
-        actor,
-        areaString,
-        kApplyExternalPool);
-    if (!externalSlots) {
-        return std::unexpected(externalSlots.error());
-    }
-    if (externalSlots->contains(request.slot)) {
-        return std::unexpected(core::ServiceError{
-            core::ServiceErrorCode::externalSlot,
-            "Slot is occupied by an external overlay",
-        });
-    }
-
-    const int available = jcmini::JValue::addToPool(
-        jcmini::JArray::object(),
-        kApplyAvailablePool);
-    const JContainerPoolGuard poolGuard(kApplyAvailablePool);
-    if (m_api->query_available_tattoos(
-            0,
-            available,
-            0,
-            RE::BSFixedString(request.domain.c_str()))) {
-        return std::unexpected(core::ServiceError{
-            core::ServiceErrorCode::applyFailed,
-            "query_available_tattoos failed",
-        });
-    }
-
-    int tattooHandle = 0;
-    const int count = jcmini::JArray::count(available);
-    for (int index = 0; index < count; ++index) {
-        const int candidate = jcmini::JArray::getObj(available, index);
-        if (jcmini::JMap::getStr(candidate, "section") == request.section &&
-            jcmini::JMap::getStr(candidate, "name") == request.name) {
-            tattooHandle = candidate;
-            break;
-        }
-    }
-
-    if (tattooHandle == 0) {
-        return std::unexpected(core::ServiceError{
-            core::ServiceErrorCode::tattooNotFound,
-            "Tattoo not found in available list",
-        });
-    }
-
-    int applied = 0;
-    {
-        const TattooTemplateAppearanceGuard appearance(
-            tattooHandle,
-            request.color,
-            request.alpha);
-        applied = m_api->add_and_get_tattoo(
+    if (request.mode == core::ApplyTattooMode::applyAndSynchronize) {
+        const auto externalSlots = queryExternalSlots(
+            *m_api,
             actor,
-            tattooHandle,
-            request.slot,
-            false,
-            false,
-            true);
-    }
-
-    if (applied == 0) {
-        SKSE::log::warn(
-            "SlaveTatsUI: SlaveTatsNG rejected tattoo apply (section={}, name={}, area={}, slot={})",
-            request.section,
-            request.name,
             areaString,
-            request.slot);
-        return std::unexpected(core::ServiceError{
-            core::ServiceErrorCode::applyFailed,
-            "Failed to apply tattoo to slot",
-        });
+            kApplyExternalPool);
+        if (!externalSlots) {
+            return std::unexpected(externalSlots.error());
+        }
+        if (externalSlots->contains(request.slot)) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::externalSlot,
+                "Slot is occupied by an external overlay",
+            });
+        }
+
+        const int available = jcmini::JValue::addToPool(
+            jcmini::JArray::object(),
+            kApplyAvailablePool);
+        const JContainerPoolGuard poolGuard(kApplyAvailablePool);
+        if (m_api->query_available_tattoos(
+                0,
+                available,
+                0,
+                RE::BSFixedString(request.domain.c_str()))) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::applyFailed,
+                "query_available_tattoos failed",
+            });
+        }
+
+        int tattooHandle = 0;
+        const int count = jcmini::JArray::count(available);
+        for (int index = 0; index < count; ++index) {
+            const int candidate = jcmini::JArray::getObj(available, index);
+            if (jcmini::JMap::getStr(candidate, "section") == request.section &&
+                jcmini::JMap::getStr(candidate, "name") == request.name) {
+                tattooHandle = candidate;
+                break;
+            }
+        }
+
+        if (tattooHandle == 0) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::tattooNotFound,
+                "Tattoo not found in available list",
+            });
+        }
+
+        int applied = 0;
+        {
+            const TattooTemplateAppearanceGuard appearance(
+                tattooHandle,
+                request.color,
+                request.alpha);
+            applied = m_api->add_and_get_tattoo(
+                actor,
+                tattooHandle,
+                request.slot,
+                false,
+                false,
+                true);
+        }
+
+        if (applied == 0) {
+            SKSE::log::warn(
+                "SlaveTatsUI: SlaveTatsNG rejected tattoo apply (section={}, name={}, area={}, slot={})",
+                request.section,
+                request.name,
+                areaString,
+                request.slot);
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::applyFailed,
+                "Failed to apply tattoo to slot",
+            });
+        }
     }
 
     jcmini::JFormDB::setInt(actor, ".SlaveTats.updated", 1);
@@ -501,6 +517,9 @@ core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooReq
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::synchronizeFailed,
             "Tattoo applied but synchronization failed",
+            request.mode == core::ApplyTattooMode::applyAndSynchronize
+                ? core::MutationSideEffect::mayHaveOccurred
+                : core::MutationSideEffect::none,
         });
     }
 
@@ -515,7 +534,7 @@ core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooReq
 
 core::RemoveTattooResult SlaveTatsRuntime::removeFromSlot(
     const core::RemoveTattooRequest& request) {
-    auto* actor = RE::TESForm::LookupByID<RE::Actor>(request.actorFormId);
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(request.actorFormId));
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
@@ -579,8 +598,96 @@ core::UpdateTattooAppearanceResult SlaveTatsRuntime::updateAppearance(
     const core::UpdateTattooAppearanceRequest& request) {
     SlaveTatsAppearanceBackend backend(
         m_api,
-        m_appearanceBindings ? &*m_appearanceBindings : nullptr);
+        m_appearanceBindings ? &*m_appearanceBindings : nullptr,
+        [this](std::uint32_t actorFormId) { return resolveLoadedActor(actorFormId); });
     return updateTattooAppearance(request, backend);
+}
+
+core::SetTattooLockedResult SlaveTatsRuntime::setTattooLocked(
+    const core::SetTattooLockedRequest& request) {
+    const auto lockFailed = [](const char* message) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::lockFailed,
+            message,
+        });
+    };
+    const auto staleHandle = [] {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::staleTattooHandle,
+            "Tattoo handle is stale; refresh the slot snapshot and try again",
+        });
+    };
+
+    auto* actorHandle = resolveLoadedActor(request.actorFormId);
+    if (!actorHandle) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::actorNotFound,
+            "Actor not found",
+        });
+    }
+
+    std::vector<std::int32_t> appliedHandles;
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->queryAppliedTattooHandles) {
+            return lockFailed("Applied tattoo query binding is unavailable");
+        }
+        const auto queried = m_appearanceBindings->queryAppliedTattooHandles(actorHandle);
+        if (!queried) {
+            return std::unexpected(queried.error());
+        }
+        appliedHandles = *queried;
+    } else {
+        if (!m_api) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::slaveTatsUnavailable,
+                "SlaveTatsNG not available",
+            });
+        }
+        const int matches = jcmini::JValue::addToPool(
+            jcmini::JArray::object(),
+            kSetTattooLockedPool);
+        const JContainerPoolGuard poolGuard(kSetTattooLockedPool);
+        if (m_api->query_applied_tattoos(
+                static_cast<RE::Actor*>(actorHandle),
+                0,
+                matches,
+                RE::BSFixedString(""),
+                -1)) {
+            return lockFailed("query_applied_tattoos failed");
+        }
+        const int count = jcmini::JArray::count(matches);
+        appliedHandles.reserve(static_cast<std::size_t>(count));
+        for (int index = 0; index < count; ++index) {
+            appliedHandles.push_back(jcmini::JArray::getObj(matches, index));
+        }
+    }
+
+    if (request.runtimeHandle == 0 ||
+        std::ranges::find(appliedHandles, request.runtimeHandle) == appliedHandles.end()) {
+        return staleHandle();
+    }
+
+    const std::int32_t value = request.locked ? 1 : 0;
+    bool wrote = false;
+    if (m_appearanceBindings) {
+        if (m_appearanceBindings->setTattooInt && m_appearanceBindings->getTattooInt) {
+            constexpr auto missing = std::numeric_limits<std::int32_t>::min();
+            m_appearanceBindings->setTattooInt(request.runtimeHandle, "locked", value);
+            wrote = m_appearanceBindings->getTattooInt(
+                        request.runtimeHandle, "locked", missing) == value;
+        }
+    } else {
+        wrote = jcmini::JMap::setIntAndVerify(request.runtimeHandle, "locked", value);
+    }
+    if (!wrote) {
+        return lockFailed("Failed to update tattoo lock state");
+    }
+
+    return core::SetTattooLockedSuccess{
+        .actorFormId = request.actorFormId,
+        .runtimeHandle = request.runtimeHandle,
+        .locked = request.locked,
+    };
 }
 
 }  // namespace stui::runtime

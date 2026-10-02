@@ -6,12 +6,14 @@
 #include "native/NativeThumbnailRuntime.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
+#include "repository/TattooMaterialClassification.h"
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -23,6 +25,43 @@ namespace {
 
 SKSEMenuFramework::Model::AddSectionItemFunction g_addSectionItem{};
 SKSEMenuFramework::Model::AddWindowFunction g_addWindow{};
+
+bool equalsFoldedASCII(std::string_view left, std::string_view right) noexcept {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    return std::ranges::equal(left, right, [](char lhs, char rhs) {
+        const auto fold = [](char value) {
+            return value >= 'A' && value <= 'Z'
+                ? static_cast<char>(value + ('a' - 'A'))
+                : value;
+        };
+        return fold(lhs) == fold(rhs);
+    });
+}
+
+int resizeInputTextString(ImGuiMCP::ImGuiInputTextCallbackData* data) {
+    if (!data || data->EventFlag != ImGuiMCP::ImGuiInputTextFlags_CallbackResize) {
+        return 0;
+    }
+    auto* value = static_cast<std::string*>(data->UserData);
+    value->resize(static_cast<std::size_t>(data->BufTextLen));
+    data->Buf = value->data();
+    return 0;
+}
+
+bool inputTextString(const char* label, std::string& value) {
+    if (value.capacity() == 0) {
+        value.reserve(32);
+    }
+    return ImGuiMCP::InputText(
+        label,
+        value.data(),
+        value.capacity() + 1,
+        ImGuiMCP::ImGuiInputTextFlags_CallbackResize,
+        &resizeInputTextString,
+        &value);
+}
 
 void addOfficialSectionItem(const char* path, MenuCallback callback) {
     g_addSectionItem(
@@ -73,6 +112,53 @@ OfficialMenuFrameworkAdapter::OfficialMenuFrameworkAdapter()
 
 OfficialMenuFrameworkAdapter::OfficialMenuFrameworkAdapter(MenuFrameworkBindings bindings)
     : bindings_(std::move(bindings)) {}
+
+std::string formatActorTargetIdentity(const ActorTarget& target) {
+    return std::format("{} [0x{:08X}]",
+        target.displayName.empty() ? "Unnamed Actor" : target.displayName,
+        target.formId);
+}
+
+std::string currentTattoosTitle(const ActorTarget* target) {
+    if (!target) {
+        return "Current Tattoos";
+    }
+    return "Current Tattoos - " +
+        (target->displayName.empty() ? std::string("Unnamed Actor") : target->displayName);
+}
+
+std::string_view actorTargetStatusLabel(bool resolving, const ActorTarget* target) noexcept {
+    return resolving ? "Resolving target..." : target ? "" : "No valid crosshair Actor";
+}
+
+bool actorTargetActionsEnabled(bool resolving, const ActorTarget* target) noexcept {
+    return target && !resolving;
+}
+
+ActorTargetControlPresentation actorTargetControlPresentation(
+    ActorTargetKind kind, bool resolving, bool mutationInFlight) noexcept {
+    const bool crosshair = kind == ActorTargetKind::crosshair;
+    return {!mutationInFlight, !mutationInFlight, crosshair,
+        crosshair && !resolving && !mutationInFlight};
+}
+
+bool applyActorTargetHeaderIntent(
+    NativeSlotWorkflowModel& workflow, ActorTargetHeaderIntent intent) {
+    const auto controls = actorTargetControlPresentation(
+        workflow.selectedTargetKind(), workflow.isActorTargetResolutionInFlight(),
+        workflow.isMutationInFlight());
+    switch (intent) {
+    case ActorTargetHeaderIntent::player:
+        return controls.playerEnabled && workflow.selectPlayerTarget();
+    case ActorTargetHeaderIntent::crosshair:
+        return controls.crosshairEnabled && workflow.selectCrosshairTarget();
+    case ActorTargetHeaderIntent::refresh:
+        return controls.refreshEnabled && workflow.refreshCrosshairTarget();
+    case ActorTargetHeaderIntent::none:
+        return false;
+    }
+    return false;
+}
 
 SlotCardTreatment slotCardTreatment(core::SlotOccupancy occupancy) noexcept {
     switch (occupancy) {
@@ -137,9 +223,11 @@ std::vector<std::string> collectVisibleSlotTexturePaths(
     return paths;
 }
 
-std::string formatSlotTargetLabel(core::TattooArea area, std::int32_t slot) {
-    return "Player / " + std::string(slotAreaLabel(area)) + " / Slot " +
-        std::to_string(slot);
+std::string formatSlotTargetLabel(
+    const ActorTarget* actor, core::TattooArea area, std::int32_t slot) {
+    const std::string_view name = !actor ? "No active Actor" :
+        actor->displayName.empty() ? "Unnamed Actor" : std::string_view(actor->displayName);
+    return std::format("{} / {} / Slot {}", name, slotAreaLabel(area), slot);
 }
 
 std::string previewApplyButtonLabel(std::int32_t slot, bool retry) {
@@ -158,13 +246,16 @@ bool isAppearanceSaveEnabled(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return screen == SlotWorkflowScreen::editAppearance && session &&
-        session->edited != session->original;
+        session->exitIntent == AppearanceExitIntent::none &&
+        session->status != LivePreviewStatus::previewError &&
+        session->status != LivePreviewStatus::restoreError;
 }
 
 bool isAppearanceEditingEnabled(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return screen == SlotWorkflowScreen::editAppearance && session &&
+        session->exitIntent == AppearanceExitIntent::none &&
         session->mode == core::UpdateTattooAppearanceMode::updateAndSynchronize;
 }
 
@@ -172,12 +263,90 @@ AppearanceSavePresentation appearanceSavePresentation(
     SlotWorkflowScreen screen,
     const AppearanceEditSession* session) noexcept {
     return {
-        .label = session &&
-                session->mode == core::UpdateTattooAppearanceMode::synchronizeOnly
-            ? "Retry Sync"
-            : "Save",
+        .label = "Save",
         .enabled = isAppearanceSaveEnabled(screen, session),
     };
+}
+
+std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept {
+    switch (status) {
+    case LivePreviewStatus::pending: return "Preview pending...";
+    case LivePreviewStatus::updating: return "Updating preview...";
+    case LivePreviewStatus::applied: return "Preview applied";
+    case LivePreviewStatus::restoring: return "Restoring original appearance...";
+    default: return {};
+    }
+}
+
+std::string formatActorTargetIdentityWithPreviewStatus(
+    bool resolving, const ActorTarget* target, LivePreviewStatus previewStatus) {
+    const auto targetStatus = actorTargetStatusLabel(resolving, target);
+    std::string text = targetStatus.empty() && target
+        ? formatActorTargetIdentity(*target)
+        : std::string(targetStatus);
+    const auto previewStatusText = livePreviewStatusLabel(previewStatus);
+    if (!previewStatusText.empty()) {
+        if (!text.empty()) {
+            text += " - ";
+        }
+        text += previewStatusText;
+    }
+    return text;
+}
+
+LivePreviewPresentation livePreviewPresentation(
+    SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept {
+    const bool visible = session && (screen == SlotWorkflowScreen::editAppearance ||
+        screen == SlotWorkflowScreen::savingAppearance);
+    const bool failed = visible && (session->status == LivePreviewStatus::previewError ||
+        session->status == LivePreviewStatus::restoreError);
+    const bool canExit = visible && screen == SlotWorkflowScreen::editAppearance &&
+        (session->exitIntent == AppearanceExitIntent::none ||
+            (failed && session->exitIntent == AppearanceExitIntent::save));
+    std::string_view retryLabel;
+    if (failed) {
+        const bool sync = session->mode == core::UpdateTattooAppearanceMode::synchronizeOnly;
+        retryLabel = session->status == LivePreviewStatus::restoreError
+            ? (sync ? "Retry Restore Sync" : "Retry Restore")
+            : (sync ? "Retry Preview Sync" : "Retry Preview");
+    }
+    return {
+        .save = {visible, visible && isAppearanceSaveEnabled(screen, session)},
+        .cancel = {visible, canExit},
+        .close = {visible, canExit},
+        .retry = {failed, failed && screen == SlotWorkflowScreen::editAppearance},
+        .retryLabel = retryLabel,
+    };
+}
+
+bool applyEditAppearanceIntent(NativeSlotWorkflowModel& workflow, EditAppearanceIntent intent) {
+    const auto ui = livePreviewPresentation(
+        workflow.screen(), workflow.editAppearance());
+    switch (intent) {
+    case EditAppearanceIntent::save:
+        return ui.save.enabled && workflow.confirmAppearanceUpdate();
+    case EditAppearanceIntent::cancel:
+        if (!ui.cancel.enabled) {
+            return false;
+        }
+        workflow.cancelEditAppearance();
+        return true;
+    case EditAppearanceIntent::close:
+        return ui.close.enabled && workflow.requestEditAppearanceClose();
+    case EditAppearanceIntent::retry:
+        return ui.retry.enabled && workflow.retryLivePreviewOperation();
+    default:
+        return false;
+    }
+}
+
+bool dispatchMenuCloseRequest(
+    NativeSlotWorkflowModel& workflow, const std::function<void()>& close) {
+    if (!close || !workflow.takeMenuCloseRequest()) {
+        return false;
+    }
+    close();
+    return true;
 }
 
 std::string removeButtonLabel(std::int32_t slot, RemoveButtonState state) {
@@ -196,6 +365,31 @@ bool isRemoveConfirmationEnabled(
     SlotWorkflowScreen screen,
     bool hasTarget) noexcept {
     return screen == SlotWorkflowScreen::removeConfirmation && hasTarget;
+}
+
+SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept {
+    return {
+        .iconCodepoint = locked ? 0xF023U : 0xF09CU,
+        .tooltip = locked ? "Unlock tattoo" : "Lock tattoo",
+        .mutationsEnabled = !locked,
+    };
+}
+
+std::string_view domainPresentationLabel(std::string_view domain) noexcept {
+    return domain.empty() ? "default" : domain;
+}
+
+std::string_view domainThumbnailBadgeLabel(std::string_view domain) noexcept {
+    return domain.empty() || equalsFoldedASCII(domain, "default") ? "" : domain;
+}
+
+std::vector<std::string> buildCatalogBrowserDomainOptions(
+    const std::vector<std::string>& domains) {
+    std::vector<std::string> options;
+    options.reserve(domains.size() + 1);
+    options.emplace_back("All Domains");
+    options.insert(options.end(), domains.begin(), domains.end());
+    return options;
 }
 
 std::vector<std::string> collectPickerTexturePaths(
@@ -316,6 +510,15 @@ std::string catalogCardWidgetId(
         std::to_string(sourceIndex);
 }
 
+unsigned int catalogFavoriteButtonIcon(const bool favorite) noexcept {
+    return favorite ? 0xF005U : 0xF006U;
+}
+
+float catalogIconButtonSize(const float iconHeight, const float verticalPadding) noexcept {
+    return std::max(24.0F, std::max(0.0F, iconHeight) +
+        std::max(0.0F, verticalPadding) * 2.0F);
+}
+
 CatalogBrowserGridLayout calculateCatalogBrowserGridLayout(
     float availableHeight,
     float footerHeight,
@@ -355,6 +558,71 @@ CatalogBadgeLayout calculateCatalogBadgeLayout(
     };
 }
 
+std::vector<std::string_view> catalogMaterialBadgeLabels(
+    const repository::TattooDefinition& tattoo) {
+    const auto material = repository::classifyTattooMaterial(tattoo);
+    std::vector<std::string_view> labels;
+    labels.reserve(3);
+    if (material.glow) {
+        labels.emplace_back("Glow");
+    }
+    if (material.bump) {
+        labels.emplace_back("Bump");
+    }
+    if (material.gloss) {
+        labels.emplace_back("Gloss");
+    }
+    return labels;
+}
+
+std::vector<CatalogMaterialBadgeLayout> calculateCatalogMaterialBadgeLayouts(
+    const std::vector<std::pair<std::string_view, float>>& labelsAndWidths,
+    const float containerWidth,
+    const float containerHeight,
+    const float textHeight,
+    const float horizontalPadding,
+    const float verticalPadding,
+    const float margin,
+    const float spacing,
+    const float minimumY) {
+    std::vector<CatalogMaterialBadgeLayout> layouts;
+    layouts.reserve(labelsAndWidths.size());
+    float x = std::max(0.0F, margin);
+    const float height = std::max(0.0F, textHeight + verticalPadding * 2.0F);
+    const float y = std::max(0.0F, containerHeight - margin - height);
+    const float rightEdge = std::max(0.0F, containerWidth - margin);
+    if (y < minimumY || y + height > containerHeight - margin) {
+        return layouts;
+    }
+    for (const auto& [label, textWidth] : labelsAndWidths) {
+        const float width = std::max(0.0F, textWidth + horizontalPadding * 2.0F);
+        if (x + width > rightEdge) {
+            break;
+        }
+        layouts.push_back({
+            .label = label,
+            .bounds = {
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+                .textX = x + horizontalPadding,
+                .textY = y + verticalPadding,
+            },
+        });
+        x += width + spacing;
+    }
+    return layouts;
+}
+
+bool catalogControlFitsOnSameLine(
+    const float contentRightX,
+    const float previousItemRightX,
+    const float spacing,
+    const float nextControlWidth) noexcept {
+    return previousItemRightX + spacing + nextControlWidth <= contentRightX;
+}
+
 float calculateCatalogCardMetadataHeight(
     float,
     float) noexcept {
@@ -378,6 +646,15 @@ UnifiedFooterLayout calculateUnifiedFooterLayout(
         .closeWidth = safeCloseWidth,
         .closeX = closeX,
     };
+}
+
+float calculatePinnedFooterY(
+    float cursorY,
+    float availableHeight,
+    float footerHeight) noexcept {
+    return std::max(0.0F, cursorY) + std::max(
+        0.0F,
+        std::max(0.0F, availableHeight) - std::max(0.0F, footerHeight));
 }
 
 PickerFooterActionLayout calculatePickerFooterActionLayout(
@@ -422,6 +699,49 @@ std::string_view appearanceTextureMetadata(std::string_view texturePath) noexcep
     return texturePath.empty() ? "None" : texturePath;
 }
 
+bool shouldShowAppearanceTextureMetadata(std::string_view texturePath) noexcept {
+    return !texturePath.empty();
+}
+
+EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
+    float availableWidth,
+    float availableHeight,
+    float reservedFooterHeight,
+    float preferredSize) noexcept {
+    const float usableWidth = std::max(0.0F, availableWidth);
+    const float usableHeight = std::max(0.0F, availableHeight - reservedFooterHeight);
+    const float size = std::min({preferredSize, usableWidth, usableHeight});
+    return {
+        .xOffset = std::max(0.0F, (usableWidth - size) * 0.5F),
+        .size = size,
+    };
+}
+
+EditAppearanceControlRanges editAppearanceControlRanges() noexcept {
+    return {.glossinessMax = 1000.0F, .specularStrengthMax = 100.0F};
+}
+
+std::string_view appearancePresetStatusMessage(
+    const AppearancePresetUiState state) noexcept {
+    switch (state) {
+    case AppearancePresetUiState::unavailable:
+        return "Unavailable";
+    case AppearancePresetUiState::empty:
+        return "No appearance presets saved.";
+    case AppearancePresetUiState::ready:
+        return {};
+    case AppearancePresetUiState::limitReached:
+        return "20 preset limit reached";
+    case AppearancePresetUiState::pending:
+        return "Updating appearance presets...";
+    }
+    return {};
+}
+
+bool canCreateAppearancePreset(const std::size_t count, const bool pending) noexcept {
+    return !pending && count < runtime::kAppearancePresetLimit;
+}
+
 std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept {
     if (!session) {
@@ -454,7 +774,8 @@ void orchestrateEditAppearanceFrame(
     EditAppearanceFrameInteraction interaction,
     const std::function<void()>& teardown,
     const std::function<void(const AppearanceThumbnailPresentation&)>& continueRendering) {
-    if (interaction.appearanceChanged) {
+    if (interaction.appearanceChanged &&
+        isAppearanceEditingEnabled(workflow.screen(), workflow.editAppearance())) {
         workflow.setEditedAppearance(
             interaction.color,
             interaction.alpha,
@@ -463,9 +784,7 @@ void orchestrateEditAppearanceFrame(
             interaction.specularStrength,
             interaction.emissiveMult);
     }
-    if (interaction.cancelRequested) {
-        workflow.cancelEditAppearance();
-    }
+    (void)applyEditAppearanceIntent(workflow, interaction.intent);
 
     const auto presentation = editAppearanceFramePresentation(
         workflow.screen(), workflow.editAppearance());
@@ -619,12 +938,34 @@ std::optional<std::size_t> CatalogBrowserPageInputState::finishFrame(
 
 CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
-    const repository::TattooPage& page) noexcept {
+    const repository::TattooPage& page,
+    bool appliedOnly,
+    bool favoritesOnly,
+    bool recentlyUsedOnly) noexcept {
     if (!hasSnapshot || page.totalEntries == 0) {
         return CatalogBrowserEmptyState::emptyCatalog;
     }
     if (page.matchedEntries == 0) {
-        return CatalogBrowserEmptyState::noMatches;
+        if (recentlyUsedOnly) {
+            if (favoritesOnly && appliedOnly) {
+                return CatalogBrowserEmptyState::noFavoriteAppliedRecentMatches;
+            }
+            if (favoritesOnly) {
+                return CatalogBrowserEmptyState::noFavoriteRecentMatches;
+            }
+            if (appliedOnly) {
+                return CatalogBrowserEmptyState::noAppliedRecentMatches;
+            }
+            return CatalogBrowserEmptyState::noRecentMatches;
+        }
+        if (favoritesOnly && appliedOnly) {
+            return CatalogBrowserEmptyState::noFavoriteAppliedMatches;
+        }
+        if (favoritesOnly) {
+            return CatalogBrowserEmptyState::noFavoriteMatches;
+        }
+        return appliedOnly ? CatalogBrowserEmptyState::noAppliedMatches
+                           : CatalogBrowserEmptyState::noMatches;
     }
     return CatalogBrowserEmptyState::none;
 }
@@ -635,6 +976,20 @@ std::string_view catalogBrowserEmptyMessage(CatalogBrowserEmptyState state) noex
         return "The tattoo catalog is empty. Refresh the catalog to browse tattoos.";
     case CatalogBrowserEmptyState::noMatches:
         return "No tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noAppliedMatches:
+        return "No applied tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteMatches:
+        return "No favorite tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteAppliedMatches:
+        return "No favorite applied tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noRecentMatches:
+        return "No recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteRecentMatches:
+        return "No favorite recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noAppliedRecentMatches:
+        return "No applied recently used tattoos match the current filters.";
+    case CatalogBrowserEmptyState::noFavoriteAppliedRecentMatches:
+        return "No favorite applied recently used tattoos match the current filters.";
     case CatalogBrowserEmptyState::none:
         return {};
     }
@@ -729,21 +1084,44 @@ void renderSlotImage(
     }
 }
 
+bool renderActorTargetHeader(
+    NativeSlotWorkflowModel& workflow,
+    LivePreviewStatus previewStatus = LivePreviewStatus::clean) {
+    const auto kind = workflow.selectedTargetKind();
+    const bool resolving = workflow.isActorTargetResolutionInFlight();
+    const auto controls = actorTargetControlPresentation(
+        kind, resolving, workflow.isMutationInFlight());
+    ActorTargetHeaderIntent intent = ActorTargetHeaderIntent::none;
+    ImGuiMCP::BeginDisabled(!controls.playerEnabled);
+    if (ImGuiMCP::RadioButton("Player", kind == ActorTargetKind::player)) {
+        intent = ActorTargetHeaderIntent::player;
+    }
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!controls.crosshairEnabled);
+    if (ImGuiMCP::RadioButton("Crosshair Target", kind == ActorTargetKind::crosshair)) {
+        intent = ActorTargetHeaderIntent::crosshair;
+    }
+    ImGuiMCP::EndDisabled();
+    const auto* target = workflow.actorTarget();
+    const auto identity = formatActorTargetIdentityWithPreviewStatus(
+        resolving, target, previewStatus);
+    ImGuiMCP::TextUnformatted(identity.c_str());
+    if (controls.refreshVisible) {
+        ImGuiMCP::BeginDisabled(!controls.refreshEnabled);
+        if (ImGuiMCP::Button("Refresh Target")) {
+            intent = ActorTargetHeaderIntent::refresh;
+        }
+        ImGuiMCP::EndDisabled();
+    }
+    ImGuiMCP::Separator();
+    return applyActorTargetHeaderIntent(workflow, intent);
+}
+
 void renderCurrentSlots(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* slots = workflow.slots();
-    const auto paths = slots
-        ? collectVisibleSlotTexturePaths(
-              *slots,
-              workflow.slotPageIndex(),
-              NativeSlotWorkflowModel::kPageSize)
-        : std::vector<std::string>{};
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -764,11 +1142,31 @@ void renderCurrentSlots(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImGuiMCP::TextUnformatted("Current Tattoos - Player");
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* slots = workflow.slots();
+    const auto paths = slots
+        ? collectVisibleSlotTexturePaths(
+              *slots,
+              workflow.slotPageIndex(),
+              NativeSlotWorkflowModel::kPageSize)
+        : std::vector<std::string>{};
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
+    const auto title = currentTattoosTitle(workflow.actorTarget());
+    ImGuiMCP::TextUnformatted(title.c_str());
     ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled);
     if (ImGuiMCP::Button("Refresh")) {
         workflow.refreshSelectedArea();
     }
+    ImGuiMCP::EndDisabled();
 
     constexpr std::array<core::TattooArea, 4> areas{
         core::TattooArea::body,
@@ -814,7 +1212,10 @@ void renderCurrentSlots(
                 ImGuiMCP::ImGuiChildFlags_None,
                 ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                     ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
-            ImGuiMCP::TextUnformatted("Loading Player tattoo slots...");
+            const auto status = actorTargetStatusLabel(
+                workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+            ImGuiMCP::TextUnformatted(
+                status.empty() ? "Loading tattoo slots..." : status.data());
         }
         ImGuiMCP::EndChild();
     } else if (ImGuiMCP::BeginTable(
@@ -833,8 +1234,10 @@ void renderCurrentSlots(
             ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
             const auto& slot = slots->slots[index];
             const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
-            const bool disabled = slotCardTreatment(slot.occupancy) ==
+            const bool disabled = !targetActionsEnabled || slotCardTreatment(slot.occupancy) ==
                 SlotCardTreatment::disabled;
+            bool lockClicked = false;
+            bool lockHovered = false;
             ImGuiMCP::BeginDisabled(disabled);
             ImGuiMCP::PushStyleColor(
                 ImGuiMCP::ImGuiCol_ChildBg,
@@ -875,11 +1278,38 @@ void renderCurrentSlots(
                         0,
                         1.0F);
                 }
+                if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
+                    const auto lockPresentation = slotLockActionPresentation(slot.tattoo->locked);
+                    const auto lockIcon = FontAwesome::UnicodeToUtf8(
+                        lockPresentation.iconCodepoint);
+                    const auto lockWidgetId = lockIcon + "##SlotLock" +
+                        std::to_string(slot.index);
+                    FontAwesome::PushSolid();
+                    const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
+                    const float buttonSize = catalogIconButtonSize(
+                        iconSize.y,
+                        style ? style->FramePadding.y : 4.0F);
+                    ImGuiMCP::SetCursorScreenPos({
+                        imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
+                        imageScreenOrigin.y + 6.0F,
+                    });
+                    ImGuiMCP::BeginDisabled(workflow.isLockStateChangeInFlight());
+                    if (ImGuiMCP::Button(lockWidgetId.c_str(), {buttonSize, buttonSize})) {
+                        lockClicked = workflow.toggleSlotLock(slot.index);
+                    }
+                    lockHovered = ImGuiMCP::IsItemHovered(
+                        ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled);
+                    if (lockHovered) {
+                        ImGuiMCP::SetTooltip("%s", lockPresentation.tooltip.data());
+                    }
+                    ImGuiMCP::EndDisabled();
+                    FontAwesome::Pop();
+                }
             }
             ImGuiMCP::EndChild();
             ImGuiMCP::PopStyleColor();
             ImGuiMCP::EndDisabled();
-            if (!disabled && ImGuiMCP::IsItemClicked()) {
+            if (!disabled && !lockClicked && !lockHovered && ImGuiMCP::IsItemClicked()) {
                 (void)workflow.selectSlot(slot.index);
             }
             if (ImGuiMCP::IsItemHovered()) {
@@ -895,6 +1325,10 @@ void renderCurrentSlots(
         ImGuiMCP::EndTable();
     }
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
     if (ImGuiMCP::BeginTable(
@@ -969,16 +1403,6 @@ void renderSlotActions(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto target = workflow.targetSlot();
-    const auto* slot = selectedWorkflowSlot(workflow);
-    std::vector<std::string> paths;
-    if (slot && slot->tattoo && !slot->tattoo->texturePath.empty()) {
-        paths.push_back(slot->tattoo->texturePath);
-    }
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -999,19 +1423,37 @@ void renderSlotActions(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto target = workflow.targetSlot();
+    const auto* slot = selectedWorkflowSlot(workflow);
+    std::vector<std::string> paths;
+    if (slot && slot->tattoo && !slot->tattoo->texturePath.empty()) {
+        paths.push_back(slot->tattoo->texturePath);
+    }
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const bool confirming =
         workflow.screen() == SlotWorkflowScreen::removeConfirmation;
     const bool removing = workflow.screen() == SlotWorkflowScreen::removing;
     ImGuiMCP::TextUnformatted(
         confirming || removing ? "Remove Tattoo?" : "Tattoo Slot Actions");
     if (target) {
-        const auto targetLabel = formatSlotTargetLabel(workflow.selectedArea(), *target);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), workflow.selectedArea(), *target);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (slot && slot->tattoo) {
         ImGuiMCP::Text("%s / %s",
             slot->tattoo->section.c_str(),
             slot->tattoo->name.c_str());
+        ImGuiMCP::Text("Domain: %s", domainPresentationLabel(slot->tattoo->domain).data());
     }
     if (const auto* error = workflow.error()) {
         ImGuiMCP::TextUnformatted(error->message.c_str());
@@ -1041,33 +1483,34 @@ void renderSlotActions(
     ImGuiMCP::EndChild();
     ImGuiMCP::PopStyleColor();
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
+    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+        (style ? style->FramePadding.x * 2.0F : 16.0F);
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
-    const auto footerLayout = calculateUnifiedFooterLayout(
-        ImGuiMCP::GetContentRegionAvail().x,
-        closeButtonWidth);
     if (ImGuiMCP::BeginTable(
             "SlotActionsFooter",
-            2,
+            3,
             ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                 ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
         ImGuiMCP::TableSetupColumn(
             "SlotWorkflowActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
         ImGuiMCP::TableSetupColumn(
+            "SlotWorkflowCancel",
+            ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
+            cancelButtonWidth);
+        ImGuiMCP::TableSetupColumn(
             "SlotWorkflowClose",
             ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-            footerLayout.closeWidth);
+            closeButtonWidth);
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         if (confirming || removing) {
-            ImGuiMCP::BeginDisabled(removing);
-            if (ImGuiMCP::Button("Cancel")) {
-                workflow.cancelRemove();
-            }
-            ImGuiMCP::EndDisabled();
-            ImGuiMCP::SameLine();
-            const bool canRemove = isRemoveConfirmationEnabled(
+            const bool canRemove = targetActionsEnabled && isRemoveConfirmationEnabled(
                 workflow.screen(), target.has_value());
             RemoveButtonState buttonState = RemoveButtonState::initial;
             if (const auto* error = workflow.error()) {
@@ -1082,28 +1525,47 @@ void renderSlotActions(
             }
             ImGuiMCP::EndDisabled();
         } else {
+            const bool locked = slot && slot->tattoo && slot->tattoo->locked;
+            const auto lockPresentation = slotLockActionPresentation(locked);
+            const bool lockStateChangeInFlight = workflow.isLockStateChangeInFlight();
             if (ImGuiMCP::Button("Back")) {
                 workflow.backToSlots();
             }
             ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+                !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Replace")) {
                 (void)workflow.replaceSelectedSlot();
             }
+            ImGuiMCP::EndDisabled();
             const bool canEditAppearance = slot &&
                 slot->occupancy == core::SlotOccupancy::slaveTats && slot->tattoo &&
                 slot->tattoo->runtimeHandle != 0;
             if (canEditAppearance) {
                 ImGuiMCP::SameLine();
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled || lockStateChangeInFlight);
                 if (ImGuiMCP::Button("Edit Appearance")) {
                     (void)workflow.beginEditAppearance();
                 }
+                ImGuiMCP::EndDisabled();
             }
             ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+                !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
             if (ImGuiMCP::Button("Remove")) {
                 (void)workflow.requestRemove();
             }
+            ImGuiMCP::EndDisabled();
         }
         ImGuiMCP::TableSetColumnIndex(1);
+        if (confirming || removing) {
+            ImGuiMCP::BeginDisabled(removing);
+            if (ImGuiMCP::Button("Cancel")) {
+                workflow.cancelRemove();
+            }
+            ImGuiMCP::EndDisabled();
+        }
+        ImGuiMCP::TableSetColumnIndex(2);
         if (ImGuiMCP::Button("Close")) {
             open = false;
         }
@@ -1122,22 +1584,6 @@ void renderPreview(
     NativeCatalogBrowserModel& catalog,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* preview = workflow.previewTattoo();
-    const auto* appearance = workflow.previewAppearance();
-    const auto target = workflow.targetSlot();
-    std::vector<std::string> paths;
-    if (preview && !preview->texturePath.empty()) {
-        paths.push_back(preview->texturePath);
-    }
-    NativeThumbnailEpoch epoch = catalog.snapshot();
-    if (!epoch) {
-        static const NativeThumbnailEpoch fallbackEpoch = std::make_shared<int>(4);
-        epoch = fallbackEpoch;
-    }
-    thumbnails.synchronize(std::move(epoch), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1158,9 +1604,32 @@ void renderPreview(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* preview = workflow.previewTattoo();
+    const auto* appearance = workflow.previewAppearance();
+    const auto target = workflow.targetSlot();
+    std::vector<std::string> paths;
+    if (preview && !preview->texturePath.empty()) {
+        paths.push_back(preview->texturePath);
+    }
+    NativeThumbnailEpoch epoch = catalog.snapshot();
+    if (!epoch) {
+        static const NativeThumbnailEpoch fallbackEpoch = std::make_shared<int>(4);
+        epoch = fallbackEpoch;
+    }
+    thumbnails.synchronize(std::move(epoch), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     ImGuiMCP::TextUnformatted("Preview Tattoo");
     if (target) {
-        const auto targetLabel = formatSlotTargetLabel(workflow.selectedArea(), *target);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), workflow.selectedArea(), *target);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (preview) {
@@ -1181,7 +1650,7 @@ void renderPreview(
         colorComponents.blue,
     };
     float alpha = appearance ? appearance->alpha : 1.0F;
-    ImGuiMCP::BeginDisabled(applying || !appearance);
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled || applying || !appearance);
     const bool colorChanged = ImGuiMCP::ColorEdit3(
         "Color",
         pickerColor,
@@ -1239,32 +1708,38 @@ void renderPreview(
     ImGuiMCP::EndChild();
     ImGuiMCP::PopStyleColor();
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
+    const float horizontalButtonPadding = style ? style->FramePadding.x * 2.0F : 16.0F;
+    const float backButtonWidth = ImGuiMCP::CalcTextSize("Back").x + horizontalButtonPadding;
+    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x + horizontalButtonPadding;
     const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
-        (style ? style->FramePadding.x * 2.0F : 16.0F);
-    const auto footerLayout = calculateUnifiedFooterLayout(
-        ImGuiMCP::GetContentRegionAvail().x,
-        closeButtonWidth);
+        horizontalButtonPadding;
     if (ImGuiMCP::BeginTable(
             "PreviewFooter",
-            2,
+            4,
             ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                 ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
         ImGuiMCP::TableSetupColumn(
-            "PreviewActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+            "PreviewBack", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, backButtonWidth);
         ImGuiMCP::TableSetupColumn(
-            "PreviewClose",
-            ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-            footerLayout.closeWidth);
+            "PreviewPrimary", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+        ImGuiMCP::TableSetupColumn(
+            "PreviewCancel", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, cancelButtonWidth);
+        ImGuiMCP::TableSetupColumn(
+            "PreviewClose", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, closeButtonWidth);
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::BeginDisabled(applying);
-        if (ImGuiMCP::Button("Cancel")) {
-            workflow.cancelPreview();
+        if (ImGuiMCP::Button("Back")) {
+            workflow.backToPicker();
         }
         ImGuiMCP::EndDisabled();
-        ImGuiMCP::SameLine();
-        const bool canApply = isPreviewApplyEnabled(
+        ImGuiMCP::TableSetColumnIndex(1);
+        const bool canApply = targetActionsEnabled && isPreviewApplyEnabled(
             workflow.screen(), target.has_value(), preview != nullptr);
         const auto applyLabel = previewApplyButtonLabel(
             target.value_or(-1), workflow.error() != nullptr);
@@ -1273,7 +1748,13 @@ void renderPreview(
             (void)workflow.confirmApply();
         }
         ImGuiMCP::EndDisabled();
-        ImGuiMCP::TableSetColumnIndex(1);
+        ImGuiMCP::TableSetColumnIndex(2);
+        ImGuiMCP::BeginDisabled(applying);
+        if (ImGuiMCP::Button("Cancel")) {
+            workflow.cancelPreview();
+        }
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::TableSetColumnIndex(3);
         if (ImGuiMCP::Button("Close")) {
             open = false;
         }
@@ -1291,21 +1772,6 @@ void renderEditAppearance(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
-    const auto* session = workflow.editAppearance();
-    const auto initialFramePresentation =
-        editAppearanceFramePresentation(workflow.screen(), session);
-    if (!initialFramePresentation.shouldContinue) {
-        return;
-    }
-    std::vector<std::string> paths;
-    if (initialFramePresentation.thumbnail &&
-        !initialFramePresentation.thumbnail->texturePath.empty()) {
-        paths.emplace_back(initialFramePresentation.thumbnail->texturePath);
-    }
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1326,10 +1792,43 @@ void renderEditAppearance(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    // The title-bar close follows the same rollback intent as the footer Close.
+    if (!open) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        (void)applyEditAppearanceIntent(workflow, EditAppearanceIntent::close);
+        (void)dispatchMenuCloseRequest(workflow, close);
+        return;
+    }
+
+    if (renderActorTargetHeader(workflow, workflow.livePreviewStatus())) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    const auto* session = workflow.editAppearance();
+    const auto initialFramePresentation =
+        editAppearanceFramePresentation(workflow.screen(), session);
+    if (!initialFramePresentation.shouldContinue) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    std::vector<std::string> paths;
+    if (initialFramePresentation.thumbnail &&
+        !initialFramePresentation.thumbnail->texturePath.empty()) {
+        paths.emplace_back(initialFramePresentation.thumbnail->texturePath);
+    }
+    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const bool saving = workflow.screen() == SlotWorkflowScreen::savingAppearance;
     ImGuiMCP::TextUnformatted("Edit Appearance");
     if (session) {
-        const auto targetLabel = formatSlotTargetLabel(session->area, session->slot);
+        const auto targetLabel = formatSlotTargetLabel(
+            workflow.actorTarget(), session->area, session->slot);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
     }
     if (const auto* error = workflow.error()) {
@@ -1356,7 +1855,198 @@ void renderEditAppearance(
     float emissiveMult = session ? session->edited.emissiveMult : 1.0F;
     float glossiness = session ? session->edited.glossiness : 0.0F;
     float specularStrength = session ? session->edited.specularStrength : 0.0F;
-    ImGuiMCP::BeginDisabled(!isAppearanceEditingEnabled(workflow.screen(), session));
+
+    const auto& appearancePresets = workflow.appearancePresets();
+    const auto selectedAppearancePreset = workflow.selectedAppearancePreset();
+    const bool appearancePresetPending = workflow.appearancePresetPending();
+    const bool hasSelectedAppearancePreset = selectedAppearancePreset &&
+        *selectedAppearancePreset < appearancePresets.size();
+    const auto* appearancePresetError = workflow.appearancePresetError();
+    const auto presetState = appearancePresetPending
+        ? AppearancePresetUiState::pending
+        : appearancePresetError && appearancePresets.empty()
+            ? AppearancePresetUiState::unavailable
+        : appearancePresets.empty()
+            ? AppearancePresetUiState::empty
+            : appearancePresets.size() >= runtime::kAppearancePresetLimit
+                ? AppearancePresetUiState::limitReached
+                : AppearancePresetUiState::ready;
+
+    ImGuiMCP::SeparatorText("Appearance Preset");
+    const char* selectedPresetLabel = hasSelectedAppearancePreset
+        ? appearancePresets[*selectedAppearancePreset].name.c_str()
+        : "Select preset";
+    ImGuiMCP::BeginDisabled(appearancePresetPending || appearancePresets.empty());
+    if (ImGuiMCP::BeginCombo("Preset", selectedPresetLabel)) {
+        for (std::size_t index = 0; index < appearancePresets.size(); ++index) {
+            const bool selected = selectedAppearancePreset == index;
+            if (ImGuiMCP::Selectable(appearancePresets[index].name.c_str(), selected)) {
+                workflow.selectAppearancePreset(index);
+            }
+            if (selected) {
+                ImGuiMCP::SetItemDefaultFocus();
+            }
+        }
+        ImGuiMCP::EndCombo();
+    }
+    ImGuiMCP::EndDisabled();
+
+    ImGuiMCP::BeginDisabled(
+        appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
+    if (ImGuiMCP::Button("Load")) {
+        (void)workflow.loadAppearancePreset(
+            appearancePresets[*selectedAppearancePreset]);
+    }
+    ImGuiMCP::EndDisabled();
+
+    static std::string presetName;
+    static std::string renamedPresetName;
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(appearancePresetPending || !targetActionsEnabled || !session);
+    if (ImGuiMCP::Button("Save Preset")) {
+        presetName.clear();
+        ImGuiMCP::OpenPopup("Save Appearance Preset");
+    }
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(
+        appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
+    if (ImGuiMCP::Button("Manage")) {
+        renamedPresetName = appearancePresets[*selectedAppearancePreset].name;
+        ImGuiMCP::OpenPopup("Manage Appearance Preset");
+    }
+    ImGuiMCP::EndDisabled();
+
+    const auto statusMessage = appearancePresetStatusMessage(presetState);
+    if (!statusMessage.empty()) {
+        ImGuiMCP::TextUnformatted(statusMessage.data());
+    }
+    if (appearancePresetError) {
+        const auto message = std::format(
+            "Appearance Presets: {}", appearancePresetError->message);
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (workflow.appearancePresetRetryAvailable()) {
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::Button("Retry##AppearancePreset")) {
+                (void)workflow.retryAppearancePreset();
+            }
+        }
+    }
+
+    if (ImGuiMCP::BeginPopupModal("Save Appearance Preset")) {
+        ImGuiMCP::TextUnformatted("Save the current appearance values as:");
+        ImGuiMCP::SetNextItemWidth(320.0F);
+        (void)inputTextString("Name##SaveAppearancePreset", presetName);
+        auto candidateName = std::string_view(presetName);
+        while (!candidateName.empty() &&
+            (candidateName.front() == ' ' || candidateName.front() == '\t' ||
+                candidateName.front() == '\r' || candidateName.front() == '\n')) {
+            candidateName.remove_prefix(1);
+        }
+        while (!candidateName.empty() &&
+            (candidateName.back() == ' ' || candidateName.back() == '\t' ||
+                candidateName.back() == '\r' || candidateName.back() == '\n')) {
+            candidateName.remove_suffix(1);
+        }
+        const bool overwritesExisting = std::ranges::any_of(
+            appearancePresets, [&](const runtime::AppearancePreset& preset) {
+                return equalsFoldedASCII(preset.name, candidateName);
+            });
+        const bool createEnabled = !candidateName.empty() &&
+            (overwritesExisting || canCreateAppearancePreset(
+                appearancePresets.size(), appearancePresetPending));
+        ImGuiMCP::BeginDisabled(!createEnabled);
+        if (ImGuiMCP::Button("Save##ConfirmAppearancePreset")) {
+            if (workflow.requestCreateAppearancePreset(presetName)) {
+                ImGuiMCP::CloseCurrentPopup();
+            }
+        }
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##SaveAppearancePreset")) {
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (ImGuiMCP::BeginPopupModal("Manage Appearance Preset")) {
+        if (hasSelectedAppearancePreset) {
+            ImGuiMCP::TextUnformatted(
+                appearancePresets[*selectedAppearancePreset].name.c_str());
+            ImGuiMCP::SetNextItemWidth(320.0F);
+            (void)inputTextString("Name##RenameAppearancePreset", renamedPresetName);
+            if (appearancePresetError &&
+                !workflow.appearancePresetRetryAvailable()) {
+                ImGuiMCP::TextUnformatted(appearancePresetError->message.c_str());
+            }
+            ImGuiMCP::BeginDisabled(renamedPresetName.empty());
+            if (ImGuiMCP::Button("Rename")) {
+                if (workflow.requestRenameAppearancePreset(renamedPresetName)) {
+                    ImGuiMCP::CloseCurrentPopup();
+                }
+            }
+            ImGuiMCP::EndDisabled();
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::Button("Delete")) {
+                if (workflow.requestDeleteAppearancePreset()) {
+                    ImGuiMCP::CloseCurrentPopup();
+                }
+            }
+            ImGuiMCP::SameLine();
+        }
+        if (ImGuiMCP::Button("Cancel##ManageAppearancePreset")) {
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (workflow.appearancePresetOverwriteConfirmation() &&
+        !ImGuiMCP::IsPopupOpen("Overwrite Appearance Preset")) {
+        ImGuiMCP::OpenPopup("Overwrite Appearance Preset");
+    }
+    if (ImGuiMCP::BeginPopupModal("Overwrite Appearance Preset")) {
+        const auto* overwrite = workflow.appearancePresetOverwriteConfirmation();
+        const auto message = std::format(
+            "Overwrite '{}' with the current appearance?",
+            overwrite ? overwrite->name : std::string{});
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (ImGuiMCP::Button("Overwrite")) {
+            (void)workflow.confirmAppearancePresetOverwrite();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##OverwriteAppearancePreset")) {
+            workflow.cancelAppearancePresetConfirmation();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    if (workflow.appearancePresetDeleteConfirmation() &&
+        !ImGuiMCP::IsPopupOpen("Delete Appearance Preset")) {
+        ImGuiMCP::OpenPopup("Delete Appearance Preset");
+    }
+    if (ImGuiMCP::BeginPopupModal("Delete Appearance Preset")) {
+        const auto message = std::format(
+            "Delete '{}' permanently?",
+            hasSelectedAppearancePreset
+                ? appearancePresets[*selectedAppearancePreset].name
+                : std::string{});
+        ImGuiMCP::TextUnformatted(message.c_str());
+        if (ImGuiMCP::Button("Delete##ConfirmAppearancePreset")) {
+            (void)workflow.confirmAppearancePresetDelete();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Cancel##DeleteAppearancePreset")) {
+            workflow.cancelAppearancePresetConfirmation();
+            ImGuiMCP::CloseCurrentPopup();
+        }
+        ImGuiMCP::EndPopup();
+    }
+
+    ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+        !isAppearanceEditingEnabled(workflow.screen(), session));
     ImGuiMCP::SeparatorText("Basic");
     const bool colorChanged = ImGuiMCP::ColorEdit3(
         "Color", colorValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
@@ -1369,12 +2059,16 @@ void renderEditAppearance(
         "Emission Strength", &emissiveMult, 0.0F, 10.0F, "%.2f");
     const bool emissiveInputChanged =
         ImGuiMCP::InputFloat("Emission Strength Value", &emissiveMult, 0.0F, 0.0F, "%.3f");
-    const bool glossinessSliderChanged =
-        ImGuiMCP::SliderFloat("Glossiness", &glossiness, 0.0F, 10.0F, "%.2f");
+    const auto controlRanges = editAppearanceControlRanges();
+    const bool glossinessSliderChanged = ImGuiMCP::SliderFloat(
+        "Glossiness", &glossiness, 0.0F, controlRanges.glossinessMax, "%.2f",
+        ImGuiMCP::ImGuiSliderFlags_Logarithmic);
     const bool glossinessInputChanged =
         ImGuiMCP::InputFloat("Glossiness Value", &glossiness, 0.0F, 0.0F, "%.3f");
     const bool specularSliderChanged = ImGuiMCP::SliderFloat(
-        "Specular Strength", &specularStrength, 0.0F, 10.0F, "%.2f");
+        "Specular Strength", &specularStrength, 0.0F,
+        controlRanges.specularStrengthMax, "%.2f",
+        ImGuiMCP::ImGuiSliderFlags_Logarithmic);
     const bool specularInputChanged = ImGuiMCP::InputFloat(
         "Specular Strength Value", &specularStrength, 0.0F, 0.0F, "%.3f");
     const EditAppearanceFrameInteraction frameInteraction{
@@ -1408,12 +2102,16 @@ void renderEditAppearance(
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted("Bump");
         }
-        ImGuiMCP::TextUnformatted("Glow Texture:");
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->glowTexture).data());
-        ImGuiMCP::TextUnformatted("Bump Texture:");
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted(appearanceTextureMetadata(session->bump).data());
+        if (shouldShowAppearanceTextureMetadata(session->glowTexture)) {
+            ImGuiMCP::TextUnformatted("Glow Texture:");
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted(session->glowTexture.c_str());
+        }
+        if (shouldShowAppearanceTextureMetadata(session->bump)) {
+            ImGuiMCP::TextUnformatted("Bump Texture:");
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted(session->bump.c_str());
+        }
     }
 
     const auto teardown = [] {
@@ -1426,15 +2124,17 @@ void renderEditAppearance(
         teardown,
         [&](const AppearanceThumbnailPresentation& thumbnailPresentation) {
             const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
-            const float imageHeight = std::max(
-                1.0F,
-                ImGuiMCP::GetContentRegionAvail().y - footerHeight);
+            const auto available = ImGuiMCP::GetContentRegionAvail();
+            const auto thumbnailLayout = calculateEditAppearanceThumbnailLayout(
+                available.x, available.y, footerHeight);
+            ImGuiMCP::SetCursorPosX(
+                ImGuiMCP::GetCursorPosX() + thumbnailLayout.xOffset);
             ImGuiMCP::PushStyleColor(
                 ImGuiMCP::ImGuiCol_ChildBg,
                 ImGuiMCP::ImVec4(0.08F, 0.08F, 0.08F, 1.0F));
             if (ImGuiMCP::BeginChild(
                     "EditAppearanceImage",
-                    {0.0F, imageHeight},
+                    {thumbnailLayout.size, thumbnailLayout.size},
                     ImGuiMCP::ImGuiChildFlags_Border,
                     ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                         ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
@@ -1460,53 +2160,67 @@ void renderEditAppearance(
             ImGuiMCP::EndChild();
             ImGuiMCP::PopStyleColor();
 
+            ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+                ImGuiMCP::GetCursorPosY(),
+                ImGuiMCP::GetContentRegionAvail().y,
+                footerHeight));
             const auto* style = ImGuiMCP::GetStyle();
+            const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+                (style ? style->FramePadding.x * 2.0F : 16.0F);
             const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
                 (style ? style->FramePadding.x * 2.0F : 16.0F);
-            const auto footerLayout = calculateUnifiedFooterLayout(
-                ImGuiMCP::GetContentRegionAvail().x,
-                closeButtonWidth);
-            bool cancelled = false;
+            const auto actions = livePreviewPresentation(
+                workflow.screen(), workflow.editAppearance());
+            EditAppearanceIntent intent = EditAppearanceIntent::none;
             if (ImGuiMCP::BeginTable(
                     "EditAppearanceFooter",
-                    2,
+                    3,
                     ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                         ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
                 ImGuiMCP::TableSetupColumn(
-                    "EditAppearanceActions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                    "EditAppearancePrimary", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGuiMCP::TableSetupColumn(
+                    "EditAppearanceCancel",
+                    ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
+                    cancelButtonWidth);
                 ImGuiMCP::TableSetupColumn(
                     "EditAppearanceClose",
                     ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
-                    footerLayout.closeWidth);
+                    closeButtonWidth);
                 ImGuiMCP::TableNextRow();
                 ImGuiMCP::TableSetColumnIndex(0);
-                ImGuiMCP::BeginDisabled(saving);
-                cancelled = ImGuiMCP::Button("Cancel");
-                ImGuiMCP::EndDisabled();
-                ImGuiMCP::SameLine();
-                const auto savePresentation = appearanceSavePresentation(
-                    workflow.screen(), workflow.editAppearance());
-                ImGuiMCP::BeginDisabled(!savePresentation.enabled);
-                if (ImGuiMCP::Button(savePresentation.label.data())) {
-                    (void)workflow.confirmAppearanceUpdate();
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.save.enabled);
+                if (ImGuiMCP::Button("Save") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::save;
                 }
                 ImGuiMCP::EndDisabled();
+                if (actions.retry.visible) {
+                    ImGuiMCP::SameLine();
+                    ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.retry.enabled);
+                    if (ImGuiMCP::Button(actions.retryLabel.data()) && intent == EditAppearanceIntent::none) {
+                        intent = EditAppearanceIntent::retry;
+                    }
+                    ImGuiMCP::EndDisabled();
+                }
                 ImGuiMCP::TableSetColumnIndex(1);
-                ImGuiMCP::BeginDisabled(saving);
-                if (ImGuiMCP::Button("Close")) {
-                    open = false;
+                ImGuiMCP::BeginDisabled(!actions.cancel.enabled);
+                if (ImGuiMCP::Button("Cancel") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::cancel;
+                }
+                ImGuiMCP::EndDisabled();
+                ImGuiMCP::TableSetColumnIndex(2);
+                ImGuiMCP::BeginDisabled(!actions.close.enabled);
+                if (ImGuiMCP::Button("Close") && intent == EditAppearanceIntent::none) {
+                    intent = EditAppearanceIntent::close;
                 }
                 ImGuiMCP::EndDisabled();
                 ImGuiMCP::EndTable();
             }
 
-            if (cancelled) {
-                workflow.cancelEditAppearance();
-            }
             teardown();
-            if (!open && close) {
-                close();
-            }
+            // All actor-scoped rendering ends before an intent can reset the session.
+            (void)applyEditAppearanceIntent(workflow, intent);
+            (void)dispatchMenuCloseRequest(workflow, close);
         });
 }
 
@@ -1542,6 +2256,9 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
     slotRuntime.pump();
+    if (dispatchMenuCloseRequest(workflow, close)) {
+        return;
+    }
     if (workflow.screen() == SlotWorkflowScreen::currentSlots) {
         renderCurrentSlots(workflow, thumbnails, close);
         return;
@@ -1563,15 +2280,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         return;
     }
 
-    model.refresh();
-    const auto targetArea = slotAreaLabel(workflow.selectedArea());
-    if (model.filter().area != targetArea) {
-        model.setArea(std::string(targetArea));
-    }
-    thumbnails.synchronize(model.snapshot(), collectPickerTexturePaths(model.page()));
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
         return;
@@ -1592,13 +2300,30 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End();
+        ImGuiMCP::PopStyleVar();
+        return;
+    }
+    const bool targetActionsEnabled = actorTargetActionsEnabled(
+        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+    model.refresh();
+    const auto targetArea = slotAreaLabel(workflow.selectedArea());
+    if (model.filter().area != targetArea) {
+        model.setArea(std::string(targetArea));
+    }
+    thumbnails.synchronize(model.snapshot(), collectPickerTexturePaths(model.page()));
+    thumbnails.pump();
+    const auto thumbnailViews = thumbnails.views();
     const auto targetLabel = formatSlotTargetLabel(
-        workflow.selectedArea(), workflow.targetSlot().value_or(-1));
+        workflow.actorTarget(), workflow.selectedArea(), workflow.targetSlot().value_or(-1));
     ImGuiMCP::Text("Target: %s", targetLabel.c_str());
 
-    static bool filtersExpanded = false;
-    if (ImGuiMCP::Button(filtersExpanded ? "Hide filters" : "Filters")) {
-        filtersExpanded = !filtersExpanded;
+    if (ImGuiMCP::Button("Filters")) {
+        const auto filterButtonMin = ImGuiMCP::GetItemRectMin();
+        const auto filterButtonMax = ImGuiMCP::GetItemRectMax();
+        ImGuiMCP::SetNextWindowPos({filterButtonMin.x, filterButtonMax.y + 4.0F});
+        ImGuiMCP::OpenPopup("CatalogFilters");
     }
 
     constexpr std::size_t searchCapacity = 256;
@@ -1608,13 +2333,26 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     std::copy_n(filter.search.data(), searchLength, searchBuffer.data());
     const auto snapshot = model.snapshot();
     std::vector<CatalogBrowserSourceOption> sourceOptions;
+    std::vector<std::string> domainOptions;
+    std::vector<const char*> domainLabels;
     std::vector<const char*> sectionLabels{"All sections"};
+    int domainIndex = 0;
     int sourceIndex = 0;
     int sectionIndex = 0;
     const auto contextualFacets = model.contextualFacets();
 
     if (snapshot) {
         sourceOptions = buildCatalogBrowserSourceOptions(contextualFacets.sources);
+        domainOptions = buildCatalogBrowserDomainOptions(contextualFacets.domains);
+        domainLabels.reserve(domainOptions.size());
+        for (const auto& option : domainOptions) {
+            domainLabels.push_back(option.c_str());
+        }
+        for (std::size_t index = 0; index < contextualFacets.domains.size(); ++index) {
+            if (contextualFacets.domains[index] == filter.domain) {
+                domainIndex = static_cast<int>(index + 1);
+            }
+        }
         for (std::size_t index = 0; index < contextualFacets.sources.size(); ++index) {
             if (contextualFacets.sources[index].sourceId == filter.sourceId) {
                 sourceIndex = static_cast<int>(index + 1);
@@ -1627,6 +2365,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             }
         }
     }
+    if (domainLabels.empty()) {
+        domainOptions = buildCatalogBrowserDomainOptions({});
+        domainLabels.push_back(domainOptions.front().c_str());
+    }
 
     std::vector<const char*> sourceLabels{"All sources"};
     sourceLabels.reserve(sourceOptions.size() + 1);
@@ -1634,14 +2376,100 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         sourceLabels.push_back(source.label.c_str());
     }
 
-    if (filtersExpanded && ImGuiMCP::BeginTable(
-            "FilterControls",
-            2,
-            ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
+    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
+        if (ImGuiMCP::BeginTable(
+                "FilterControls",
+                2,
+                ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
         ImGuiMCP::TableSetupColumn(
             "FilterLabel", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 72.0F);
         ImGuiMCP::TableSetupColumn(
             "FilterControl", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Applied");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool appliedOnly = workflow.appliedOnly();
+        if (ImGuiMCP::Checkbox("Applied only", &appliedOnly)) {
+            workflow.setAppliedOnly(appliedOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Favorites");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool favoritesOnly = workflow.favoritesOnly();
+        if (ImGuiMCP::Checkbox("Favorites only", &favoritesOnly)) {
+            workflow.setFavoritesOnly(favoritesOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Recent");
+        ImGuiMCP::TableSetColumnIndex(1);
+        bool recentlyUsedOnly = workflow.recentlyUsedOnly();
+        if (ImGuiMCP::Checkbox("Recently used only", &recentlyUsedOnly)) {
+            workflow.setRecentlyUsedOnly(recentlyUsedOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Material");
+        ImGuiMCP::TableSetColumnIndex(1);
+        const float materialRowRight =
+            ImGuiMCP::GetCursorScreenPos().x + ImGuiMCP::GetContentRegionAvail().x;
+        const auto* materialStyle = ImGuiMCP::GetStyle();
+        const float materialSpacing =
+            materialStyle ? materialStyle->ItemSpacing.x : 8.0F;
+        const auto materialControlWidth = [](const char* label) {
+            return ImGuiMCP::GetFrameHeightWithSpacing() +
+                ImGuiMCP::CalcTextSize(label).x;
+        };
+        bool glowOnly = workflow.glowOnly();
+        if (ImGuiMCP::Checkbox("Glow only", &glowOnly)) {
+            workflow.setGlowOnly(glowOnly);
+        }
+        if (catalogControlFitsOnSameLine(
+                materialRowRight,
+                ImGuiMCP::GetItemRectMax().x,
+                materialSpacing,
+                materialControlWidth("Bump only"))) {
+            ImGuiMCP::SameLine();
+        }
+        bool bumpOnly = workflow.bumpOnly();
+        if (ImGuiMCP::Checkbox("Bump only", &bumpOnly)) {
+            workflow.setBumpOnly(bumpOnly);
+        }
+        if (catalogControlFitsOnSameLine(
+                materialRowRight,
+                ImGuiMCP::GetItemRectMax().x,
+                materialSpacing,
+                materialControlWidth("Gloss only"))) {
+            ImGuiMCP::SameLine();
+        }
+        bool glossOnly = workflow.glossOnly();
+        if (ImGuiMCP::Checkbox("Gloss only", &glossOnly)) {
+            workflow.setGlossOnly(glossOnly);
+        }
+
+        ImGuiMCP::TableNextRow();
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::AlignTextToFramePadding();
+        ImGuiMCP::TextUnformatted("Domain");
+        ImGuiMCP::TableSetColumnIndex(1);
+        ImGuiMCP::SetNextItemWidth(-1.0F);
+        if (ImGuiMCP::Combo(
+                "##Domain",
+                &domainIndex,
+                domainLabels.data(),
+                static_cast<int>(domainLabels.size()))) {
+            model.setDomain(domainIndex == 0 ? "" : contextualFacets.domains[domainIndex - 1]);
+        }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
@@ -1682,11 +2510,32 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             model.setSection(
                 sectionIndex == 0 ? "" : contextualFacets.sections[sectionIndex - 1]);
         }
-        ImGuiMCP::EndTable();
+            ImGuiMCP::EndTable();
+        }
+        ImGuiMCP::EndPopup();
     }
 
     const auto& page = model.page();
-    const auto emptyState = classifyCatalogBrowserEmptyState(snapshot != nullptr, page);
+    const auto emptyState = classifyCatalogBrowserEmptyState(
+        snapshot != nullptr,
+        page,
+        workflow.appliedOnly(),
+        workflow.favoritesOnly(),
+        workflow.recentlyUsedOnly());
+    if (const auto* favoriteError = workflow.favoriteError()) {
+        ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Retry favorite save")) {
+            (void)workflow.retryFavorite();
+        }
+    }
+    if (const auto* recentError = workflow.recentlyUsedError()) {
+        ImGuiMCP::Text("Recently Used: %s", recentError->message.c_str());
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Retry recent history")) {
+            (void)workflow.retryRecentTattoo();
+        }
+    }
     const auto* style = ImGuiMCP::GetStyle();
     const float itemSpacing = style ? style->ItemSpacing.y : 4.0F;
     const float metadataHeight = calculateCatalogCardMetadataHeight(
@@ -1726,6 +2575,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 }
                 ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
                 const auto& tattoo = page.entries[index];
+                const auto domainLabel = domainThumbnailBadgeLabel(tattoo.domain);
                 const auto inUseSlots = workflow.inUseSlots(tattoo);
                 const auto thumbnailIndex = findCatalogThumbnailViewIndex(
                     tattoo.texturePath,
@@ -1736,6 +2586,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
 
                 const auto thumbnailWidgetId = catalogCardWidgetId(
                     "Thumbnail", tattoo.sourceId, tattoo.sourceIndex);
+                bool favoriteClicked = false;
 
                 ImGuiMCP::PushStyleColor(
                     ImGuiMCP::ImGuiCol_ChildBg,
@@ -1772,6 +2623,40 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         }
                     }
 
+                    ImGuiMCP::SetCursorPos({imageOrigin.x + 4.0F, imageOrigin.y + 4.0F});
+                    const bool favorite = model.isFavorite(tattoo);
+                    const auto favoriteIcon = FontAwesome::UnicodeToUtf8(
+                        catalogFavoriteButtonIcon(favorite));
+                    const auto favoriteWidgetId = catalogCardWidgetId(
+                        favorite ? "RemoveFavorite" : "AddFavorite",
+                        tattoo.sourceId,
+                        tattoo.sourceIndex);
+                    const auto favoriteLabel = favoriteIcon + "##" + favoriteWidgetId;
+                    ImGuiMCP::BeginDisabled(workflow.favoritePending());
+                    if (favorite) {
+                        FontAwesome::PushSolid();
+                    } else {
+                        FontAwesome::PushRegular();
+                    }
+                    const auto favoriteIconSize = ImGuiMCP::CalcTextSize(favoriteIcon.c_str());
+                    const float favoriteButtonSize = catalogIconButtonSize(
+                        favoriteIconSize.y,
+                        style ? style->FramePadding.y : 4.0F);
+                    ImGuiMCP::PushStyleColor(
+                        ImGuiMCP::ImGuiCol_Text,
+                        favorite ? 0xFF4FD8FF : 0xFFC0C0C0);
+                    favoriteClicked = ImGuiMCP::Button(
+                        favoriteLabel.c_str(),
+                        {favoriteButtonSize, favoriteButtonSize});
+                    if (ImGuiMCP::IsItemHovered()) {
+                        ImGuiMCP::SetTooltip(
+                            "%s",
+                            favorite ? "Remove from favorites" : "Add to favorites");
+                    }
+                    ImGuiMCP::PopStyleColor();
+                    FontAwesome::Pop();
+                    ImGuiMCP::EndDisabled();
+
                     if (!inUseSlots.empty()) {
                         constexpr const char* badgeText = "In Use";
                         const auto textSize = ImGuiMCP::CalcTextSize(badgeText);
@@ -1805,6 +2690,76 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             0xFFFFFFFF,
                             badgeText);
                     }
+                    const auto materialLabels = catalogMaterialBadgeLabels(tattoo);
+                    std::vector<std::pair<std::string_view, float>> materialLabelWidths;
+                    materialLabelWidths.reserve(materialLabels.size());
+                    for (const auto label : materialLabels) {
+                        materialLabelWidths.emplace_back(
+                            label,
+                            ImGuiMCP::CalcTextSize(label.data()).x);
+                    }
+                    const float materialTextHeight = materialLabels.empty()
+                        ? 0.0F
+                        : ImGuiMCP::CalcTextSize(materialLabels.front().data()).y;
+                    const auto materialBadges = calculateCatalogMaterialBadgeLayouts(
+                        materialLabelWidths,
+                        imageRegion.x,
+                        imageRegion.y,
+                        materialTextHeight,
+                        4.0F,
+                        2.0F,
+                        4.0F,
+                        4.0F,
+                        4.0F + favoriteButtonSize + 4.0F);
+                    if (!materialBadges.empty()) {
+                        auto* drawList = ImGuiMCP::GetWindowDrawList();
+                        for (const auto& materialBadge : materialBadges) {
+                            const auto& badge = materialBadge.bounds;
+                            ImGuiMCP::ImDrawListManager::AddRectFilled(
+                                drawList,
+                                {
+                                    imageScreenOrigin.x + badge.x,
+                                    imageScreenOrigin.y + badge.y,
+                                },
+                                {
+                                    imageScreenOrigin.x + badge.x + badge.width,
+                                    imageScreenOrigin.y + badge.y + badge.height,
+                                },
+                                0xB8000000,
+                                3.0F,
+                                0);
+                            ImGuiMCP::ImDrawListManager::AddText(
+                                drawList,
+                                {
+                                    imageScreenOrigin.x + badge.textX,
+                                    imageScreenOrigin.y + badge.textY,
+                                },
+                                0xFFFFFFFF,
+                                materialBadge.label.data());
+                        }
+                    }
+                    if (!domainLabel.empty()) {
+                        const auto domainTextSize = ImGuiMCP::CalcTextSize(domainLabel.data());
+                        auto* drawList = ImGuiMCP::GetWindowDrawList();
+                        ImGuiMCP::ImDrawListManager::AddRectFilled(
+                            drawList,
+                            {
+                                imageScreenOrigin.x + 4.0F,
+                                imageScreenOrigin.y + 4.0F,
+                            },
+                            {
+                                imageScreenOrigin.x + domainTextSize.x + 16.0F,
+                                imageScreenOrigin.y + domainTextSize.y + 14.0F,
+                            },
+                            0xB8000000,
+                            3.0F,
+                            0);
+                        ImGuiMCP::ImDrawListManager::AddText(
+                            drawList,
+                            {imageScreenOrigin.x + 10.0F, imageScreenOrigin.y + 8.0F},
+                            0xFFFFFFFF,
+                            domainLabel.data());
+                    }
                 }
                 ImGuiMCP::EndChild();
                 ImGuiMCP::PopStyleColor();
@@ -1812,7 +2767,9 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     const auto tooltip = formatCatalogTattooTooltip(tattoo.name, inUseSlots);
                     ImGuiMCP::SetTooltip("%s", tooltip.c_str());
                 }
-                if (ImGuiMCP::IsItemClicked()) {
+                if (favoriteClicked) {
+                    (void)workflow.requestFavorite(tattoo, !model.isFavorite(tattoo));
+                } else if (targetActionsEnabled && ImGuiMCP::IsItemClicked()) {
                     workflow.selectTattoo(tattoo);
                 }
             }
@@ -1820,6 +2777,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         }
     }
 
+    ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
+        ImGuiMCP::GetCursorPosY(),
+        ImGuiMCP::GetContentRegionAvail().y,
+        footerHeight));
     const float horizontalButtonPadding =
         style ? style->FramePadding.x * 2.0F : 16.0F;
     const float cancelButtonWidth =

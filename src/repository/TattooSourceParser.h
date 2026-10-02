@@ -15,6 +15,7 @@ struct TattooDefinition {
     std::string sourceFile;
     std::string packName;
     std::size_t sourceIndex{};
+    std::string domain{"default"};
     std::string name;
     std::string section;
     std::string texturePath;

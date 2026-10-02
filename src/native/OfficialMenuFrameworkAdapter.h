@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native/NativeCatalogBrowserModel.h"
+#include "native/ActorTarget.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 
@@ -9,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace stui::runtime {
@@ -22,8 +24,30 @@ class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;
 enum class SlotWorkflowScreen;
+enum class LivePreviewStatus;
 enum class NativeThumbnailStatus;
 struct NativeThumbnailView;
+
+struct ActorTargetControlPresentation {
+    bool playerEnabled{};
+    bool crosshairEnabled{};
+    bool refreshVisible{};
+    bool refreshEnabled{};
+};
+
+enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
+
+[[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
+[[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
+[[nodiscard]] std::string_view actorTargetStatusLabel(
+    bool resolving, const ActorTarget* target) noexcept;
+[[nodiscard]] bool actorTargetActionsEnabled(
+    bool resolving, const ActorTarget* target) noexcept;
+[[nodiscard]] ActorTargetControlPresentation actorTargetControlPresentation(
+    ActorTargetKind kind, bool resolving, bool mutationInFlight) noexcept;
+// True means actor-scoped presentation was invalidated; end the current frame.
+[[nodiscard]] bool applyActorTargetHeaderIntent(
+    NativeSlotWorkflowModel& workflow, ActorTargetHeaderIntent intent);
 
 struct MenuFrameworkBindings {
     using GetVersionFunction = float (*)();
@@ -86,6 +110,7 @@ struct SlotPageRange {
     std::size_t pageIndex,
     std::size_t pageSize);
 [[nodiscard]] std::string formatSlotTargetLabel(
+    const ActorTarget* actor,
     core::TattooArea area,
     std::int32_t slot);
 [[nodiscard]] std::string previewApplyButtonLabel(
@@ -121,6 +146,17 @@ enum class RemoveButtonState {
 [[nodiscard]] bool isRemoveConfirmationEnabled(
     SlotWorkflowScreen screen,
     bool hasTarget) noexcept;
+struct SlotLockActionPresentation {
+    unsigned int iconCodepoint{};
+    std::string_view tooltip;
+    bool mutationsEnabled{};
+};
+
+[[nodiscard]] SlotLockActionPresentation slotLockActionPresentation(bool locked) noexcept;
+[[nodiscard]] std::string_view domainPresentationLabel(std::string_view domain) noexcept;
+[[nodiscard]] std::string_view domainThumbnailBadgeLabel(std::string_view domain) noexcept;
+[[nodiscard]] std::vector<std::string> buildCatalogBrowserDomainOptions(
+    const std::vector<std::string>& domains);
 [[nodiscard]] std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page);
 [[nodiscard]] std::size_t pickerVisibleCardCount(
@@ -139,6 +175,8 @@ struct CatalogCardGridPosition {
     std::string_view role,
     std::string_view sourceId,
     std::size_t sourceIndex);
+[[nodiscard]] unsigned int catalogFavoriteButtonIcon(bool favorite) noexcept;
+[[nodiscard]] float catalogIconButtonSize(float iconHeight, float verticalPadding) noexcept;
 
 struct CatalogBrowserGridLayout {
     float gridHeight{};
@@ -163,6 +201,30 @@ struct CatalogBadgeLayout {
     float verticalPadding,
     float margin) noexcept;
 
+struct CatalogMaterialBadgeLayout {
+    std::string_view label;
+    CatalogBadgeLayout bounds;
+};
+
+[[nodiscard]] std::vector<std::string_view> catalogMaterialBadgeLabels(
+    const repository::TattooDefinition& tattoo);
+[[nodiscard]] std::vector<CatalogMaterialBadgeLayout>
+calculateCatalogMaterialBadgeLayouts(
+    const std::vector<std::pair<std::string_view, float>>& labelsAndWidths,
+    float containerWidth,
+    float containerHeight,
+    float textHeight,
+    float horizontalPadding,
+    float verticalPadding,
+    float margin,
+    float spacing,
+    float minimumY);
+[[nodiscard]] bool catalogControlFitsOnSameLine(
+    float contentRightX,
+    float previousItemRightX,
+    float spacing,
+    float nextControlWidth) noexcept;
+
 [[nodiscard]] float calculateCatalogCardMetadataHeight(
     float textLineHeight,
     float itemSpacing) noexcept;
@@ -180,6 +242,10 @@ struct UnifiedFooterLayout {
 [[nodiscard]] UnifiedFooterLayout calculateUnifiedFooterLayout(
     float availableWidth,
     float closeWidth) noexcept;
+[[nodiscard]] float calculatePinnedFooterY(
+    float cursorY,
+    float availableHeight,
+    float footerHeight) noexcept;
 
 struct PickerFooterActionLayout {
     float groupWidth{};
@@ -204,6 +270,32 @@ struct EditAppearanceFramePresentation {
     std::optional<AppearanceThumbnailPresentation> thumbnail;
 };
 
+struct LivePreviewActionPresentation {
+    bool visible{};
+    bool enabled{};
+};
+
+struct LivePreviewPresentation {
+    LivePreviewActionPresentation save;
+    LivePreviewActionPresentation cancel;
+    LivePreviewActionPresentation close;
+    LivePreviewActionPresentation retry;
+    std::string_view retryLabel;
+};
+
+enum class EditAppearanceIntent { none, save, cancel, close, retry };
+
+[[nodiscard]] std::string_view livePreviewStatusLabel(LivePreviewStatus status) noexcept;
+[[nodiscard]] std::string formatActorTargetIdentityWithPreviewStatus(
+    bool resolving, const ActorTarget* target, LivePreviewStatus previewStatus);
+[[nodiscard]] LivePreviewPresentation livePreviewPresentation(
+    SlotWorkflowScreen screen, const AppearanceEditSession* session) noexcept;
+[[nodiscard]] bool applyEditAppearanceIntent(
+    NativeSlotWorkflowModel& workflow, EditAppearanceIntent intent);
+// Consume before rendering another actor-scoped frame. True means the menu closed.
+[[nodiscard]] bool dispatchMenuCloseRequest(
+    NativeSlotWorkflowModel& workflow, const std::function<void()>& close);
+
 struct EditAppearanceFrameInteraction {
     bool appearanceChanged{};
     std::int32_t color{0xFFFFFF};
@@ -212,7 +304,7 @@ struct EditAppearanceFrameInteraction {
     float glossiness{};
     float specularStrength{};
     float emissiveMult{1.0F};
-    bool cancelRequested{};
+    EditAppearanceIntent intent{EditAppearanceIntent::none};
 };
 
 struct SlotColorSwatchPresentation {
@@ -223,12 +315,38 @@ struct SlotColorSwatchPresentation {
     std::uint32_t borderColor{};
 };
 
+struct EditAppearanceThumbnailLayout {
+    float xOffset{};
+    float size{};
+};
+
+struct EditAppearanceControlRanges {
+    float glossinessMax{};
+    float specularStrengthMax{};
+};
+
+enum class AppearancePresetUiState { unavailable, empty, ready, limitReached, pending };
+
+[[nodiscard]] std::string_view appearancePresetStatusMessage(
+    AppearancePresetUiState state) noexcept;
+[[nodiscard]] bool canCreateAppearancePreset(
+    std::size_t count,
+    bool pending) noexcept;
+
 [[nodiscard]] TattooColorComponents tattooColorComponents(
     std::int32_t color) noexcept;
 [[nodiscard]] std::int32_t tattooColorValue(
     TattooColorComponents components) noexcept;
 [[nodiscard]] std::string_view appearanceTextureMetadata(
     std::string_view texturePath) noexcept;
+[[nodiscard]] bool shouldShowAppearanceTextureMetadata(
+    std::string_view texturePath) noexcept;
+[[nodiscard]] EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
+    float availableWidth,
+    float availableHeight,
+    float reservedFooterHeight,
+    float preferredSize = 160.0F) noexcept;
+[[nodiscard]] EditAppearanceControlRanges editAppearanceControlRanges() noexcept;
 [[nodiscard]] std::optional<AppearanceThumbnailPresentation> editAppearanceThumbnailPresentation(
     const AppearanceEditSession* session) noexcept;
 [[nodiscard]] EditAppearanceFramePresentation editAppearanceFramePresentation(
@@ -296,11 +414,21 @@ enum class CatalogBrowserEmptyState {
     none,
     emptyCatalog,
     noMatches,
+    noAppliedMatches,
+    noFavoriteMatches,
+    noFavoriteAppliedMatches,
+    noRecentMatches,
+    noFavoriteRecentMatches,
+    noAppliedRecentMatches,
+    noFavoriteAppliedRecentMatches,
 };
 
 [[nodiscard]] CatalogBrowserEmptyState classifyCatalogBrowserEmptyState(
     bool hasSnapshot,
-    const repository::TattooPage& page) noexcept;
+    const repository::TattooPage& page,
+    bool appliedOnly = false,
+    bool favoritesOnly = false,
+    bool recentlyUsedOnly = false) noexcept;
 [[nodiscard]] std::string_view catalogBrowserEmptyMessage(
     CatalogBrowserEmptyState state) noexcept;
 

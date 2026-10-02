@@ -11,6 +11,9 @@ class NativeMenu {
 public:
     using RenderFunction = std::function<void(NativeMenu&)>;
     using LaunchFunction = std::function<bool()>;
+    using OpenFunction = std::function<void()>;
+    using OpenGuardFunction = std::function<bool()>;
+    using CloseRequestFunction = std::function<bool()>;
 
     explicit NativeMenu(RenderFunction render = {}, LaunchFunction launch = {});
     ~NativeMenu();
@@ -23,6 +26,9 @@ public:
     [[nodiscard]] bool handleFrameworkHotkey(
         bool isKeyboard, bool isDown, bool matchesBinding) noexcept;
     void open() noexcept;
+    void setOpenCallback(OpenFunction callback);
+    void setOpenGuard(OpenGuardFunction guard);
+    void setCloseRequestCallback(CloseRequestFunction callback);
     void close() noexcept;
     [[nodiscard]] bool isOpen() const noexcept;
     [[nodiscard]] bool isRegistered() const noexcept;
@@ -36,6 +42,9 @@ private:
     MenuWindow window_{};
     RenderFunction render_;
     LaunchFunction launch_;
+    OpenFunction openCallback_;
+    OpenGuardFunction openGuard_;
+    CloseRequestFunction closeRequestCallback_;
     std::optional<MenuRegistrationError> lastError_;
     bool registered_{};
 };

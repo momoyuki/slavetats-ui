@@ -50,6 +50,13 @@ void NativeCatalogBrowserModel::setSearch(std::string value) {
     query();
 }
 
+void NativeCatalogBrowserModel::setDomain(std::string value) {
+    m_filter.domain = std::move(value);
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
 void NativeCatalogBrowserModel::setSourceId(std::string value) {
     m_filter.sourceId = std::move(value);
     m_filter.pageIndex = 0;
@@ -66,6 +73,116 @@ void NativeCatalogBrowserModel::setSection(std::string value) {
 
 void NativeCatalogBrowserModel::setArea(std::string value) {
     m_filter.area = std::move(value);
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setAppliedOnly(bool value) {
+    if (m_appliedOnly == value) {
+        return;
+    }
+    m_appliedOnly = value;
+    m_filter.appliedIdentities = value
+        ? std::optional(m_appliedTattooIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setAppliedTattooIdentities(
+    std::vector<repository::TattooIdentity> identities) {
+    if (m_appliedTattooIdentities == identities) {
+        return;
+    }
+    m_appliedTattooIdentities = std::move(identities);
+    if (!m_appliedOnly) {
+        return;
+    }
+    m_filter.appliedIdentities = m_appliedTattooIdentities;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setFavoritesOnly(const bool value) {
+    if (m_favoritesOnly == value) {
+        return;
+    }
+    m_favoritesOnly = value;
+    m_filter.favoriteIdentities = value
+        ? std::optional(m_favoriteIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setFavoriteIdentities(
+    std::vector<repository::FavoriteIdentity> identities) {
+    if (m_favoriteIdentities == identities) {
+        return;
+    }
+    m_favoriteIdentities = std::move(identities);
+    if (m_favoritesOnly) {
+        m_filter.favoriteIdentities = m_favoriteIdentities;
+        reconcileContextualFilters();
+        query();
+    }
+}
+
+void NativeCatalogBrowserModel::setRecentlyUsedOnly(const bool value) {
+    if (m_recentlyUsedOnly == value) {
+        return;
+    }
+    m_recentlyUsedOnly = value;
+    m_filter.recentIdentities = value
+        ? std::optional(m_recentTattooIdentities)
+        : std::nullopt;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setRecentTattooIdentities(
+    std::vector<repository::RecentTattooIdentity> identities) {
+    if (m_recentTattooIdentities == identities) {
+        return;
+    }
+    m_recentTattooIdentities = std::move(identities);
+    if (m_recentlyUsedOnly) {
+        m_filter.recentIdentities = m_recentTattooIdentities;
+        reconcileContextualFilters();
+        query();
+    }
+}
+
+void NativeCatalogBrowserModel::setGlowOnly(const bool value) {
+    if (m_filter.glowOnly == value) {
+        return;
+    }
+    m_filter.glowOnly = value;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setBumpOnly(const bool value) {
+    if (m_filter.bumpOnly == value) {
+        return;
+    }
+    m_filter.bumpOnly = value;
+    m_filter.pageIndex = 0;
+    reconcileContextualFilters();
+    query();
+}
+
+void NativeCatalogBrowserModel::setGlossOnly(const bool value) {
+    if (m_filter.glossOnly == value) {
+        return;
+    }
+    m_filter.glossOnly = value;
     m_filter.pageIndex = 0;
     reconcileContextualFilters();
     query();
@@ -112,18 +229,73 @@ repository::TattooCatalogSnapshot NativeCatalogBrowserModel::snapshot() const no
     return m_snapshot;
 }
 
+bool NativeCatalogBrowserModel::appliedOnly() const noexcept {
+    return m_appliedOnly;
+}
+
+bool NativeCatalogBrowserModel::favoritesOnly() const noexcept {
+    return m_favoritesOnly;
+}
+
+bool NativeCatalogBrowserModel::recentlyUsedOnly() const noexcept {
+    return m_recentlyUsedOnly;
+}
+
+bool NativeCatalogBrowserModel::glowOnly() const noexcept {
+    return m_filter.glowOnly;
+}
+
+bool NativeCatalogBrowserModel::bumpOnly() const noexcept {
+    return m_filter.bumpOnly;
+}
+
+bool NativeCatalogBrowserModel::glossOnly() const noexcept {
+    return m_filter.glossOnly;
+}
+
+bool NativeCatalogBrowserModel::isFavorite(const repository::TattooDefinition& tattoo) const {
+    const auto identity = repository::favoriteIdentity(tattoo);
+    return std::ranges::any_of(m_favoriteIdentities, [&identity](const auto& favorite) {
+        return favorite == identity;
+    });
+}
+
 void NativeCatalogBrowserModel::resetFilter() {
-    m_filter = repository::TattooFilter{.pageSize = kPageSize};
+    const bool glowOnly = m_filter.glowOnly;
+    const bool bumpOnly = m_filter.bumpOnly;
+    const bool glossOnly = m_filter.glossOnly;
+    m_filter = repository::TattooFilter{
+        .glowOnly = glowOnly,
+        .bumpOnly = bumpOnly,
+        .glossOnly = glossOnly,
+        .pageSize = kPageSize,
+    };
+    if (m_appliedOnly) {
+        m_filter.appliedIdentities = m_appliedTattooIdentities;
+    }
+    if (m_favoritesOnly) {
+        m_filter.favoriteIdentities = m_favoriteIdentities;
+    }
+    if (m_recentlyUsedOnly) {
+        m_filter.recentIdentities = m_recentTattooIdentities;
+    }
 }
 
 void NativeCatalogBrowserModel::reconcileContextualFilters() {
     if (!m_snapshot) {
+        m_filter.domain.clear();
         m_filter.sourceId.clear();
         m_filter.section.clear();
         return;
     }
 
     auto facets = m_snapshot->repository.contextualFacets(m_filter);
+    if (!m_filter.domain.empty() &&
+        !containsFolded(facets.domains, m_filter.domain,
+            [](const std::string& domain) -> std::string_view { return domain; })) {
+        m_filter.domain.clear();
+        facets = m_snapshot->repository.contextualFacets(m_filter);
+    }
     if (!m_filter.sourceId.empty() &&
         !containsFolded(facets.sources, m_filter.sourceId,
             [](const repository::TattooSourceOption& source) -> std::string_view {

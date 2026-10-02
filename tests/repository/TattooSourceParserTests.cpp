@@ -86,6 +86,25 @@ void legacyEntryLeavesAdvancedMaterialMetadataAbsent() {
     expect(!tattoo.specularStrength.has_value(), "expected absent legacy specular strength metadata");
 }
 
+void parserPreservesAndNormalizesDomains() {
+    TemporaryJsonFile file(R"([
+        {"name":"Custom","section":"Marks","texture":"Pack\\custom.dds","area":"Body","domain":"custom"},
+        {"name":"Missing","section":"Marks","texture":"Pack\\missing.dds","area":"Body"},
+        {"name":"Empty","section":"Marks","texture":"Pack\\empty.dds","area":"Body","domain":""}
+    ])");
+
+    const auto report = parseTattooSource(file.source());
+
+    expect(report.issues.empty() && report.definitions.size() == 3,
+        "expected valid domain fixture entries");
+    expect(report.definitions[0].domain == "custom",
+        "expected explicit domain preserved");
+    expect(report.definitions[1].domain == "default",
+        "expected missing domain normalized to default");
+    expect(report.definitions[2].domain == "default",
+        "expected empty domain normalized to default");
+}
+
 void malformedSiblingIsSkippedWithoutDiscardingValidEntry() {
     TemporaryJsonFile file(R"([{"name":"Missing texture","section":"Broken","area":"Body"},{"name":"Good","section":"Pack","texture":"Pack\\good.dds","area":"Body"}])");
 
@@ -127,6 +146,21 @@ void invalidOptionalFieldDoesNotDiscardValidSibling() {
     expect(report.definitions.front().name == "Good", "expected valid sibling to remain");
     expect(report.issues.size() == 1, "expected one optional field issue");
     expect(report.issues.front().entryIndex == 0, "expected invalid optional field entry index");
+}
+
+void invalidDomainDoesNotDiscardValidSibling() {
+    TemporaryJsonFile file(R"([
+        {"name":"Bad","section":"Pack","texture":"Pack\\bad.dds","area":"Body","domain":42},
+        {"name":"Good","section":"Pack","texture":"Pack\\good.dds","area":"Body"}
+    ])");
+
+    const auto report = parseTattooSource(file.source());
+
+    expect(report.definitions.size() == 1 && report.definitions.front().name == "Good",
+        "expected valid sibling after invalid domain");
+    expect(report.issues.size() == 1 && report.issues.front().entryIndex == 0 &&
+            report.issues.front().message == "field 'domain' must be a string",
+        "expected explicit invalid domain issue");
 }
 
 void malformedAdvancedMaterialFieldDoesNotDiscardValidSibling(std::string_view malformedField) {
@@ -212,10 +246,12 @@ int main() {
     int failures = 0;
     failures += run("parser preserves source and optional metadata", parserPreservesSourceAndOptionalMetadata);
     failures += run("legacy entry leaves advanced material metadata absent", legacyEntryLeavesAdvancedMaterialMetadataAbsent);
+    failures += run("parser preserves and normalizes domains", parserPreservesAndNormalizesDomains);
     failures += run("malformed sibling does not discard valid entry", malformedSiblingIsSkippedWithoutDiscardingValidEntry);
     failures += run("invalid root produces source issue", invalidRootProducesSourceIssue);
     failures += run("invalid JSON produces source issue", invalidJsonProducesSourceIssue);
     failures += run("invalid optional field does not discard valid sibling", invalidOptionalFieldDoesNotDiscardValidSibling);
+    failures += run("invalid domain does not discard valid sibling", invalidDomainDoesNotDiscardValidSibling);
     failures += run("invalid glow texture does not discard valid sibling", invalidGlowTextureDoesNotDiscardValidSibling);
     failures += run("invalid bump does not discard valid sibling", invalidBumpDoesNotDiscardValidSibling);
     failures += run("negative emissive multiplier does not discard valid sibling", negativeEmissiveMultiplierDoesNotDiscardValidSibling);

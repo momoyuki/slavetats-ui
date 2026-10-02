@@ -1,4 +1,5 @@
 #include "repository/TattooRepository.h"
+#include "repository/TattooMaterialClassification.h"
 
 #include <algorithm>
 #include <exception>
@@ -12,8 +13,13 @@
 namespace {
 
 using stui::repository::TattooDefinition;
+using stui::repository::RecentTattooIdentity;
 using stui::repository::TattooFilter;
+using stui::repository::TattooIdentity;
+using stui::repository::TattooMaterialClassification;
 using stui::repository::TattooRepository;
+using stui::repository::classifyTattooMaterial;
+using stui::repository::kTattooMaterialFloatTolerance;
 
 TattooDefinition definition(
     std::string sourceId,
@@ -198,10 +204,140 @@ void buildsStableSourceAwareFacets() {
         "expected folded duplicate-free areas");
 }
 
+void filtersDomainsAndBuildsDeterministicDomainFacets() {
+    auto custom = definition("custom.json", "Custom", "Marks", "Custom One", "custom.dds", "Body");
+    custom.domain = "Custom";
+    auto customVariant = definition("variant.json", "Variant", "Marks", "Custom Two", "variant.dds", "Body");
+    customVariant.domain = "custom";
+    TattooRepository repository({
+        definition("default.json", "Default", "Marks", "Default", "default.dds", "Body"),
+        std::move(custom),
+        std::move(customVariant),
+    });
+
+    expect(repository.facets().domains == std::vector<std::string>{"Custom", "default"},
+        "expected case-insensitive deterministic domain options");
+    expect(repository.query(TattooFilter{.domain = "CUSTOM"}).matchedEntries == 2,
+        "expected case-insensitive domain filter");
+    expect(repository.query(TattooFilter{}).matchedEntries == 3,
+        "expected empty domain filter to retain all entries");
+}
+
+void classifiesMaterialMetadataWithoutTreatingDefaultsAsCapabilities() {
+    const auto legacy = definition(
+        "legacy.json", "Pack", "Marks", "Legacy", "legacy.dds", "Body");
+    expect(classifyTattooMaterial(legacy) == TattooMaterialClassification{},
+        "expected missing legacy metadata to produce no material capabilities");
+
+    auto defaults = definition(
+        "defaults.json", "Pack", "Marks", "Defaults", "defaults.dds", "Body");
+    defaults.glow = 0;
+    defaults.glowTexture = "";
+    defaults.emissiveMult = 1.0F;
+    defaults.glossiness = 0.0F;
+    defaults.specularStrength = 0.0F;
+    defaults.bump = "";
+    expect(classifyTattooMaterial(defaults) == TattooMaterialClassification{},
+        "expected explicit defaults and empty paths to produce no capabilities");
+
+    auto nearDefaultEmission = definition(
+        "near.json", "Pack", "Marks", "Near", "near.dds", "Body");
+    nearDefaultEmission.emissiveMult =
+        1.0F + kTattooMaterialFloatTolerance / 2.0F;
+    expect(!classifyTattooMaterial(nearDefaultEmission).glow,
+        "expected emission within tolerance to remain default");
+}
+
+void classifiesIndependentMaterialSignals() {
+    auto glowColor = definition(
+        "color.json", "Pack", "Marks", "Glow Color", "color.dds", "Body");
+    glowColor.glow = 0x010203;
+    expect(classifyTattooMaterial(glowColor) == TattooMaterialClassification{.glow = true},
+        "expected nonzero glow color to classify as Glow");
+
+    auto glowTexture = definition(
+        "texture.json", "Pack", "Marks", "Glow Texture", "texture.dds", "Body");
+    glowTexture.glowTexture = "Pack\\texture_g.dds";
+    expect(classifyTattooMaterial(glowTexture).glow,
+        "expected non-empty glow texture to classify as Glow");
+
+    auto emission = definition(
+        "emission.json", "Pack", "Marks", "Emission", "emission.dds", "Body");
+    emission.emissiveMult = 1.0F + kTattooMaterialFloatTolerance * 2.0F;
+    expect(classifyTattooMaterial(emission).glow,
+        "expected materially non-default emission to classify as Glow");
+
+    auto bump = definition(
+        "bump.json", "Pack", "Marks", "Bump", "bump.dds", "Body");
+    bump.bump = "Pack\\bump_n.dds";
+    expect(classifyTattooMaterial(bump).bump,
+        "expected non-empty bump path to classify as Bump");
+
+    auto glossiness = definition(
+        "gloss.json", "Pack", "Marks", "Glossiness", "gloss.dds", "Body");
+    glossiness.glossiness = 0.5F;
+    expect(classifyTattooMaterial(glossiness).gloss,
+        "expected positive glossiness to classify as Gloss");
+
+    auto specular = definition(
+        "specular.json", "Pack", "Marks", "Specular", "specular.dds", "Body");
+    specular.specularStrength = 0.25F;
+    expect(classifyTattooMaterial(specular).gloss,
+        "expected positive specular strength to classify as Gloss");
+}
+
+void materialFiltersComposeWithAndSemanticsAndContextualFacets() {
+    auto glowOnly = definition(
+        "glow.json", "Glow Pack", "Marks", "Glow", "glow.dds", "Body");
+    glowOnly.glow = 1;
+    auto bumpOnly = definition(
+        "bump.json", "Bump Pack", "Marks", "Bump", "bump.dds", "Body");
+    bumpOnly.bump = "Pack\\bump_n.dds";
+    auto glossOnly = definition(
+        "gloss.json", "Gloss Pack", "Marks", "Gloss", "gloss.dds", "Body");
+    glossOnly.glossiness = 1.0F;
+    auto allThree = definition(
+        "all.json", "All Pack", "Runes", "All Three", "all.dds", "Body");
+    allThree.glowTexture = "Pack\\all_g.dds";
+    allThree.bump = "Pack\\all_n.dds";
+    allThree.specularStrength = 1.0F;
+    const auto legacy = definition(
+        "legacy.json", "Legacy Pack", "Marks", "Legacy", "legacy.dds", "Body");
+    TattooRepository repository({glowOnly, bumpOnly, glossOnly, allThree, legacy});
+
+    expect(repository.query(TattooFilter{.glowOnly = true}).matchedEntries == 2,
+        "expected Glow filter to retain every Glow definition");
+    expect(repository.query(TattooFilter{.bumpOnly = true}).matchedEntries == 2,
+        "expected Bump filter to retain every Bump definition");
+    expect(repository.query(TattooFilter{.glossOnly = true}).matchedEntries == 2,
+        "expected Gloss filter to retain every Gloss definition");
+
+    const TattooFilter combined{
+        .area = "Body",
+        .glowOnly = true,
+        .bumpOnly = true,
+        .glossOnly = true,
+    };
+    const auto page = repository.query(combined);
+    const auto facets = repository.contextualFacets(combined);
+    expect(page.matchedEntries == 1 && page.entries.front().name == "All Three",
+        "expected enabled material filters to compose with AND semantics");
+    expect(facets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "all.json", .packName = "All Pack"},
+           } && facets.sections == std::vector<std::string>{"Runes"},
+        "expected material filters to narrow contextual facets");
+
+    const auto unfiltered = repository.query();
+    expect(unfiltered.matchedEntries == 5 && unfiltered.entries.front().name == "All Three",
+        "expected disabled material filters to preserve catalog results and ordering");
+}
+
 void contextualFacetsFollowAreaThenSource() {
+    auto customBody = definition("body-b.json", "Body B", "Runes", "B", "b.dds", "BODY");
+    customBody.domain = "custom";
     TattooRepository repository({
         definition("body-a.json", "Body A", "Marks", "A", "a.dds", "Body"),
-        definition("body-b.json", "Body B", "Runes", "B", "b.dds", "BODY"),
+        std::move(customBody),
         definition("face.json", "Face", "Face Marks", "C", "c.dds", "Face"),
     });
 
@@ -224,6 +360,111 @@ void contextualFacetsFollowAreaThenSource() {
         "expected Source options to depend only on Area");
     expect(sourceFacets.sections == std::vector<std::string>{"Marks"},
         "expected Section options narrowed only by Area and Source");
+
+    const auto customFacets = repository.contextualFacets(TattooFilter{
+        .domain = "CUSTOM",
+        .area = "body",
+    });
+    expect(customFacets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "body-b.json", .packName = "Body B"},
+           } && customFacets.sections == std::vector<std::string>{"Runes"},
+        "expected Domain to narrow Source and Section facets after Area");
+}
+
+void appliedIdentityFilterPrecedesPaginationAndNarrowsFacets() {
+    TattooRepository repository({
+        definition("one.json", "One", "Marks", "Applied A", "a.dds", "Body"),
+        definition("one.json", "One", "Marks", "Unused", "unused.dds", "Body"),
+        definition("two.json", "Two", "Runes", "Applied B", "b.dds", "Body"),
+        definition("face.json", "Face", "Marks", "Applied A", "face.dds", "Face"),
+    });
+    const TattooFilter filter{
+        .area = "Body",
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "Applied A"},
+            {.section = "Runes", .name = "Applied B"},
+        },
+        .pageSize = 1,
+    };
+
+    const auto firstPage = repository.query(filter);
+    auto secondPageFilter = filter;
+    secondPageFilter.pageIndex = 1;
+    const auto secondPage = repository.query(secondPageFilter);
+    const auto facets = repository.contextualFacets(filter);
+
+    expect(firstPage.matchedEntries == 2 && firstPage.pageCount == 2 &&
+            firstPage.entries.size() == 1 && firstPage.entries.front().name == "Applied A",
+        "expected applied identities filtered before pagination");
+    expect(secondPage.entries.size() == 1 && secondPage.entries.front().name == "Applied B",
+        "expected second applied tattoo on the second filtered page");
+    expect(facets.sources == std::vector<stui::repository::TattooSourceOption>{
+               {.sourceId = "one.json", .packName = "One"},
+               {.sourceId = "two.json", .packName = "Two"},
+           } && facets.sections == std::vector<std::string>{"Marks", "Runes"},
+        "expected contextual facets limited to applied Body tattoos");
+}
+
+void appliedIdentityFilterUsesRuntimeExactIdentity() {
+    TattooRepository repository({
+        definition("one.json", "One", "Marks", "Corruption", "a.dds", "Body"),
+    });
+
+    const auto exact = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "Corruption"},
+        },
+    });
+    const auto differentCase = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{
+            {.section = "Marks", .name = "corruption"},
+        },
+    });
+    const auto noneApplied = repository.query(TattooFilter{
+        .appliedIdentities = std::vector<TattooIdentity>{},
+    });
+
+    expect(exact.matchedEntries == 1, "expected exact runtime Tattoo Identity match");
+    expect(differentCase.matchedEntries == 0,
+        "expected Tattoo Identity matching to remain case-sensitive");
+    expect(noneApplied.matchedEntries == 0,
+        "expected active empty applied filter to return no tattoos");
+}
+
+void recentIdentityFilterUsesExactAreaAndNewestFirstOrder() {
+    auto alpha = definition("a.json", "Pack", "Marks", "Alpha", "a.dds", "Body");
+    auto beta = definition("b.json", "Pack", "Marks", "Beta", "b.dds", "Body");
+    auto face = definition("a.json", "Pack", "Marks", "Alpha", "f.dds", "Face");
+    TattooRepository repository({alpha, beta, face});
+    const std::vector<RecentTattooIdentity> recent{
+        {.domain = "default", .sourceId = "b.json", .section = "Marks",
+            .name = "Beta", .area = stui::core::TattooArea::body},
+        {.domain = "default", .sourceId = "a.json", .section = "Marks",
+            .name = "Alpha", .area = stui::core::TattooArea::body},
+    };
+
+    const auto ordered = repository.query(TattooFilter{
+        .area = "Body",
+        .recentIdentities = recent,
+        .pageSize = 1,
+    });
+    const auto second = repository.query(TattooFilter{
+        .area = "Body",
+        .recentIdentities = recent,
+        .pageIndex = 1,
+        .pageSize = 1,
+    });
+    const auto empty = repository.query(TattooFilter{
+        .area = "Face",
+        .recentIdentities = recent,
+    });
+
+    expect(ordered.matchedEntries == 2 && ordered.entries.front().name == "Beta",
+        "expected newest exact recent identity before pagination");
+    expect(second.entries.front().name == "Alpha",
+        "expected older recent identity on the next page");
+    expect(empty.matchedEntries == 0,
+        "expected area-scoped history not to match another area");
 }
 
 void emptyRepositoryReturnsEmptyPageAndFacets() {
@@ -296,9 +537,28 @@ int main() {
         combinesSourceSectionAndAreaFilters);
     failures += run("empty match resets paging", emptyMatchResetsPaging);
     failures += run("builds stable source-aware facets", buildsStableSourceAwareFacets);
+    failures += run("filters domains and builds deterministic domain facets", filtersDomainsAndBuildsDeterministicDomainFacets);
+    failures += run(
+        "classifies defaults without false material capabilities",
+        classifiesMaterialMetadataWithoutTreatingDefaultsAsCapabilities);
+    failures += run(
+        "classifies independent material signals",
+        classifiesIndependentMaterialSignals);
+    failures += run(
+        "material filters use AND semantics and narrow facets",
+        materialFiltersComposeWithAndSemanticsAndContextualFacets);
     failures += run(
         "contextual facets follow Area then Source",
         contextualFacetsFollowAreaThenSource);
+    failures += run(
+        "applied identity filter precedes pagination and narrows facets",
+        appliedIdentityFilterPrecedesPaginationAndNarrowsFacets);
+    failures += run(
+        "applied identity filter uses runtime-exact identity",
+        appliedIdentityFilterUsesRuntimeExactIdentity);
+    failures += run(
+        "recent identity filter uses exact area and newest-first order",
+        recentIdentityFilterUsesExactAreaAndNewestFirstOrder);
     failures += run(
         "empty repository returns empty page and facets",
         emptyRepositoryReturnsEmptyPageAndFacets);

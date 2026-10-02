@@ -1,11 +1,22 @@
 # SlaveTats UI
 
 A native SKSE Menu Framework interface for SlaveTatsNG. Browse installed tattoo
-packs, inspect the Player's overlay slots, and apply, replace, edit, or remove
-tattoos without using MCM.
+packs, inspect the Player or a deliberately selected Crosshair Target, and
+apply, replace, edit, or remove tattoos without using MCM.
 
 > Building from source or contributing? See [DEVELOPMENT.md](DEVELOPMENT.md) and
-> [DEPLOY.md](DEPLOY.md).
+> [DEPLOY.md](DEPLOY.md). Maintainers should also read
+> [RELEASING.md](RELEASING.md).
+
+## License
+
+SlaveTats UI is copyright 2026 mskmktx and is licensed under the
+[GNU General Public License v3.0 or later](LICENSE). Distributions of compiled
+binaries must provide recipients access to the corresponding source under the
+same license terms.
+
+Third-party components remain subject to their respective licenses. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution.
 
 ## Requirements
 
@@ -24,8 +35,8 @@ mod uses it.
 
 ## Installation
 
-Install the release archive with Mod Organizer 2 and enable it. The package is
-DLL-only:
+Install the release archive with Mod Organizer 2 and enable it. The runtime
+plugin uses this path inside the package:
 
 ```text
 SlaveTatsUI\
@@ -39,13 +50,19 @@ Launch Skyrim through SKSE in MO2.
 Press **F8** by default or choose **SlaveTatsUI > Tattoo Browser** in SKSE Menu
 Framework. The configured hotkey toggles the native window.
 
-The workflow starts on the Player's current slots:
+Choose the Player or a loaded Crosshair Target, then manage that Actor Target's
+current slots:
 
 - choose an empty slot to browse and apply a tattoo;
-- choose an occupied SlaveTats slot to edit its color/alpha, replace it, or
-  remove it;
+- choose an occupied SlaveTats slot to edit its appearance, lock or unlock it,
+  replace it, or remove it;
 - external overlay slots remain visible but read-only;
-- search, source/section/area filters, and pagination narrow the catalog;
+- search, domain/source/section/area, Applied, Favorites, Glow, Bump, and Gloss
+  filters narrow the catalog;
+- Favorites, six-entry area-scoped Recently Used lists, and ordered Appearance
+  Presets speed up repeated work;
+- appearance controls provide debounced live preview with safe Save,
+  Cancel/Close restoration, and synchronization-only retry;
 - Refresh reloads current slot state and Sync reapplies visual updates.
 
 Only current-page thumbnails are requested. Loose and BSA-backed DDS textures
@@ -65,7 +82,9 @@ Existing named or raw DIK scancode values remain supported.
 
 - Skyrim SE 1.5.97 and AE 1.6.x are supported when the DLL is built against a
   matching SKSE/CommonLibSSE-NG setup.
-- The initial native workflow targets the Player only (FormID `0x14`).
+- Actor Targets are the Player (FormID `0x14`) or a deliberately resolved,
+  loaded Crosshair Target. A failed Crosshair Target never falls back silently
+  to the Player.
 - Texture packs must follow
   `textures\actors\character\slavetats\<section>\*.dds`.
 
@@ -91,7 +110,7 @@ Existing named or raw DIK scancode values remain supported.
 
 **Apply, edit, remove, or sync has no visible effect**
 
-- Test on the loaded Player in first- or third-person view.
+- Test on the selected loaded Actor Target in first- or third-person view.
 - Use Refresh to reload slot state and Sync to request visual synchronization.
 
 ## Log Location

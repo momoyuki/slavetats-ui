@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 message("Using toolchain file ${CMAKE_TOOLCHAIN_FILE}.")
 
-project(SlaveTatsUI VERSION 0.1.0 DESCRIPTION "Native SlaveTats UI plugin" LANGUAGES CXX)
+project(SlaveTatsUI VERSION 1.8.0 DESCRIPTION "Native SlaveTats UI plugin" LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -35,11 +35,17 @@ set(headers
     src/runtime/SlaveTatsAlpha.h
     src/runtime/ApplicationRuntime.h
     src/runtime/HotkeyBinding.h
+    src/runtime/PluginConfigFile.h
+    src/runtime/FavoriteStore.h
+    src/runtime/RecentTattooStore.h
+    src/runtime/AppearancePresetStore.h
     src/runtime/UpdateTattooAppearanceOrchestration.h
     src/runtime/SlaveTatsRuntime.h
     src/repository/TattooCatalogLoader.h
     src/repository/TattooCatalogStore.h
     src/repository/TattooRepository.h
+    src/repository/FavoriteIdentity.h
+    src/repository/RecentTattooIdentity.h
     src/repository/TattooSourceParser.h
     src/textures/D3D11TextureManager.h
     src/textures/D3D11TextureUploader.h
@@ -57,6 +63,7 @@ set(sources
     src/native/NativeCatalogBrowserModel.cpp
     src/native/NativeSlotWorkflowModel.cpp
     src/native/NativeSlotWorkflowRuntime.cpp
+    src/native/ActorTargetProvider.cpp
     src/native/NativeThumbnailController.cpp
     src/native/NativeThumbnailRuntime.cpp
     src/native/D3D11NativeThumbnailSource.cpp
@@ -64,6 +71,10 @@ set(sources
     src/runtime/OverlaySlotConfiguration.cpp
     src/runtime/ApplicationRuntime.cpp
     src/runtime/HotkeyBinding.cpp
+    src/runtime/PluginConfigFile.cpp
+    src/runtime/FavoriteStore.cpp
+    src/runtime/RecentTattooStore.cpp
+    src/runtime/AppearancePresetStore.cpp
     src/runtime/UpdateTattooAppearanceOrchestration.cpp
     src/runtime/SlaveTatsRuntime.cpp
     src/repository/TattooCatalogLoader.cpp
@@ -102,11 +113,50 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE src/pch.h)
 if(BUILD_TESTING)
     add_executable(HotkeyBindingTests
         src/runtime/HotkeyBinding.cpp
+        src/runtime/PluginConfigFile.cpp
         tests/runtime/HotkeyBindingTests.cpp
     )
     target_include_directories(HotkeyBindingTests PRIVATE src)
     target_link_libraries(HotkeyBindingTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME HotkeyBindingTests COMMAND HotkeyBindingTests)
+
+    add_executable(PluginConfigFileTests
+        src/runtime/PluginConfigFile.cpp
+        tests/runtime/PluginConfigFileTests.cpp
+    )
+    target_include_directories(PluginConfigFileTests PRIVATE src)
+    target_link_libraries(PluginConfigFileTests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME PluginConfigFileTests COMMAND PluginConfigFileTests)
+
+    add_executable(FavoriteStoreTests
+        src/runtime/PluginConfigFile.cpp
+        src/runtime/FavoriteStore.cpp
+        tests/runtime/FavoriteStoreTests.cpp
+    )
+    target_include_directories(FavoriteStoreTests PRIVATE src)
+    target_link_libraries(FavoriteStoreTests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME FavoriteStoreTests COMMAND FavoriteStoreTests)
+
+    add_executable(RecentTattooStoreTests
+        src/runtime/PluginConfigFile.cpp
+        src/runtime/RecentTattooStore.cpp
+        tests/runtime/RecentTattooStoreTests.cpp
+    )
+    target_include_directories(RecentTattooStoreTests PRIVATE src)
+    target_link_libraries(RecentTattooStoreTests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME RecentTattooStoreTests COMMAND RecentTattooStoreTests)
+
+    add_executable(AppearancePresetStoreTests
+        src/runtime/PluginConfigFile.cpp
+        src/runtime/AppearancePresetStore.cpp
+        src/runtime/HotkeyBinding.cpp
+        src/runtime/FavoriteStore.cpp
+        src/runtime/RecentTattooStore.cpp
+        tests/runtime/AppearancePresetStoreTests.cpp
+    )
+    target_include_directories(AppearancePresetStoreTests PRIVATE src)
+    target_link_libraries(AppearancePresetStoreTests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME AppearancePresetStoreTests COMMAND AppearancePresetStoreTests)
 
     add_executable(NativeThumbnailRuntimeTests
         src/native/NativeThumbnailController.cpp
@@ -152,7 +202,16 @@ if(BUILD_TESTING)
         tests/native/NativeSlotWorkflowModelTests.cpp
     )
     target_include_directories(NativeSlotWorkflowModelTests PRIVATE src)
+    target_link_libraries(NativeSlotWorkflowModelTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME NativeSlotWorkflowModelTests COMMAND NativeSlotWorkflowModelTests)
+
+    add_executable(ActorTargetProviderTests
+        src/native/ActorTargetProvider.cpp
+        tests/native/ActorTargetProviderTests.cpp
+    )
+    target_include_directories(ActorTargetProviderTests PRIVATE src)
+    target_link_libraries(ActorTargetProviderTests PRIVATE CommonLibSSE::CommonLibSSE)
+    add_test(NAME ActorTargetProviderTests COMMAND ActorTargetProviderTests)
 
     add_executable(NativeSlotWorkflowRuntimeTests
         src/native/NativeSlotWorkflowRuntime.cpp
@@ -162,6 +221,7 @@ if(BUILD_TESTING)
         tests/native/NativeSlotWorkflowRuntimeTests.cpp
     )
     target_include_directories(NativeSlotWorkflowRuntimeTests PRIVATE src)
+    target_link_libraries(NativeSlotWorkflowRuntimeTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME NativeSlotWorkflowRuntimeTests COMMAND NativeSlotWorkflowRuntimeTests)
 
     add_executable(NativeMenuTests
@@ -174,6 +234,7 @@ if(BUILD_TESTING)
     add_executable(OfficialMenuFrameworkAdapterTests
         src/native/OfficialMenuFrameworkAdapter.cpp
         src/runtime/HotkeyBinding.cpp
+        src/runtime/PluginConfigFile.cpp
         src/native/NativeCatalogBrowserModel.cpp
         src/native/NativeSlotWorkflowModel.cpp
         src/native/NativeSlotWorkflowRuntime.cpp
@@ -183,7 +244,7 @@ if(BUILD_TESTING)
         tests/native/OfficialMenuFrameworkAdapterTests.cpp
     )
     target_include_directories(OfficialMenuFrameworkAdapterTests PRIVATE src include)
-    target_link_libraries(OfficialMenuFrameworkAdapterTests PRIVATE CommonLibSSE::CommonLibSSE)
+    target_link_libraries(OfficialMenuFrameworkAdapterTests PRIVATE CommonLibSSE::CommonLibSSE nlohmann_json::nlohmann_json)
     add_test(NAME OfficialMenuFrameworkAdapterTests COMMAND OfficialMenuFrameworkAdapterTests)
 
     add_executable(SlaveTatsUICoreTests

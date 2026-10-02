@@ -1,6 +1,6 @@
 # SlaveTats UI
 
-SlaveTats UI provides a slot-first interface for browsing and managing the Player's SlaveTats overlays.
+SlaveTats UI provides a slot-first interface for browsing and managing an explicitly selected Actor's SlaveTats overlays.
 
 ## Language
 
@@ -8,12 +8,20 @@ SlaveTats UI provides a slot-first interface for browsing and managing the Playe
 The combination of section and name that SlaveTats uses to resolve a tattoo definition.
 _Avoid_: Source identity, file identity
 
+**Actor Target**:
+The explicit Actor identity whose SlaveTats slots the native workflow currently manages. The target is either the Player or a deliberately resolved Crosshair Target and is identified by form ID, never by display name or stale UI state.
+_Avoid_: Current actor, implicit actor
+
+**Target Generation**:
+The workflow generation that scopes target resolution, slot snapshots, and operation completions to one Actor Target. Results from an older Target Generation are stale and must not update the current workflow.
+_Avoid_: Actor cache version
+
 **Current Slot**:
 A configured overlay slot in the currently selected body area, whether empty, managed by SlaveTats, or managed externally.
 _Avoid_: Tattoo card
 
 **Selected Area**:
-The Player overlay area whose Current Slots are being managed: Body, Face, Hands, or Feet.
+The Actor Target overlay area whose Current Slots are being managed: Body, Face, Hands, or Feet.
 _Avoid_: Area filter
 
 **Area-compatible Tattoo**:
@@ -25,9 +33,25 @@ A Picker filter whose available values are limited by the Selected Area and any 
 _Avoid_: Global filter
 
 **Slot Snapshot**:
-The most recently loaded Current Slot state for the Selected Area. It is the source of In-use Tattoo status and is refreshed at workflow boundaries rather than polled continuously.
+The most recently loaded Current Slot state for one Actor Target and Selected Area. It is the source of In-use Tattoo status and is refreshed at workflow boundaries rather than polled continuously.
 _Avoid_: Live slot polling
 
 **In-use Tattoo**:
 A catalog tattoo whose Tattoo Identity matches at least one SlaveTats-managed Current Slot in the selected area. The UI labels this selectable state `In Use`; its matching Current Slot indices are supporting detail rather than part of the label.
 _Avoid_: Used tattoo
+
+**Applied-only Filter**:
+A Picker filter that retains only In-use Tattoos for the current Actor Target and Selected Area. It combines with the other Contextual Filters, uses runtime-exact Tattoo Identity matching, and excludes external overlays.
+_Avoid_: Global applied filter, external overlay filter
+
+**Favorite**:
+A persistent personal catalog preference identified by the exact tuple `(domain, sourceId, section, name)`. Favorites are independent of Actor, savegame, and applied state; unavailable catalog entries remain stored until explicitly removed.
+_Avoid_: Per-Actor favorite, applied tattoo
+
+**Recently Used**:
+A persistent personal history identified by the exact tuple `(domain, sourceId, section, name, area)`. It records only successful Apply/Replace operations after synchronization, retains the six newest identities independently for Body, Face, Hands, and Feet, and presents matching installed tattoos newest-first. It is independent of Actor Target and savegame.
+_Avoid_: Preview history, per-Actor history, global unscoped history
+
+**Appearance Preset**:
+A persistent, globally shared, ordered set of six editable appearance values: color, alpha, glow color, emission strength, glossiness, and specular strength. Loading an Appearance Preset updates only the current Edit Appearance session for preview; it does not identify a tattoo, change texture metadata or lock state, or save the tattoo until the user chooses `Save`.
+_Avoid_: Tattoo preset, Actor preset, appearance loadout

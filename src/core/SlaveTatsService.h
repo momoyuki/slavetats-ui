@@ -15,6 +15,7 @@ public:
     ApplyTattooResult applyToSlot(const ApplyTattooRequest& request);
     RemoveTattooResult removeFromSlot(const RemoveTattooRequest& request);
     UpdateTattooAppearanceResult updateAppearance(const UpdateTattooAppearanceRequest& request);
+    SetTattooLockedResult setTattooLocked(const SetTattooLockedRequest& request);
 
 private:
     ITattooRuntime& m_runtime;

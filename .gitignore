@@ -6,6 +6,7 @@ vcpkg_installed/
 
 # Generated archives
 *.zip
+/artifacts/release/
 
 # Local Git worktrees
 .worktrees/

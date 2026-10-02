@@ -212,19 +212,24 @@ Emission Strength  [ slider + numeric input ]
 Glossiness         [ slider + numeric input ]
 Specular Strength  [ slider + numeric input ]
 
-Glow Texture       <pack path or None>   (read-only initially)
-Bump Texture       <pack path or None>   (read-only initially)
+Glow Texture       <pack path>   (read-only initially, hidden when absent)
+Bump Texture       <pack path>   (read-only initially, hidden when absent)
 ```
 
 The advanced section may be collapsed by default if needed to preserve a compact native menu.
+Glossiness uses a logarithmic slider from 0 to 1000. Specular Strength uses a
+logarithmic slider from 0 to 100. Their numeric inputs remain available for
+precise entry.
 
 ### Presentation
 
 - Continue tinting the diffuse thumbnail with edited diffuse color and alpha.
+- Present the editor thumbnail as a centered square, preferring 160 by 160
+  pixels and shrinking only when the available content area requires it.
 - Do not pretend the 2D thumbnail accurately previews Skyrim emissive/specular lighting.
 - Show a small `Glow` badge in the editor when any of `glow != 0`, non-empty `glowTexture`, or `emissiveMult` differs materially from its default.
 - Show `Bump` when a bump texture is present.
-- Advanced metadata should use `None` rather than an empty string.
+- Hide an advanced texture metadata row when its path is absent.
 
 ## Catalog Metadata
 

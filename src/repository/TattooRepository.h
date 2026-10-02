@@ -1,8 +1,11 @@
 #pragma once
 
 #include "repository/TattooSourceParser.h"
+#include "repository/FavoriteIdentity.h"
+#include "repository/RecentTattooIdentity.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -10,11 +13,25 @@ namespace stui::repository {
 
 inline constexpr std::size_t kDefaultTattooPageSize = 24;
 
+struct TattooIdentity {
+    std::string section;
+    std::string name;
+
+    bool operator==(const TattooIdentity&) const = default;
+};
+
 struct TattooFilter {
     std::string search;
+    std::string domain;
     std::string sourceId;
     std::string section;
     std::string area;
+    std::optional<std::vector<TattooIdentity>> appliedIdentities;
+    std::optional<std::vector<FavoriteIdentity>> favoriteIdentities;
+    std::optional<std::vector<RecentTattooIdentity>> recentIdentities;
+    bool glowOnly{};
+    bool bumpOnly{};
+    bool glossOnly{};
     std::size_t pageIndex{};
     std::size_t pageSize{kDefaultTattooPageSize};
 };
@@ -36,6 +53,7 @@ struct TattooSourceOption {
 };
 
 struct TattooFacets {
+    std::vector<std::string> domains;
     std::vector<TattooSourceOption> sources;
     std::vector<std::string> sections;
     std::vector<std::string> areas;
@@ -53,6 +71,7 @@ private:
     struct IndexedDefinition {
         TattooDefinition definition;
         std::string foldedSearch;
+        std::string foldedDomain;
         std::string foldedSourceId;
         std::string foldedSection;
         std::string foldedArea;

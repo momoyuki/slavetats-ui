@@ -76,6 +76,11 @@ section item, then opens the registered window. Pressing the hotkey while the
 window is open closes it. If the native menu is unavailable, the key does
 nothing and one actionable startup error is logged.
 
+New opening requests from either the configured hotkey or the Menu Framework
+section item are ignored while Skyrim's Console or RaceSex Menu is open. The
+matching hotkey remains consumed. This guard does not auto-close a SlaveTatsUI
+window that was already open and does not block its normal close path.
+
 To avoid duplicating launch behavior, `NativeMenu` receives a public `toggle`
 operation which uses its existing launch callback when opening. Unit tests cover
 open, close, launch rejection, and unavailable registration behavior before the
@@ -135,6 +140,7 @@ In-game acceptance after separately approved deployment:
 
 - the configured hotkey opens and closes the native menu;
 - the Menu Framework section item still opens it;
+- neither entry point opens the native menu over Console or RaceMenu;
 - current slots refresh for the player;
 - catalog search, filters, pagination, and thumbnails work;
 - apply, replace, remove, edit appearance, and sync work;

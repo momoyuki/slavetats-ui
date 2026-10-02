@@ -58,6 +58,11 @@ struct TattooSlots {
     std::vector<TattooSlot> slots;
 };
 
+enum class ApplyTattooMode {
+    applyAndSynchronize,
+    synchronizeOnly,
+};
+
 struct ApplyTattooRequest {
     std::uint32_t actorFormId{};
     TattooArea area{TattooArea::body};
@@ -67,6 +72,7 @@ struct ApplyTattooRequest {
     std::string name;
     std::int32_t color{0xFFFFFF};
     float alpha{1.0F};
+    ApplyTattooMode mode{ApplyTattooMode::applyAndSynchronize};
 };
 
 struct ApplyTattooSuccess {
@@ -118,6 +124,18 @@ struct UpdateTattooAppearanceSuccess {
     std::int32_t runtimeHandle{};
 };
 
+struct SetTattooLockedRequest {
+    std::uint32_t actorFormId{};
+    std::int32_t runtimeHandle{};
+    bool locked{};
+};
+
+struct SetTattooLockedSuccess {
+    std::uint32_t actorFormId{};
+    std::int32_t runtimeHandle{};
+    bool locked{};
+};
+
 enum class ServiceErrorCode {
     slaveTatsUnavailable,
     jContainersUnavailable,
@@ -133,11 +151,18 @@ enum class ServiceErrorCode {
     synchronizeFailed,
     staleTattooHandle,
     updateFailed,
+    lockFailed,
+};
+
+enum class MutationSideEffect {
+    none,
+    mayHaveOccurred,
 };
 
 struct ServiceError {
     ServiceErrorCode code;
     std::string message;
+    MutationSideEffect mutationSideEffect{MutationSideEffect::none};
 };
 
 using TattooQueryResult = std::expected<std::vector<TattooEntry>, ServiceError>;
@@ -146,5 +171,6 @@ using ApplyTattooResult = std::expected<ApplyTattooSuccess, ServiceError>;
 using RemoveTattooResult = std::expected<RemoveTattooSuccess, ServiceError>;
 using UpdateTattooAppearanceResult =
     std::expected<UpdateTattooAppearanceSuccess, ServiceError>;
+using SetTattooLockedResult = std::expected<SetTattooLockedSuccess, ServiceError>;
 
 }  // namespace stui::core

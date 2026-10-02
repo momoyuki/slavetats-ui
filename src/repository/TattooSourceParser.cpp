@@ -43,6 +43,21 @@ bool readOptionalStringField(
     return true;
 }
 
+bool readDomain(const Json& entry, TattooDefinition& definition, std::string& error) {
+    const auto item = entry.find("domain");
+    if (item == entry.end()) return true;
+    if (!item->is_string()) {
+        error = "field 'domain' must be a string";
+        return false;
+    }
+
+    const std::string value = item->get<std::string>();
+    if (!value.empty()) {
+        definition.domain = value;
+    }
+    return true;
+}
+
 bool readOptionalMaterialFloatField(
     const Json& entry,
     std::string_view field,
@@ -149,6 +164,7 @@ TattooSourceParseReport parseTattooSource(const TattooSourceFile& source) {
             !readRequiredString(entry, "section", definition.section, error) ||
             !readRequiredString(entry, "texture", definition.texturePath, error) ||
             !readRequiredString(entry, "area", definition.area, error) ||
+            !readDomain(entry, definition, error) ||
             !readOptionalFields(entry, definition, error)) {
             report.issues.push_back({.entryIndex = index, .message = std::move(error)});
             continue;

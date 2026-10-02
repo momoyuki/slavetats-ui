@@ -1,7 +1,8 @@
 # SlaveTats UI Deployment Guide
 
 This guide covers development deployment through Mod Organizer 2. Build
-instructions are in [DEVELOPMENT.md](DEVELOPMENT.md#building).
+instructions are in [DEVELOPMENT.md](DEVELOPMENT.md#building). GitHub release
+publication is a separate process documented in [RELEASING.md](RELEASING.md).
 
 ## Prerequisites
 
@@ -38,8 +39,10 @@ recoverable.
 2. Launch Skyrim through SKSE in MO2.
 3. Inspect `SlaveTatsUI.log` for native menu registration and dependency errors.
 4. Press the configured hotkey and confirm it opens and closes the native menu.
-5. Verify current slots, catalog navigation, thumbnails, apply, replace, remove,
-   appearance editing, Refresh, and Sync on the Player.
+5. Verify current slots, catalog navigation, thumbnails, and one non-destructive
+   catalog interaction on the Player.
+6. Select a loaded Crosshair Target, confirm its identity is shown, and verify
+   its slots load without changing the Player.
 
 An old browser-view directory or legacy thumbnail cache may be removed manually
 from this mod after backing it up. The plugin neither reads nor deletes those

@@ -13,6 +13,7 @@
 namespace {
 
 using stui::core::ITattooRuntime;
+using stui::core::ApplyTattooMode;
 using stui::core::ApplyTattooRequest;
 using stui::core::ApplyTattooResult;
 using stui::core::RemoveTattooRequest;
@@ -22,6 +23,8 @@ using stui::core::ServiceError;
 using stui::core::ServiceErrorCode;
 using stui::core::SlaveTatsService;
 using stui::core::SlotOccupancy;
+using stui::core::SetTattooLockedRequest;
+using stui::core::SetTattooLockedResult;
 using stui::core::TattooArea;
 using stui::core::TattooEntry;
 using stui::core::TattooQueryResult;
@@ -76,6 +79,12 @@ public:
         };
     }
 
+    SetTattooLockedResult setTattooLocked(const SetTattooLockedRequest& request) override {
+        lockedRequest = request;
+        ++lockCount;
+        return lockResult;
+    }
+
     bool apiAvailableValue{true};
     bool jContainersReadyValue{true};
     int queryCount{0};
@@ -93,6 +102,9 @@ public:
     RemoveTattooResult removeResult{stui::core::RemoveTattooSuccess{}};
     UpdateTattooAppearanceRequest updatedRequest;
     int updateCount{0};
+    SetTattooLockedRequest lockedRequest;
+    int lockCount{0};
+    SetTattooLockedResult lockResult{stui::core::SetTattooLockedSuccess{}};
 };
 
 void expect(bool condition, std::string_view message) {
@@ -141,6 +153,14 @@ UpdateTattooAppearanceRequest validAppearanceRequest() {
         .specularStrength = 1.25F,
         .emissiveMult = 3.0F,
         .mode = UpdateTattooAppearanceMode::updateAndSynchronize,
+    };
+}
+
+SetTattooLockedRequest validLockRequest() {
+    return SetTattooLockedRequest{
+        .actorFormId = 0x14,
+        .runtimeHandle = 42,
+        .locked = true,
     };
 }
 
@@ -424,6 +444,24 @@ void validApplyRequestIsForwardedExactlyOnce() {
         "expected runtime apply result returned unchanged");
 }
 
+void synchronizeOnlyApplyBypassesMutationValidation() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto request = validApplyRequest();
+    request.slot = -1;
+    request.section.clear();
+    request.name.clear();
+    request.alpha = std::numeric_limits<float>::quiet_NaN();
+    request.mode = ApplyTattooMode::synchronizeOnly;
+
+    const auto result = service.applyToSlot(request);
+
+    expect(result.has_value(), "expected synchronization-only Apply retry accepted");
+    expect(runtime.applyCount == 1, "expected synchronization-only retry forwarded once");
+    expect(runtime.appliedRequest.mode == ApplyTattooMode::synchronizeOnly,
+        "expected exact synchronization-only Apply mode forwarded");
+}
+
 void applyRuntimeFailureIsReturnedUnchanged() {
     FakeTattooRuntime runtime;
     runtime.applyResult = std::unexpected(ServiceError{
@@ -677,6 +715,21 @@ void appearanceBoundariesAreForwardedUnchanged() {
         "expected advanced appearance values forwarded unchanged");
 }
 
+void zeroEmissiveAppearanceIsAcceptedAndForwardedUnchanged() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto request = validAppearanceRequest();
+    request.emissiveMult = 0.0F;
+
+    const auto result = service.updateAppearance(request);
+
+    expect(result.has_value(), "expected zero emissive multiplier accepted");
+    expect(runtime.updateCount == 1, "expected zero emissive update forwarded exactly once");
+    expect(runtime.updatedRequest.actorFormId == 0x14 && runtime.updatedRequest.runtimeHandle == 42 &&
+            runtime.updatedRequest.emissiveMult == 0.0F,
+        "expected zero emissive multiplier forwarded unchanged");
+}
+
 void synchronizeOnlyAppearanceRequestIsForwardedUnchanged() {
     FakeTattooRuntime runtime;
     SlaveTatsService service(runtime);
@@ -722,6 +775,55 @@ void synchronizeOnlyAppearanceBypassesAppearanceValueValidation() {
     expect(runtime.updateCount == 1, "expected synchronization-only request forwarded despite stale values");
 }
 
+void validLockRequestIsForwardedExactlyOnce() {
+    FakeTattooRuntime runtime;
+    runtime.lockResult = stui::core::SetTattooLockedSuccess{
+        .actorFormId = 0x14,
+        .runtimeHandle = 42,
+        .locked = true,
+    };
+    SlaveTatsService service(runtime);
+
+    const auto result = service.setTattooLocked(validLockRequest());
+
+    expect(result.has_value(), "expected lock request success");
+    expect(runtime.lockCount == 1, "expected exactly one lock runtime call");
+    expect(runtime.lockedRequest.actorFormId == 0x14 && runtime.lockedRequest.runtimeHandle == 42 &&
+            runtime.lockedRequest.locked,
+        "expected lock request forwarded unchanged");
+}
+
+void invalidLockRequestStopsBeforeRuntime() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto zeroActor = validLockRequest();
+    zeroActor.actorFormId = 0;
+    auto zeroHandle = validLockRequest();
+    zeroHandle.runtimeHandle = 0;
+
+    expectError(service.setTattooLocked(zeroActor), ServiceErrorCode::actorNotFound,
+        "Actor not found");
+    expectError(service.setTattooLocked(zeroHandle), ServiceErrorCode::staleTattooHandle,
+        "Tattoo handle is invalid; refresh the slot snapshot and try again");
+    expect(runtime.lockCount == 0, "invalid lock request must not reach the runtime");
+}
+
+void unavailableDependenciesStopLockRequest() {
+    FakeTattooRuntime unavailableApi;
+    unavailableApi.apiAvailableValue = false;
+    SlaveTatsService apiService(unavailableApi);
+    FakeTattooRuntime unavailableJContainers;
+    unavailableJContainers.jContainersReadyValue = false;
+    SlaveTatsService jContainersService(unavailableJContainers);
+
+    expectError(apiService.setTattooLocked(validLockRequest()),
+        ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available");
+    expectError(jContainersService.setTattooLocked(validLockRequest()),
+        ServiceErrorCode::jContainersUnavailable, "JContainers not ready");
+    expect(unavailableApi.lockCount == 0 && unavailableJContainers.lockCount == 0,
+        "unavailable dependencies must not reach the lock runtime");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -758,6 +860,8 @@ int main() {
     failures += run("out-of-range apply alpha is rejected", outOfRangeApplyAlphaIsRejected);
     failures += run("boundary apply alpha is forwarded", boundaryApplyAlphaIsForwarded);
     failures += run("valid apply request is forwarded exactly once", validApplyRequestIsForwardedExactlyOnce);
+    failures += run("synchronize-only apply bypasses mutation validation",
+        synchronizeOnlyApplyBypassesMutationValidation);
     failures += run("apply runtime failure is returned unchanged", applyRuntimeFailureIsReturnedUnchanged);
     failures += run("unavailable dependencies stop remove", unavailableDependenciesStopRemove);
     failures += run("invalid remove target is rejected", invalidRemoveTargetIsRejected);
@@ -771,7 +875,12 @@ int main() {
     failures += run("invalid appearance glow is rejected", invalidAppearanceGlowIsRejected);
     failures += run("invalid appearance material values are rejected", invalidAppearanceMaterialValuesAreRejected);
     failures += run("appearance boundaries are forwarded unchanged", appearanceBoundariesAreForwardedUnchanged);
+    failures += run("zero emissive appearance is accepted and forwarded unchanged",
+        zeroEmissiveAppearanceIsAcceptedAndForwardedUnchanged);
     failures += run("synchronize-only appearance request is forwarded unchanged", synchronizeOnlyAppearanceRequestIsForwardedUnchanged);
     failures += run("synchronize-only appearance bypasses appearance validation", synchronizeOnlyAppearanceBypassesAppearanceValueValidation);
+    failures += run("valid lock request is forwarded exactly once", validLockRequestIsForwardedExactlyOnce);
+    failures += run("invalid lock request stops before runtime", invalidLockRequestStopsBeforeRuntime);
+    failures += run("unavailable dependencies stop lock request", unavailableDependenciesStopLockRequest);
     return failures == 0 ? 0 : 1;
 }

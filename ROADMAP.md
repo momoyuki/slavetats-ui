@@ -90,23 +90,23 @@ The following are not required to complete vNext.1:
 
 ## vNext.2 — Lock and Domain
 
-**Status:** Current priority
+**Status:** Complete
 
 Close two important SlaveTats workflow gaps without expanding actor targeting yet.
 
 ### Lock / Unlock
 
-- [ ] Expose current `locked` state for SlaveTats-managed slots.
-- [ ] Add a safe Lock / Unlock mutation path.
-- [ ] Revalidate tattoo ownership before mutation.
-- [ ] Preserve external-slot read-only behavior.
+- [x] Expose current `locked` state for SlaveTats-managed slots.
+- [x] Add a safe Lock / Unlock mutation path.
+- [x] Revalidate tattoo ownership before mutation.
+- [x] Preserve external-slot read-only behavior.
 
 ### Domain support
 
-- [ ] Stop treating `default` as the only user-facing domain.
-- [ ] Discover or query available domains through the proper runtime boundary.
-- [ ] Add a domain selector/filter where it improves browse/apply behavior.
-- [ ] Preserve the selected/applied tattoo's real domain in slot snapshots.
+- [x] Stop treating `default` as the only user-facing domain.
+- [x] Discover available domains through the MO2-resolved catalog boundary.
+- [x] Add a domain selector/filter where it improves browse/apply behavior.
+- [x] Preserve the selected/applied tattoo's real domain in slot snapshots.
 
 ### Acceptance target
 
@@ -116,24 +116,26 @@ Users can manage locked state and browse/apply tattoos outside the default domai
 
 ## vNext.3 — Actor Targeting
 
-**Status:** Planned
+**Status:** Complete
+
+**Design:** `docs/superpowers/specs/2026-09-17-native-actor-targeting-design.md`
 
 Move the native workflow beyond the hard-coded Player target while preserving the same slot-first model.
 
 ### Candidate targets
 
-- [ ] Player
-- [ ] Crosshair target
+- [x] Player
+- [x] Crosshair target
 - [ ] Selected/explicit NPC
 - [ ] Follower-oriented target convenience if it can be implemented without heuristic mutation
 
 ### Required safety work
 
-- [ ] Actor identity must be explicit in every typed request.
-- [ ] Slot snapshots must remain actor-scoped.
-- [ ] Stale completions from a previous actor selection must not update the current view.
-- [ ] Actor 3D/load state and synchronization constraints must be handled deliberately.
-- [ ] Never fall back silently to the Player if a requested NPC cannot be resolved.
+- [x] Actor identity must be explicit in every typed request.
+- [x] Slot snapshots must remain actor-scoped.
+- [x] Stale completions from a previous actor selection must not update the current view.
+- [x] Actor 3D/load state and synchronization constraints must be handled deliberately.
+- [x] Never fall back silently to the Player if a requested NPC cannot be resolved.
 
 ### Acceptance target
 
@@ -143,19 +145,23 @@ The same browse/apply/edit/remove workflow works for a deliberately selected loa
 
 ## vNext.4 — Workflow Quality of Life
 
-**Status:** Later
+**Status:** Current priority
+
+**Release baseline:** The accepted capabilities checked below are being prepared
+for public testing as `v1.8.0-beta.1`. This release does not mark the remaining
+unchecked candidates complete.
 
 Add convenience features only after the full appearance model and actor-scoped runtime behavior are stable.
 
 Candidates:
 
-- [ ] Live actor preview with throttling/debounce and explicit synchronization policy
-- [ ] Favorites
-- [ ] Recently used tattoos
-- [ ] Appearance presets
+- [x] Live actor preview with throttling/debounce and explicit synchronization policy
+- [x] Favorites
+- [x] Recently used tattoos
+- [x] Appearance presets
 - [ ] Saved tattoo sets / loadouts
-- [ ] Applied-only browser filter
-- [ ] Glow / Bump / Gloss catalog badges and filters
+- [x] Applied-only browser filter
+- [x] Glow / Bump / Gloss catalog badges and filters
 - [ ] Controlled alternate glow/bump texture selection
 
 These are convenience features, not compatibility prerequisites.

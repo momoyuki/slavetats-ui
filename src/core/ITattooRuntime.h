@@ -18,6 +18,8 @@ public:
     virtual RemoveTattooResult removeFromSlot(const RemoveTattooRequest& request) = 0;
     virtual UpdateTattooAppearanceResult updateAppearance(
         const UpdateTattooAppearanceRequest& request) = 0;
+    virtual SetTattooLockedResult setTattooLocked(
+        const SetTattooLockedRequest& request) = 0;
 };
 
 }  // namespace stui::core
