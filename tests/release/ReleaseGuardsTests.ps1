@@ -79,12 +79,17 @@ try {
         Pop-Location
     }
 
-    $notFoundLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 1; Output = "release not found: $Repository $Tag" } }
-    & $releaseScript -Repository 'owner/repository' -Tag 'v1.8.0-beta.1' -LookupCommand $notFoundLookup
+    $emptyLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 0; Output = '' } }
+    & $releaseScript -Repository 'owner/repository' -Tag 'v1.8.0-beta.1' -LookupCommand $emptyLookup
 
-    $existingLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 0; Output = "existing: $Repository $Tag" } }
+    $existingLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 0; Output = "v1.7.0`n$Tag" } }
     Assert-Throws -Because 'an existing release is a conflict' -Operation {
         & $releaseScript -Repository 'owner/repository' -Tag 'v1.8.0-beta.1' -LookupCommand $existingLookup
+    }
+
+    $draftLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 0; Output = $Tag } }
+    Assert-Throws -Because 'an existing draft release is a conflict' -Operation {
+        & $releaseScript -Repository 'owner/repository' -Tag 'v1.8.0-beta.1' -LookupCommand $draftLookup
     }
 
     $authenticationLookup = { param($Repository, $Tag) [pscustomobject]@{ ExitCode = 1; Output = "authentication failed: $Repository $Tag" } }

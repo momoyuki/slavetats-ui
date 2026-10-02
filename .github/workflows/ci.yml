@@ -48,4 +48,5 @@ jobs:
         run: |
           ./tests/release/ReleaseMetadataTests.ps1
           ./tests/release/PackageReleaseTests.ps1
+          ./tests/release/ReleaseGuardsTests.ps1
           ./tests/release/WorkflowPolicyTests.ps1

@@ -1,7 +1,7 @@
 # Semantic Version, CI, and GitHub Release Design
 
-**Date:** 2026-10-01  
-**Target release:** `v1.8.0-beta.1`  
+**Date:** 2026-10-01
+**Target release:** `v1.8.0-beta.1`
 **Release title:** `SlaveTats UI 1.8.0 Beta 1`
 
 ## Purpose

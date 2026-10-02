@@ -20,18 +20,34 @@ function Get-CMakeProjectVersion {
 function Get-VcpkgProjectVersion {
     param([Parameter(Mandatory)][string] $Path)
 
+    $document = $null
     try {
-        $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
+        $content = Get-Content -LiteralPath $Path -Raw
+        $document = [System.Text.Json.JsonDocument]::Parse($content)
+
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw 'The manifest root must be a JSON object.'
+        }
+
+        $versionProperties = @(
+            $document.RootElement.EnumerateObject() |
+                Where-Object { $_.Name -eq 'version' }
+        )
+        if ($versionProperties.Count -ne 1 -or
+            $versionProperties[0].Value.ValueKind -ne [System.Text.Json.JsonValueKind]::String) {
+            throw "Expected exactly one string version in vcpkg manifest '$Path'."
+        }
+
+        return $versionProperties[0].Value.GetString()
     }
     catch {
         throw "Unable to parse vcpkg manifest '$Path': $($_.Exception.Message)"
     }
-
-    if (-not $manifest.ContainsKey('version') -or $manifest['version'] -isnot [string]) {
-        throw "Expected one string version in vcpkg manifest '$Path'."
+    finally {
+        if ($null -ne $document) {
+            $document.Dispose()
+        }
     }
-
-    return $manifest['version']
 }
 
 function Get-ReleaseTitle {

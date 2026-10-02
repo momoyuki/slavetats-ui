@@ -44,6 +44,7 @@ Assert-Matches -Pattern '(?m)^\s+run:\s*\.\/build\.ps1 -Config release\s*$' -Bec
 Assert-Matches -Pattern '(?m)^\s+run:\s*ctest --test-dir build/release --output-on-failure\s*$' -Because 'CI runs the complete Release suite'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/ReleaseMetadataTests\.ps1\s*$' -Because 'CI tests release metadata behavior'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/PackageReleaseTests\.ps1\s*$' -Because 'CI tests release packaging behavior'
+Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/ReleaseGuardsTests\.ps1\s*$' -Because 'CI tests release guard behavior'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/WorkflowPolicyTests\.ps1\s*$' -Because 'CI checks its release policy'
 
 Assert-DoesNotMatch -Pattern '(?im)^\s*(contents|pull-requests|actions):\s*write\s*$' -Because 'ordinary CI cannot write repository state'

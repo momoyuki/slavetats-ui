@@ -131,6 +131,13 @@ try {
     Assert-Throws -Because 'a missing vcpkg version is rejected' -Operation {
         Get-ReleaseMetadata -Tag 'v1.8.0' -CMakePath $fixture.CMakePath -VcpkgPath $missingVersionPath
     }
+
+    $duplicateVersionPath = Join-Path $temporaryRoot 'duplicate-version-vcpkg.json'
+    '{ "name": "slavetats-ui", "version": "1.7.0", "version": "1.8.0" }' |
+        Set-Content -LiteralPath $duplicateVersionPath -Encoding utf8
+    Assert-Throws -Because 'duplicate vcpkg version keys are rejected' -Operation {
+        Get-ReleaseMetadata -Tag 'v1.8.0' -CMakePath $fixture.CMakePath -VcpkgPath $duplicateVersionPath
+    }
 }
 finally {
     Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
