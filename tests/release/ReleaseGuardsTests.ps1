@@ -112,3 +112,4 @@ if ($script:failures.Count -gt 0) {
 }
 
 Write-Host 'ReleaseGuardsTests: all checks passed.'
+$global:LASTEXITCODE = 0
