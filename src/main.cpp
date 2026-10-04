@@ -143,10 +143,19 @@ bool __stdcall onMenuHotkeyInput(RE::InputEvent* event) {
     if (!button) {
         return false;
     }
+    auto* ui = RE::UI::GetSingleton();
+    const bool canOpen = ui &&
+        !ui->GameIsPaused() &&
+        !ui->IsItemMenuOpen() &&
+        !ui->IsModalMenuOpen() &&
+        !ui->IsApplicationMenuOpen() &&
+        !ui->IsMenuOpen(RE::Console::MENU_NAME) &&
+        !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
     return g_nativeMenu->handleFrameworkHotkey(
         event->GetDevice() == RE::INPUT_DEVICE::kKeyboard,
         button->IsDown(),
-        g_hotkeyBinding->matches(button->GetIDCode()));
+        g_hotkeyBinding->matches(button->GetIDCode()),
+        canOpen);
 }
 
 // ── SKSE message handlers ─────────────────────────────────────────────────────

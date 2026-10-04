@@ -97,8 +97,11 @@ void NativeMenu::toggle() noexcept {
 }
 
 bool NativeMenu::handleFrameworkHotkey(
-    bool isKeyboard, bool isDown, bool matchesBinding) noexcept {
+    bool isKeyboard, bool isDown, bool matchesBinding, bool canOpen) noexcept {
     if (!isKeyboard || !isDown || !matchesBinding) {
+        return false;
+    }
+    if (!isOpen() && !canOpen) {
         return false;
     }
     toggle();

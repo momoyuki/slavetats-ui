@@ -277,6 +277,29 @@ void matchingFrameworkInputTogglesAndConsumesTheEvent() {
            "expected unrelated keyboard input not to be consumed");
 }
 
+void unavailableHotkeyContextDoesNotOpenOrConsumeTheEvent() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+
+    expect(!menu.handleFrameworkHotkey(true, true, true, false),
+        "expected unavailable context not to consume the matching hotkey");
+    expect(!menu.isOpen(),
+        "expected unavailable context to keep the menu closed");
+}
+
+void unavailableHotkeyContextStillAllowsClosingAnOpenWindow() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    menu.open();
+
+    expect(menu.handleFrameworkHotkey(true, true, true, false),
+        "expected an open window to consume its closing hotkey");
+    expect(!menu.isOpen(),
+        "expected an open window to close even after the context becomes unavailable");
+}
+
 void openGuardBlocksNewOpeningFromHotkeyAndSectionItem() {
     FakeMenuFrameworkPort port;
     bool allowOpen = false;
@@ -419,6 +442,10 @@ int main() {
         std::cout << "PASS render action can close owning window\n";
         matchingFrameworkInputTogglesAndConsumesTheEvent();
         std::cout << "PASS matching framework input toggles and consumes the event\n";
+        unavailableHotkeyContextDoesNotOpenOrConsumeTheEvent();
+        std::cout << "PASS unavailable hotkey context does not open or consume the event\n";
+        unavailableHotkeyContextStillAllowsClosingAnOpenWindow();
+        std::cout << "PASS unavailable hotkey context still closes an open window\n";
         openGuardBlocksNewOpeningFromHotkeyAndSectionItem();
         std::cout << "PASS open guard blocks hotkey and section-item opening\n";
         throwingOpenGuardLeavesWindowClosed();

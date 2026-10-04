@@ -24,7 +24,7 @@ public:
     [[nodiscard]] RegistrationResult registerMenu(MenuFrameworkPort& port);
     void toggle() noexcept;
     [[nodiscard]] bool handleFrameworkHotkey(
-        bool isKeyboard, bool isDown, bool matchesBinding) noexcept;
+        bool isKeyboard, bool isDown, bool matchesBinding, bool canOpen = true) noexcept;
     void open() noexcept;
     void setOpenCallback(OpenFunction callback);
     void setOpenGuard(OpenGuardFunction guard);
