@@ -16,6 +16,11 @@ public:
     RemoveTattooResult removeFromSlot(const RemoveTattooRequest& request);
     UpdateTattooAppearanceResult updateAppearance(const UpdateTattooAppearanceRequest& request);
     SetTattooLockedResult setTattooLocked(const SetTattooLockedRequest& request);
+    CaptureTattooLoadoutResult captureLoadout(const CaptureTattooLoadoutRequest& request);
+    PreviewTattooLoadoutResult previewLoadout(const PreviewTattooLoadoutRequest& request);
+    RestoreTattooLoadoutResult restoreLoadout(const RestoreTattooLoadoutRequest& request);
+    RestoreTattooLoadoutResult retryLoadoutSynchronization(
+        const RetryTattooLoadoutSynchronizationRequest& request);
 
 private:
     ITattooRuntime& m_runtime;

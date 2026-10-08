@@ -33,6 +33,18 @@ using stui::core::TattooSlotsResult;
 using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceRequest;
 using stui::core::UpdateTattooAppearanceResult;
+using stui::core::CaptureTattooLoadoutRequest;
+using stui::core::CaptureTattooLoadoutResult;
+using stui::core::PreviewTattooLoadoutRequest;
+using stui::core::PreviewTattooLoadoutResult;
+using stui::core::RestoreTattooLoadoutRequest;
+using stui::core::RestoreTattooLoadoutResult;
+using stui::core::RetryTattooLoadoutSynchronizationRequest;
+using stui::core::TattooLoadout;
+using stui::core::TattooLoadoutCaptureValue;
+using stui::core::TattooLoadoutEntry;
+using stui::core::TattooLoadoutPreviewValue;
+using stui::core::TattooLoadoutRestoreResultValue;
 
 class FakeTattooRuntime final : public ITattooRuntime {
 public:
@@ -85,6 +97,34 @@ public:
         return lockResult;
     }
 
+    CaptureTattooLoadoutResult captureLoadout(
+        const CaptureTattooLoadoutRequest& request) override {
+        capturedRequest = request;
+        ++captureCount;
+        return captureResult;
+    }
+
+    PreviewTattooLoadoutResult previewLoadout(
+        const PreviewTattooLoadoutRequest& request) override {
+        previewedRequest = request;
+        ++previewCount;
+        return previewResult;
+    }
+
+    RestoreTattooLoadoutResult restoreLoadout(
+        const RestoreTattooLoadoutRequest& request) override {
+        restoredRequest = request;
+        ++restoreCount;
+        return restoreResult;
+    }
+
+    RestoreTattooLoadoutResult retryLoadoutSynchronization(
+        const RetryTattooLoadoutSynchronizationRequest& request) override {
+        retriedRequest = request;
+        ++retryCount;
+        return retryResult;
+    }
+
     bool apiAvailableValue{true};
     bool jContainersReadyValue{true};
     int queryCount{0};
@@ -105,6 +145,18 @@ public:
     SetTattooLockedRequest lockedRequest;
     int lockCount{0};
     SetTattooLockedResult lockResult{stui::core::SetTattooLockedSuccess{}};
+    CaptureTattooLoadoutRequest capturedRequest;
+    int captureCount{0};
+    CaptureTattooLoadoutResult captureResult{TattooLoadoutCaptureValue{}};
+    PreviewTattooLoadoutRequest previewedRequest;
+    int previewCount{0};
+    PreviewTattooLoadoutResult previewResult{TattooLoadoutPreviewValue{}};
+    RestoreTattooLoadoutRequest restoredRequest;
+    int restoreCount{0};
+    RestoreTattooLoadoutResult restoreResult{TattooLoadoutRestoreResultValue{}};
+    RetryTattooLoadoutSynchronizationRequest retriedRequest;
+    int retryCount{0};
+    RestoreTattooLoadoutResult retryResult{TattooLoadoutRestoreResultValue{}};
 };
 
 void expect(bool condition, std::string_view message) {
@@ -161,6 +213,25 @@ SetTattooLockedRequest validLockRequest() {
         .actorFormId = 0x14,
         .runtimeHandle = 42,
         .locked = true,
+    };
+}
+
+TattooLoadout validLoadout() {
+    return TattooLoadout{
+        .name = "Crosshair Set",
+        .entries = {{
+            .area = TattooArea::body,
+            .slot = 2,
+            .domain = "default",
+            .section = "Marks",
+            .name = "Sigil",
+            .color = 0x102030,
+            .alpha = 0.75F,
+            .glow = 0x405060,
+            .emissiveMult = 2.0F,
+            .glossiness = 250.0F,
+            .specularStrength = 10.0F,
+        }},
     };
 }
 
@@ -824,6 +895,118 @@ void unavailableDependenciesStopLockRequest() {
         "unavailable dependencies must not reach the lock runtime");
 }
 
+void loadoutOperationsRejectZeroActorBeforeRuntime() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+
+    expectError(service.captureLoadout({.actorFormId = 0}),
+        ServiceErrorCode::actorNotFound, "Actor not found");
+    expectError(service.previewLoadout({.actorFormId = 0, .loadout = validLoadout()}),
+        ServiceErrorCode::actorNotFound, "Actor not found");
+    expectError(service.restoreLoadout({.actorFormId = 0, .loadout = validLoadout()}),
+        ServiceErrorCode::actorNotFound, "Actor not found");
+    expectError(service.retryLoadoutSynchronization({.actorFormId = 0, .retryId = 1}),
+        ServiceErrorCode::actorNotFound, "Actor not found");
+    expect(runtime.captureCount == 0 && runtime.previewCount == 0 &&
+            runtime.restoreCount == 0 && runtime.retryCount == 0,
+        "zero Actor requests must not reach the runtime");
+}
+
+void malformedLoadoutsStopBeforeRuntime() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto malformed = validLoadout();
+    malformed.entries.front().section.clear();
+    auto duplicate = validLoadout();
+    duplicate.entries.push_back(duplicate.entries.front());
+    auto invalidAppearance = validLoadout();
+    invalidAppearance.entries.front().emissiveMult =
+        std::numeric_limits<float>::infinity();
+
+    expectError(service.previewLoadout({.actorFormId = 0x1234, .loadout = malformed}),
+        ServiceErrorCode::tattooNotFound, "Tattoo identity is required");
+    expectError(service.restoreLoadout({.actorFormId = 0x1234, .loadout = duplicate}),
+        ServiceErrorCode::invalidSlot, "Tattoo loadout contains duplicate area and slot entries");
+    expectError(service.previewLoadout({.actorFormId = 0x1234, .loadout = invalidAppearance}),
+        ServiceErrorCode::updateFailed, "Tattoo loadout appearance values are invalid");
+    expect(runtime.previewCount == 0 && runtime.restoreCount == 0,
+        "invalid loadouts must not reach the runtime");
+}
+
+void structurallyInvalidLoadoutEntriesStopBeforeRuntime() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto invalidArea = validLoadout();
+    invalidArea.entries.front().area = static_cast<TattooArea>(99);
+    auto invalidSlot = validLoadout();
+    invalidSlot.entries.front().slot = -1;
+    auto invalidColor = validLoadout();
+    invalidColor.entries.front().glow = 0x1000000;
+
+    expectError(service.previewLoadout({.actorFormId = 0x1234, .loadout = invalidArea}),
+        ServiceErrorCode::invalidArea, "Invalid tattoo area");
+    expectError(service.previewLoadout({.actorFormId = 0x1234, .loadout = invalidSlot}),
+        ServiceErrorCode::invalidSlot, "Invalid tattoo slot");
+    expectError(service.restoreLoadout({.actorFormId = 0x1234, .loadout = invalidColor}),
+        ServiceErrorCode::updateFailed, "Tattoo loadout appearance values are invalid");
+    expect(runtime.previewCount == 0 && runtime.restoreCount == 0,
+        "structurally invalid entries must not reach the runtime");
+}
+
+void unavailableDependenciesStopLoadoutOperations() {
+    FakeTattooRuntime unavailableApi;
+    unavailableApi.apiAvailableValue = false;
+    SlaveTatsService apiService(unavailableApi);
+    FakeTattooRuntime unavailableJContainers;
+    unavailableJContainers.jContainersReadyValue = false;
+    SlaveTatsService jContainersService(unavailableJContainers);
+
+    expectError(apiService.captureLoadout({.actorFormId = 0x1234}),
+        ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available");
+    expectError(jContainersService.previewLoadout(
+        {.actorFormId = 0x1234, .loadout = validLoadout()}),
+        ServiceErrorCode::jContainersUnavailable, "JContainers not ready");
+    expect(unavailableApi.captureCount == 0 && unavailableJContainers.previewCount == 0,
+        "unavailable dependencies must not reach loadout runtime methods");
+}
+
+void invalidRetryStopsBeforeRuntime() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+
+    expectError(service.retryLoadoutSynchronization({.actorFormId = 0x1234, .retryId = 0}),
+        ServiceErrorCode::synchronizeFailed, "Tattoo loadout retry is invalid");
+    expect(runtime.retryCount == 0, "invalid retry must not reach the runtime");
+}
+
+void validLoadoutOperationsPreserveExplicitActorAndPayload() {
+    FakeTattooRuntime runtime;
+    runtime.captureResult = TattooLoadoutCaptureValue{.actorFormId = 0x1234};
+    runtime.previewResult = TattooLoadoutPreviewValue{.actorFormId = 0x1234};
+    runtime.restoreResult = TattooLoadoutRestoreResultValue{.actorFormId = 0x1234};
+    runtime.retryResult = TattooLoadoutRestoreResultValue{.actorFormId = 0x1234};
+    SlaveTatsService service(runtime);
+    const auto loadout = validLoadout();
+
+    const auto capture = service.captureLoadout({.actorFormId = 0x1234});
+    const auto preview = service.previewLoadout({.actorFormId = 0x1234, .loadout = loadout});
+    const auto restore = service.restoreLoadout({.actorFormId = 0x1234, .loadout = loadout});
+    const auto retry = service.retryLoadoutSynchronization({.actorFormId = 0x1234, .retryId = 77});
+
+    expect(capture && preview && restore && retry, "valid loadout operations should succeed");
+    expect(runtime.captureCount == 1 && runtime.capturedRequest.actorFormId == 0x1234,
+        "capture must preserve the explicit Crosshair Target");
+    expect(runtime.previewCount == 1 && runtime.previewedRequest.actorFormId == 0x1234 &&
+            runtime.previewedRequest.loadout == loadout,
+        "preview must preserve Actor and loadout");
+    expect(runtime.restoreCount == 1 && runtime.restoredRequest.actorFormId == 0x1234 &&
+            runtime.restoredRequest.loadout == loadout,
+        "restore must preserve Actor and loadout");
+    expect(runtime.retryCount == 1 && runtime.retriedRequest.actorFormId == 0x1234 &&
+            runtime.retriedRequest.retryId == 77,
+        "retry must preserve Actor and opaque retry ID");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -882,5 +1065,14 @@ int main() {
     failures += run("valid lock request is forwarded exactly once", validLockRequestIsForwardedExactlyOnce);
     failures += run("invalid lock request stops before runtime", invalidLockRequestStopsBeforeRuntime);
     failures += run("unavailable dependencies stop lock request", unavailableDependenciesStopLockRequest);
+    failures += run("loadout operations reject zero Actor", loadoutOperationsRejectZeroActorBeforeRuntime);
+    failures += run("malformed loadouts stop before runtime", malformedLoadoutsStopBeforeRuntime);
+    failures += run("structurally invalid loadout entries stop before runtime",
+        structurallyInvalidLoadoutEntriesStopBeforeRuntime);
+    failures += run("unavailable dependencies stop loadout operations",
+        unavailableDependenciesStopLoadoutOperations);
+    failures += run("invalid retry stops before runtime", invalidRetryStopsBeforeRuntime);
+    failures += run("valid loadout operations preserve Actor and payload",
+        validLoadoutOperationsPreserveExplicitActorAndPayload);
     return failures == 0 ? 0 : 1;
 }

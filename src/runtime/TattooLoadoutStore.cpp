@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -16,9 +15,6 @@ namespace {
 
 constexpr int kTattooLoadoutsVersion = 1;
 constexpr std::int32_t kMaximumColor = 0xFFFFFF;
-constexpr float kMaximumEmissiveMult = 10.0F;
-constexpr float kMaximumGlossiness = 1000.0F;
-constexpr float kMaximumSpecularStrength = 100.0F;
 constexpr std::array<std::string_view, 11> kRequiredTattooFields{
     "area", "slot", "domain", "section", "name", "color", "alpha", "glow",
     "emissiveMult", "glossiness", "specularStrength"};
@@ -80,37 +76,26 @@ std::optional<core::TattooArea> parseArea(const std::string_view value) {
     return std::nullopt;
 }
 
-bool validBoundedFloat(const float value, const float maximum) {
-    return std::isfinite(value) && value >= 0.0F && value <= maximum;
-}
-
 std::optional<ConfigError> validateEntry(const core::TattooLoadoutEntry& entry) {
-    if (areaOrder(entry.area) < 0) {
+    const auto validation = core::validateTattooLoadoutEntry(entry);
+    if (validation) return std::nullopt;
+
+    switch (validation.error()) {
+    case core::TattooLoadoutValidationError::invalidArea:
         return error("Tattoo loadout area is invalid.");
-    }
-    if (entry.slot < 0) {
+    case core::TattooLoadoutValidationError::invalidSlot:
         return error("Tattoo loadout slot must not be negative.");
-    }
-    if (entry.domain.empty() || entry.section.empty() || entry.name.empty()) {
+    case core::TattooLoadoutValidationError::missingIdentity:
         return error("Tattoo loadout identity fields must not be empty.");
-    }
-    if (entry.color < 0 || entry.color > kMaximumColor ||
-        entry.glow < 0 || entry.glow > kMaximumColor) {
+    case core::TattooLoadoutValidationError::invalidColor:
         return error("Tattoo loadout colors must be between 0 and 0xFFFFFF.");
+    case core::TattooLoadoutValidationError::invalidAppearance:
+        return error("Tattoo loadout appearance values are invalid.");
+    case core::TattooLoadoutValidationError::missingName:
+    case core::TattooLoadoutValidationError::duplicatePosition:
+        break;
     }
-    if (!validBoundedFloat(entry.alpha, 1.0F)) {
-        return error("Tattoo loadout alpha must be between 0 and 1.");
-    }
-    if (!validBoundedFloat(entry.emissiveMult, kMaximumEmissiveMult)) {
-        return error("Tattoo loadout emission strength must be between 0 and 10.");
-    }
-    if (!validBoundedFloat(entry.glossiness, kMaximumGlossiness)) {
-        return error("Tattoo loadout glossiness must be between 0 and 1000.");
-    }
-    if (!validBoundedFloat(entry.specularStrength, kMaximumSpecularStrength)) {
-        return error("Tattoo loadout specular strength must be between 0 and 100.");
-    }
-    return std::nullopt;
+    return error("Tattoo loadout entry is invalid.");
 }
 
 std::optional<ConfigError> validateLoadout(core::TattooLoadout& loadout) {

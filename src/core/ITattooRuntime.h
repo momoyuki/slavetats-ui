@@ -1,10 +1,76 @@
 #pragma once
 
 #include "core/TattooModels.h"
+#include "core/TattooLoadoutPlanner.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace stui::core {
+
+struct CaptureTattooLoadoutRequest {
+    std::uint32_t actorFormId{};
+};
+
+struct PreviewTattooLoadoutRequest {
+    std::uint32_t actorFormId{};
+    TattooLoadout loadout;
+};
+
+struct RestoreTattooLoadoutRequest {
+    std::uint32_t actorFormId{};
+    TattooLoadout loadout;
+};
+
+using TattooLoadoutRetryId = std::uint64_t;
+
+struct RetryTattooLoadoutSynchronizationRequest {
+    std::uint32_t actorFormId{};
+    TattooLoadoutRetryId retryId{};
+};
+
+struct TattooLoadoutCaptureValue {
+    std::uint32_t actorFormId{};
+    std::vector<TattooLoadoutEntry> entries;
+};
+
+struct TattooLoadoutPreviewValue {
+    std::uint32_t actorFormId{};
+    TattooLoadoutPlan plan;
+};
+
+struct TattooLoadoutAffectedSlot {
+    TattooArea area{TattooArea::body};
+    std::int32_t slot{-1};
+    std::string message;
+};
+
+enum class TattooLoadoutRestoreState {
+    success,
+    preflightRejected,
+    forwardSynchronizationPending,
+    rollbackSynchronizationPending,
+    rollbackComplete,
+    rollbackIncomplete,
+};
+
+struct TattooLoadoutRestoreResultValue {
+    std::uint32_t actorFormId{};
+    TattooLoadoutRestoreState state{TattooLoadoutRestoreState::success};
+    std::vector<TattooLoadoutBlocker> blockers;
+    std::vector<TattooLoadoutAffectedSlot> affectedSlots;
+    bool synchronizationRetryAvailable{};
+    std::optional<TattooLoadoutRetryId> retryId;
+};
+
+using CaptureTattooLoadoutResult =
+    std::expected<TattooLoadoutCaptureValue, ServiceError>;
+using PreviewTattooLoadoutResult =
+    std::expected<TattooLoadoutPreviewValue, ServiceError>;
+using RestoreTattooLoadoutResult =
+    std::expected<TattooLoadoutRestoreResultValue, ServiceError>;
 
 class ITattooRuntime {
 public:
@@ -20,6 +86,34 @@ public:
         const UpdateTattooAppearanceRequest& request) = 0;
     virtual SetTattooLockedResult setTattooLocked(
         const SetTattooLockedRequest& request) = 0;
+    virtual CaptureTattooLoadoutResult captureLoadout(
+        const CaptureTattooLoadoutRequest&) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::queryAvailableFailed,
+            "Tattoo loadout capture is unavailable",
+        });
+    }
+    virtual PreviewTattooLoadoutResult previewLoadout(
+        const PreviewTattooLoadoutRequest&) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::queryAvailableFailed,
+            "Tattoo loadout preview is unavailable",
+        });
+    }
+    virtual RestoreTattooLoadoutResult restoreLoadout(
+        const RestoreTattooLoadoutRequest&) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::applyFailed,
+            "Tattoo loadout restore is unavailable",
+        });
+    }
+    virtual RestoreTattooLoadoutResult retryLoadoutSynchronization(
+        const RetryTattooLoadoutSynchronizationRequest&) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::synchronizeFailed,
+            "Tattoo loadout synchronization retry is unavailable",
+        });
+    }
 };
 
 }  // namespace stui::core

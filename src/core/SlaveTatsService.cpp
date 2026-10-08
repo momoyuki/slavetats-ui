@@ -1,6 +1,7 @@
 #include "core/SlaveTatsService.h"
 
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace stui::core {
@@ -16,6 +17,29 @@ bool isValidArea(TattooArea area) noexcept {
     }
 
     return false;
+}
+
+std::optional<ServiceError> validateLoadoutValue(const TattooLoadout& loadout) {
+    const auto validation = validateTattooLoadout(loadout);
+    if (validation) return std::nullopt;
+
+    switch (validation.error()) {
+    case TattooLoadoutValidationError::missingName:
+    case TattooLoadoutValidationError::missingIdentity:
+        return ServiceError{ServiceErrorCode::tattooNotFound, "Tattoo identity is required"};
+    case TattooLoadoutValidationError::invalidArea:
+        return ServiceError{ServiceErrorCode::invalidArea, "Invalid tattoo area"};
+    case TattooLoadoutValidationError::invalidSlot:
+        return ServiceError{ServiceErrorCode::invalidSlot, "Invalid tattoo slot"};
+    case TattooLoadoutValidationError::duplicatePosition:
+        return ServiceError{ServiceErrorCode::invalidSlot,
+            "Tattoo loadout contains duplicate area and slot entries"};
+    case TattooLoadoutValidationError::invalidColor:
+    case TattooLoadoutValidationError::invalidAppearance:
+        return ServiceError{ServiceErrorCode::updateFailed,
+            "Tattoo loadout appearance values are invalid"};
+    }
+    return ServiceError{ServiceErrorCode::updateFailed, "Tattoo loadout is invalid"};
 }
 
 }  // namespace
@@ -278,6 +302,84 @@ SetTattooLockedResult SlaveTatsService::setTattooLocked(
     }
 
     return m_runtime.setTattooLocked(request);
+}
+
+CaptureTattooLoadoutResult SlaveTatsService::captureLoadout(
+    const CaptureTattooLoadoutRequest& request) {
+    if (!m_runtime.apiAvailable()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    }
+    if (!m_runtime.jContainersReady()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    }
+    if (request.actorFormId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+    return m_runtime.captureLoadout(request);
+}
+
+PreviewTattooLoadoutResult SlaveTatsService::previewLoadout(
+    const PreviewTattooLoadoutRequest& request) {
+    if (!m_runtime.apiAvailable()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    }
+    if (!m_runtime.jContainersReady()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    }
+    if (request.actorFormId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+    if (auto invalid = validateLoadoutValue(request.loadout)) {
+        return std::unexpected(std::move(*invalid));
+    }
+    return m_runtime.previewLoadout(request);
+}
+
+RestoreTattooLoadoutResult SlaveTatsService::restoreLoadout(
+    const RestoreTattooLoadoutRequest& request) {
+    if (!m_runtime.apiAvailable()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    }
+    if (!m_runtime.jContainersReady()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    }
+    if (request.actorFormId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+    if (auto invalid = validateLoadoutValue(request.loadout)) {
+        return std::unexpected(std::move(*invalid));
+    }
+    return m_runtime.restoreLoadout(request);
+}
+
+RestoreTattooLoadoutResult SlaveTatsService::retryLoadoutSynchronization(
+    const RetryTattooLoadoutSynchronizationRequest& request) {
+    if (!m_runtime.apiAvailable()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    }
+    if (!m_runtime.jContainersReady()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    }
+    if (request.actorFormId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+    if (request.retryId == 0) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::synchronizeFailed, "Tattoo loadout retry is invalid"});
+    }
+    return m_runtime.retryLoadoutSynchronization(request);
 }
 
 }  // namespace stui::core
