@@ -36,6 +36,16 @@ using RecentTattooRecordOperation = std::function<runtime::RecentTattooResult(
     const repository::RecentTattooIdentity& identity)>;
 using AppearancePresetOperation = std::function<runtime::AppearancePresetResult(
     const AppearancePresetTicket& ticket)>;
+using TattooLoadoutStoreOperation = std::function<runtime::TattooLoadoutResult(
+    const TattooLoadoutStoreTicket& ticket)>;
+using TattooLoadoutCaptureOperation = std::function<core::CaptureTattooLoadoutResult(
+    const core::CaptureTattooLoadoutRequest& request)>;
+using TattooLoadoutPreviewOperation = std::function<core::PreviewTattooLoadoutResult(
+    const core::PreviewTattooLoadoutRequest& request)>;
+using TattooLoadoutRestoreOperation = std::function<core::RestoreTattooLoadoutResult(
+    const core::RestoreTattooLoadoutRequest& request)>;
+using TattooLoadoutRetryOperation = std::function<core::RestoreTattooLoadoutResult(
+    const core::RetryTattooLoadoutSynchronizationRequest& request)>;
 
 class NativeSlotWorkflowRuntime {
 public:
@@ -52,7 +62,12 @@ public:
         FavoriteOperation favoriteOperation = {},
         RecentTattooLoadOperation recentTattooLoadOperation = {},
         RecentTattooRecordOperation recentTattooRecordOperation = {},
-        AppearancePresetOperation appearancePresetOperation = {});
+        AppearancePresetOperation appearancePresetOperation = {},
+        TattooLoadoutStoreOperation tattooLoadoutStoreOperation = {},
+        TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation = {},
+        TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
+        TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
+        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {});
 
     void pump();
 
@@ -66,9 +81,12 @@ private:
     void scheduleFavorite(FavoriteTicket ticket);
     void scheduleRecentTattoo(RecentTattooTicket ticket);
     void scheduleAppearancePreset(AppearancePresetTicket ticket);
+    void scheduleTattooLoadoutStore(TattooLoadoutStoreTicket ticket);
+    void scheduleTattooLoadoutActor(TattooLoadoutActorTicket ticket);
     void drainFavoriteCompletions();
     void drainRecentTattooCompletions();
     void drainAppearancePresetCompletions();
+    void drainTattooLoadoutCompletions();
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
@@ -83,6 +101,11 @@ private:
     RecentTattooLoadOperation m_recentTattooLoadOperation;
     RecentTattooRecordOperation m_recentTattooRecordOperation;
     AppearancePresetOperation m_appearancePresetOperation;
+    TattooLoadoutStoreOperation m_tattooLoadoutStoreOperation;
+    TattooLoadoutCaptureOperation m_tattooLoadoutCaptureOperation;
+    TattooLoadoutPreviewOperation m_tattooLoadoutPreviewOperation;
+    TattooLoadoutRestoreOperation m_tattooLoadoutRestoreOperation;
+    TattooLoadoutRetryOperation m_tattooLoadoutRetryOperation;
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::mutex m_recentTattooCompletionMutex;
@@ -91,6 +114,15 @@ private:
     std::mutex m_appearancePresetCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::AppearancePresetResult>>
         m_appearancePresetCompletions;
+    std::mutex m_tattooLoadoutCompletionMutex;
+    std::vector<std::pair<std::uint64_t, runtime::TattooLoadoutResult>>
+        m_tattooLoadoutStoreCompletions;
+    std::vector<std::pair<std::uint64_t, core::CaptureTattooLoadoutResult>>
+        m_tattooLoadoutCaptureCompletions;
+    std::vector<std::pair<std::uint64_t, core::PreviewTattooLoadoutResult>>
+        m_tattooLoadoutPreviewCompletions;
+    std::vector<std::pair<std::uint64_t, core::RestoreTattooLoadoutResult>>
+        m_tattooLoadoutRestoreCompletions;
     std::atomic_bool m_inFlight{false};
 };
 

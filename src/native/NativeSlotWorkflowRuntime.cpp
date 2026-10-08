@@ -59,7 +59,12 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     FavoriteOperation favoriteOperation,
     RecentTattooLoadOperation recentTattooLoadOperation,
     RecentTattooRecordOperation recentTattooRecordOperation,
-    AppearancePresetOperation appearancePresetOperation)
+    AppearancePresetOperation appearancePresetOperation,
+    TattooLoadoutStoreOperation tattooLoadoutStoreOperation,
+    TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation,
+    TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
+    TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
+    TattooLoadoutRetryOperation tattooLoadoutRetryOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_query(std::move(query)),
@@ -72,12 +77,18 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_favoriteOperation(std::move(favoriteOperation)),
       m_recentTattooLoadOperation(std::move(recentTattooLoadOperation)),
       m_recentTattooRecordOperation(std::move(recentTattooRecordOperation)),
-      m_appearancePresetOperation(std::move(appearancePresetOperation)) {}
+      m_appearancePresetOperation(std::move(appearancePresetOperation)),
+      m_tattooLoadoutStoreOperation(std::move(tattooLoadoutStoreOperation)),
+      m_tattooLoadoutCaptureOperation(std::move(tattooLoadoutCaptureOperation)),
+      m_tattooLoadoutPreviewOperation(std::move(tattooLoadoutPreviewOperation)),
+      m_tattooLoadoutRestoreOperation(std::move(tattooLoadoutRestoreOperation)),
+      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
     drainFavoriteCompletions();
     drainRecentTattooCompletions();
     drainAppearancePresetCompletions();
+    drainTattooLoadoutCompletions();
     m_model.advanceLivePreview(m_livePreviewClock());
 
     bool expected = false;
@@ -121,8 +132,42 @@ void NativeSlotWorkflowRuntime::pump() {
         scheduleAppearancePreset(std::move(*appearancePreset));
         return;
     }
+    if (auto loadoutStore = m_model.takeTattooLoadoutStoreRequest()) {
+        scheduleTattooLoadoutStore(std::move(*loadoutStore));
+        return;
+    }
+    if (auto loadoutActor = m_model.takeTattooLoadoutActorRequest()) {
+        scheduleTattooLoadoutActor(std::move(*loadoutActor));
+        return;
+    }
 
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::drainTattooLoadoutCompletions() {
+    std::vector<std::pair<std::uint64_t, runtime::TattooLoadoutResult>> store;
+    std::vector<std::pair<std::uint64_t, core::CaptureTattooLoadoutResult>> capture;
+    std::vector<std::pair<std::uint64_t, core::PreviewTattooLoadoutResult>> preview;
+    std::vector<std::pair<std::uint64_t, core::RestoreTattooLoadoutResult>> restore;
+    {
+        const std::scoped_lock lock(m_tattooLoadoutCompletionMutex);
+        store.swap(m_tattooLoadoutStoreCompletions);
+        capture.swap(m_tattooLoadoutCaptureCompletions);
+        preview.swap(m_tattooLoadoutPreviewCompletions);
+        restore.swap(m_tattooLoadoutRestoreCompletions);
+    }
+    for (auto& [requestId, result] : store) {
+        m_model.completeTattooLoadoutStore(requestId, std::move(result));
+    }
+    for (auto& [generation, result] : capture) {
+        m_model.completeTattooLoadoutCapture(generation, std::move(result));
+    }
+    for (auto& [generation, result] : preview) {
+        m_model.completeTattooLoadoutPreview(generation, std::move(result));
+    }
+    for (auto& [generation, result] : restore) {
+        m_model.completeTattooLoadoutRestore(generation, std::move(result));
+    }
 }
 
 void NativeSlotWorkflowRuntime::drainAppearancePresetCompletions() {
@@ -407,6 +452,129 @@ void NativeSlotWorkflowRuntime::scheduleAppearancePreset(AppearancePresetTicket 
             m_appearancePresetCompletions.emplace_back(requestId, std::unexpected(
                 runtime::ConfigError{
                     .message = "Failed to schedule appearance preset storage."}));
+        }
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleTattooLoadoutStore(
+    TattooLoadoutStoreTicket ticket) {
+    const auto requestId = ticket.requestId;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        runtime::TattooLoadoutResult result = std::unexpected(runtime::ConfigError{
+            .message = "Tattoo loadout storage operation failed."});
+        try {
+            if (m_tattooLoadoutStoreOperation) {
+                result = m_tattooLoadoutStoreOperation(ticket);
+            } else {
+                result = std::unexpected(runtime::ConfigError{
+                    .message = "Tattoo loadout storage is unavailable."});
+            }
+        } catch (...) {
+        }
+        const std::scoped_lock lock(m_tattooLoadoutCompletionMutex);
+        m_tattooLoadoutStoreCompletions.emplace_back(ticket.requestId, std::move(result));
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        {
+            const std::scoped_lock lock(m_tattooLoadoutCompletionMutex);
+            m_tattooLoadoutStoreCompletions.emplace_back(
+                requestId,
+                std::unexpected(runtime::ConfigError{
+                    .message = "Failed to schedule tattoo loadout storage."}));
+        }
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleTattooLoadoutActor(
+    TattooLoadoutActorTicket ticket) {
+    const auto generation = ticket.targetGeneration;
+    const auto operation = ticket.operation;
+    NativeSlotTask task = [this, ticket = std::move(ticket)] {
+        InFlightGuard guard(m_inFlight);
+        const auto error = core::ServiceError{
+            .code = core::ServiceErrorCode::applyFailed,
+            .message = "Tattoo loadout Actor operation failed.",
+        };
+        const std::scoped_lock lock(m_tattooLoadoutCompletionMutex);
+        try {
+            switch (ticket.operation) {
+            case TattooLoadoutActorOperation::capture:
+                m_tattooLoadoutCaptureCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    m_tattooLoadoutCaptureOperation ?
+                        m_tattooLoadoutCaptureOperation({ticket.actorFormId}) :
+                        core::CaptureTattooLoadoutResult(std::unexpected(error)));
+                return;
+            case TattooLoadoutActorOperation::preview:
+                m_tattooLoadoutPreviewCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    m_tattooLoadoutPreviewOperation && ticket.loadout ?
+                        m_tattooLoadoutPreviewOperation(
+                            {ticket.actorFormId, *ticket.loadout}) :
+                        core::PreviewTattooLoadoutResult(std::unexpected(error)));
+                return;
+            case TattooLoadoutActorOperation::restore:
+                m_tattooLoadoutRestoreCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    m_tattooLoadoutRestoreOperation && ticket.loadout ?
+                        m_tattooLoadoutRestoreOperation(
+                            {ticket.actorFormId, *ticket.loadout}) :
+                        core::RestoreTattooLoadoutResult(std::unexpected(error)));
+                return;
+            case TattooLoadoutActorOperation::retrySynchronization:
+                m_tattooLoadoutRestoreCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    m_tattooLoadoutRetryOperation && ticket.retryId ?
+                        m_tattooLoadoutRetryOperation(
+                            {ticket.actorFormId, *ticket.retryId}) :
+                        core::RestoreTattooLoadoutResult(std::unexpected(error)));
+                return;
+            }
+        } catch (...) {
+            switch (ticket.operation) {
+            case TattooLoadoutActorOperation::capture:
+                m_tattooLoadoutCaptureCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    std::unexpected(error));
+                break;
+            case TattooLoadoutActorOperation::preview:
+                m_tattooLoadoutPreviewCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    std::unexpected(error));
+                break;
+            case TattooLoadoutActorOperation::restore:
+            case TattooLoadoutActorOperation::retrySynchronization:
+                m_tattooLoadoutRestoreCompletions.emplace_back(
+                    ticket.targetGeneration,
+                    std::unexpected(error));
+                break;
+            }
+        }
+    };
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        const auto error = core::ServiceError{
+            .code = core::ServiceErrorCode::applyFailed,
+            .message = "Failed to schedule tattoo loadout Actor operation.",
+        };
+        {
+            const std::scoped_lock lock(m_tattooLoadoutCompletionMutex);
+            if (operation == TattooLoadoutActorOperation::capture) {
+                m_tattooLoadoutCaptureCompletions.emplace_back(
+                    generation, std::unexpected(error));
+            } else if (operation == TattooLoadoutActorOperation::preview) {
+                m_tattooLoadoutPreviewCompletions.emplace_back(
+                    generation, std::unexpected(error));
+            } else {
+                m_tattooLoadoutRestoreCompletions.emplace_back(
+                    generation, std::unexpected(error));
+            }
         }
         m_inFlight.store(false);
     }

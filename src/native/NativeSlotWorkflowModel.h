@@ -1,11 +1,13 @@
 #pragma once
 
 #include "core/TattooModels.h"
+#include "core/ITattooRuntime.h"
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
 #include "runtime/AppearancePresetStore.h"
 #include "runtime/FavoriteStore.h"
 #include "runtime/RecentTattooStore.h"
+#include "runtime/TattooLoadoutStore.h"
 
 #include <array>
 #include <chrono>
@@ -135,6 +137,25 @@ struct AppearancePresetTicket {
     std::string existingName;
 };
 
+enum class TattooLoadoutRequestKind { load, create, overwrite, rename, erase };
+enum class TattooLoadoutScreen { none, captureSummary, preview, restoring, result };
+enum class TattooLoadoutActorOperation { capture, preview, restore, retrySynchronization };
+
+struct TattooLoadoutStoreTicket {
+    std::uint64_t requestId{};
+    TattooLoadoutRequestKind kind{TattooLoadoutRequestKind::load};
+    std::optional<core::TattooLoadout> loadout;
+    std::string existingName;
+};
+
+struct TattooLoadoutActorTicket {
+    std::uint64_t targetGeneration{};
+    std::uint32_t actorFormId{};
+    TattooLoadoutActorOperation operation{TattooLoadoutActorOperation::capture};
+    std::optional<core::TattooLoadout> loadout;
+    std::optional<core::TattooLoadoutRetryId> retryId;
+};
+
 class NativeSlotWorkflowModel {
 public:
     static constexpr std::size_t kPageSize = 6;
@@ -202,6 +223,18 @@ public:
     [[nodiscard]] bool confirmAppearancePresetDelete();
     void cancelAppearancePresetConfirmation() noexcept;
     [[nodiscard]] bool retryAppearancePreset();
+    void initializeTattooLoadouts();
+    [[nodiscard]] const core::TattooLoadoutList& tattooLoadouts() const noexcept;
+    [[nodiscard]] std::optional<std::size_t> selectedTattooLoadout() const noexcept;
+    void selectTattooLoadout(std::optional<std::size_t> index);
+    [[nodiscard]] bool requestTattooLoadoutCapture();
+    [[nodiscard]] bool requestCreateTattooLoadout(std::string name);
+    [[nodiscard]] bool requestOverwriteTattooLoadout();
+    [[nodiscard]] bool requestRenameTattooLoadout(std::string name);
+    [[nodiscard]] bool requestDeleteTattooLoadout();
+    [[nodiscard]] bool requestTattooLoadoutPreview();
+    [[nodiscard]] bool confirmTattooLoadoutRestore();
+    [[nodiscard]] bool retryTattooLoadoutSynchronization();
 
     [[nodiscard]] std::optional<SlotQueryTicket> takeSlotQuery();
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
@@ -211,6 +244,10 @@ public:
     [[nodiscard]] std::optional<FavoriteTicket> takeFavoriteRequest();
     [[nodiscard]] std::optional<RecentTattooTicket> takeRecentTattooRequest();
     [[nodiscard]] std::optional<AppearancePresetTicket> takeAppearancePresetRequest();
+    [[nodiscard]] std::optional<TattooLoadoutStoreTicket>
+        takeTattooLoadoutStoreRequest();
+    [[nodiscard]] std::optional<TattooLoadoutActorTicket>
+        takeTattooLoadoutActorRequest();
     void completeSlotQuery(std::uint64_t generation, core::TattooSlotsResult result);
     void completeApply(std::uint64_t generation, core::ApplyTattooResult result);
     void completeRemove(std::uint64_t generation, core::RemoveTattooResult result);
@@ -223,6 +260,18 @@ public:
     void completeAppearancePreset(
         std::uint64_t requestId,
         runtime::AppearancePresetResult result);
+    void completeTattooLoadoutStore(
+        std::uint64_t requestId,
+        runtime::TattooLoadoutResult result);
+    void completeTattooLoadoutCapture(
+        std::uint64_t targetGeneration,
+        core::CaptureTattooLoadoutResult result);
+    void completeTattooLoadoutPreview(
+        std::uint64_t targetGeneration,
+        core::PreviewTattooLoadoutResult result);
+    void completeTattooLoadoutRestore(
+        std::uint64_t targetGeneration,
+        core::RestoreTattooLoadoutResult result);
 
     [[nodiscard]] SlotWorkflowScreen screen() const noexcept;
     [[nodiscard]] core::TattooArea selectedArea() const noexcept;
@@ -259,6 +308,14 @@ public:
     [[nodiscard]] std::vector<std::int32_t> inUseSlots(
         const repository::TattooDefinition& tattoo) const;
     [[nodiscard]] const core::ServiceError* error() const noexcept;
+    [[nodiscard]] TattooLoadoutScreen tattooLoadoutScreen() const noexcept;
+    [[nodiscard]] const core::TattooLoadoutCaptureValue*
+        tattooLoadoutCapture() const noexcept;
+    [[nodiscard]] const core::TattooLoadoutPreviewValue*
+        tattooLoadoutPreview() const noexcept;
+    [[nodiscard]] const core::TattooLoadoutRestoreResultValue*
+        tattooLoadoutResult() const noexcept;
+    [[nodiscard]] const runtime::ConfigError* tattooLoadoutStoreError() const noexcept;
 
 private:
     struct AreaState {
@@ -274,6 +331,7 @@ private:
     [[nodiscard]] bool hasActorSnapshot() const noexcept;
     void finishOutstandingMutation(std::uint64_t generation) noexcept;
     void scheduleSlotQuery(core::TattooArea area);
+    void scheduleNextTattooLoadoutRefresh();
     void clampSelectedPage() noexcept;
     void openPicker();
     void updateAppliedTattooIdentities();
@@ -291,6 +349,8 @@ private:
         std::int32_t slot,
         SlotWorkflowScreen originScreen);
     [[nodiscard]] bool queueAppearancePresetRequest(AppearancePresetTicket ticket);
+    [[nodiscard]] bool queueTattooLoadoutStoreRequest(TattooLoadoutStoreTicket ticket);
+    [[nodiscard]] bool queueTattooLoadoutActorRequest(TattooLoadoutActorTicket ticket);
 
     NativeCatalogBrowserModel& m_catalog;
     ActorTargetKind m_selectedTargetKind{ActorTargetKind::player};
@@ -345,6 +405,20 @@ private:
     std::optional<AppearanceEditSession> m_editAppearance;
     runtime::AppearancePresetList m_appearancePresets;
     std::optional<std::size_t> m_selectedAppearancePreset;
+    core::TattooLoadoutList m_tattooLoadouts;
+    std::optional<std::size_t> m_selectedTattooLoadout;
+    TattooLoadoutScreen m_tattooLoadoutScreen{TattooLoadoutScreen::none};
+    std::optional<core::TattooLoadoutCaptureValue> m_tattooLoadoutCapture;
+    std::optional<core::TattooLoadoutPreviewValue> m_tattooLoadoutPreview;
+    std::optional<core::TattooLoadoutRestoreResultValue> m_tattooLoadoutResult;
+    std::optional<TattooLoadoutStoreTicket> m_pendingTattooLoadoutStore;
+    std::optional<TattooLoadoutStoreTicket> m_activeTattooLoadoutStore;
+    std::optional<std::uint64_t> m_activeTattooLoadoutStoreRequestId;
+    std::optional<runtime::ConfigError> m_tattooLoadoutStoreError;
+    std::uint64_t m_tattooLoadoutStoreRequestId{};
+    std::optional<TattooLoadoutActorTicket> m_pendingTattooLoadoutActor;
+    std::optional<TattooLoadoutActorTicket> m_activeTattooLoadoutActor;
+    std::deque<core::TattooArea> m_tattooLoadoutRefreshAreas;
     bool m_menuCloseRequested{};
     std::uint64_t m_generation{};
     bool m_started{false};

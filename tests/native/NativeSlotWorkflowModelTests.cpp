@@ -2241,6 +2241,190 @@ void failedFavoriteCanRetryWithFreshRequestId() {
         "expected retry to use a fresh explicit desired-state request");
 }
 
+void loadoutPreviewUsesActorGenerationAndNeverTouchesHistory() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+
+    model.initializeTattooLoadouts();
+    const auto load = model.takeTattooLoadoutStoreRequest();
+    expect(load && load->kind == stui::native::TattooLoadoutRequestKind::load,
+        "expected initial loadout store request");
+    stui::core::TattooLoadout saved{
+        .name = "Crimson Set",
+        .entries = {{
+            .area = TattooArea::body,
+            .slot = 0,
+            .domain = "default",
+            .section = "Marks",
+            .name = "Rose",
+        }},
+    };
+    model.completeTattooLoadoutStore(load->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{saved}));
+    model.selectTattooLoadout(0);
+
+    expect(model.requestTattooLoadoutPreview(), "expected loadout preview request");
+    const auto preview = model.takeTattooLoadoutActorRequest();
+    expect(preview && preview->actorFormId == 0x14 &&
+            preview->operation == stui::native::TattooLoadoutActorOperation::preview &&
+            preview->loadout == saved,
+        "expected actor-scoped preview ticket with the selected loadout");
+    expect(!model.takeFavoriteRequest() && !model.takeRecentTattooRequest(),
+        "expected loadout workflow not to touch Favorites or Recently Used");
+
+    expect(model.selectCrosshairTarget(),
+        "expected target change while preview is only pending");
+    model.completeTattooLoadoutPreview(preview->targetGeneration,
+        stui::core::TattooLoadoutPreviewValue{
+            .actorFormId = 0x14,
+            .plan = {.actorFormId = 0x14},
+        });
+    expect(!model.tattooLoadoutPreview(),
+        "expected stale preview completion ignored after target change");
+}
+
+void loadoutRestoreRefreshesAllAreasAndPreservesSelection() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.selectArea(TattooArea::face);
+    model.initializeTattooLoadouts();
+    const auto load = model.takeTattooLoadoutStoreRequest();
+    model.completeTattooLoadoutStore(load->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{{.name = "Exact Set"}}));
+    model.selectTattooLoadout(0);
+    expect(model.requestTattooLoadoutPreview(), "expected preview intent");
+    const auto previewTicket = model.takeTattooLoadoutActorRequest();
+    model.completeTattooLoadoutPreview(previewTicket->targetGeneration,
+        stui::core::TattooLoadoutPreviewValue{
+            .actorFormId = 0x14,
+            .plan = {.actorFormId = 0x14},
+        });
+    expect(model.confirmTattooLoadoutRestore() && model.isMutationInFlight(),
+        "expected confirmed restore to block conflicting mutations");
+    const auto restoreTicket = model.takeTattooLoadoutActorRequest();
+    model.completeTattooLoadoutRestore(restoreTicket->targetGeneration,
+        stui::core::TattooLoadoutRestoreResultValue{
+            .actorFormId = 0x14,
+            .state = stui::core::TattooLoadoutRestoreState::success,
+        });
+
+    const std::vector<TattooArea> expected{
+        TattooArea::face, TattooArea::body, TattooArea::hands, TattooArea::feet};
+    for (const auto area : expected) {
+        const auto query = model.takeSlotQuery();
+        expect(query && query->area == area,
+            "expected deterministic refresh of every area after restore");
+        model.completeSlotQuery(query->generation, slots(area, 3));
+    }
+    expect(!model.takeSlotQuery() && model.selectedArea() == TattooArea::face,
+        "expected all-area refresh to retain the selected area");
+}
+
+void loadoutCaptureAndManagementUseExplicitStoreIntents() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    expect(model.requestTattooLoadoutCapture(), "expected capture intent");
+    const auto capture = model.takeTattooLoadoutActorRequest();
+    expect(capture && capture->operation ==
+            stui::native::TattooLoadoutActorOperation::capture,
+        "expected explicit capture ticket");
+    std::vector<stui::core::TattooLoadoutEntry> entries{{
+        .area = TattooArea::body,
+        .slot = 2,
+        .domain = "default",
+        .section = "Marks",
+        .name = "Rose",
+    }};
+    model.completeTattooLoadoutCapture(capture->targetGeneration,
+        stui::core::TattooLoadoutCaptureValue{
+            .actorFormId = 0x14,
+            .entries = entries,
+        });
+    expect(model.tattooLoadoutScreen() ==
+            stui::native::TattooLoadoutScreen::captureSummary &&
+            model.tattooLoadoutCapture() &&
+            model.tattooLoadoutCapture()->entries == entries,
+        "expected exact capture summary state");
+
+    expect(model.requestCreateTattooLoadout("  Crimson Set  "),
+        "expected create intent from captured values");
+    const auto create = model.takeTattooLoadoutStoreRequest();
+    expect(create && create->kind == stui::native::TattooLoadoutRequestKind::create &&
+            create->loadout && create->loadout->name == "Crimson Set" &&
+            create->loadout->entries == entries,
+        "expected trimmed name and exact captured entries in create ticket");
+    model.completeTattooLoadoutStore(create->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{*create->loadout}));
+    expect(model.selectedTattooLoadout() == 0,
+        "expected created loadout selected from committed store list");
+
+    expect(model.requestOverwriteTattooLoadout(), "expected overwrite intent");
+    const auto overwrite = model.takeTattooLoadoutStoreRequest();
+    expect(overwrite && overwrite->kind ==
+            stui::native::TattooLoadoutRequestKind::overwrite,
+        "expected explicit overwrite store ticket");
+    model.completeTattooLoadoutStore(overwrite->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{*overwrite->loadout}));
+
+    expect(model.requestRenameTattooLoadout("Ruby Set"), "expected rename intent");
+    const auto rename = model.takeTattooLoadoutStoreRequest();
+    expect(rename && rename->kind == stui::native::TattooLoadoutRequestKind::rename &&
+            rename->existingName == "Crimson Set" && rename->loadout &&
+            rename->loadout->name == "Ruby Set",
+        "expected rename ticket to preserve old and new names");
+    model.completeTattooLoadoutStore(rename->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{{.name = "Ruby Set", .entries = entries}}));
+
+    expect(model.requestDeleteTattooLoadout(), "expected delete intent");
+    const auto erase = model.takeTattooLoadoutStoreRequest();
+    expect(erase && erase->kind == stui::native::TattooLoadoutRequestKind::erase &&
+            erase->existingName == "Ruby Set",
+        "expected explicit erase ticket for selected loadout");
+}
+
+void loadoutSynchronizationRetryKeepsOpaqueIdAndDoesNotRepreview() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.initializeTattooLoadouts();
+    const auto load = model.takeTattooLoadoutStoreRequest();
+    model.completeTattooLoadoutStore(load->requestId,
+        stui::runtime::TattooLoadoutResult(
+            stui::core::TattooLoadoutList{{.name = "Exact Set"}}));
+    model.selectTattooLoadout(0);
+    expect(model.requestTattooLoadoutPreview(), "expected preview intent");
+    const auto preview = model.takeTattooLoadoutActorRequest();
+    model.completeTattooLoadoutPreview(preview->targetGeneration,
+        stui::core::TattooLoadoutPreviewValue{
+            .actorFormId = 0x14,
+            .plan = {.actorFormId = 0x14},
+        });
+    expect(model.confirmTattooLoadoutRestore(), "expected restore confirmation");
+    const auto restore = model.takeTattooLoadoutActorRequest();
+    model.completeTattooLoadoutRestore(restore->targetGeneration,
+        stui::core::TattooLoadoutRestoreResultValue{
+            .actorFormId = 0x14,
+            .state = stui::core::TattooLoadoutRestoreState::forwardSynchronizationPending,
+            .synchronizationRetryAvailable = true,
+            .retryId = 77,
+        });
+    expect(!model.takeSlotQuery() && model.retryTattooLoadoutSynchronization(),
+        "expected pending synchronization not to refresh and to expose retry");
+    const auto retry = model.takeTattooLoadoutActorRequest();
+    expect(retry && retry->operation ==
+            stui::native::TattooLoadoutActorOperation::retrySynchronization &&
+            retry->retryId == 77 && !retry->loadout,
+        "expected retry ticket to carry only Actor and opaque retry ID");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -2274,6 +2458,14 @@ int main() {
     failures += run("failed latest preview still restores previously written appearance", failedLatestPreviewStillRestoresPreviouslyWrittenAppearance);
     failures += run("favorite requests wait for successful completion", favoriteRequestsDoNotMutateCatalogUntilSuccessfulCompletion);
     failures += run("failed favorite can retry with fresh request", failedFavoriteCanRetryWithFreshRequestId);
+    failures += run("loadout preview is actor-scoped and history-neutral",
+        loadoutPreviewUsesActorGenerationAndNeverTouchesHistory);
+    failures += run("loadout restore refreshes all areas and preserves selection",
+        loadoutRestoreRefreshesAllAreasAndPreservesSelection);
+    failures += run("loadout capture and management use explicit store intents",
+        loadoutCaptureAndManagementUseExplicitStoreIntents);
+    failures += run("loadout synchronization retry keeps opaque ID",
+        loadoutSynchronizationRetryKeepsOpaqueIdAndDoesNotRepreview);
     failures += run("explicit Player and Crosshair resolution never fallback", explicitPlayerAndCrosshairResolutionNeverFallback);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);

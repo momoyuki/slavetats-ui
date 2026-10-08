@@ -191,6 +191,40 @@ struct Fixture {
                       throw std::runtime_error("appearance preset failed");
                   }
                   return appearancePresetResult;
+              },
+              [this](const stui::native::TattooLoadoutStoreTicket& ticket) {
+                  ++loadoutStoreCount;
+                  loadoutStoreTicket = ticket;
+                  return loadoutStoreResult;
+              },
+              [this](const stui::core::CaptureTattooLoadoutRequest& request) {
+                  ++loadoutCaptureCount;
+                  return stui::core::CaptureTattooLoadoutResult(
+                      stui::core::TattooLoadoutCaptureValue{
+                          .actorFormId = request.actorFormId,
+                      });
+              },
+              [this](const stui::core::PreviewTattooLoadoutRequest& request) {
+                  ++loadoutPreviewCount;
+                  return stui::core::PreviewTattooLoadoutResult(
+                      stui::core::TattooLoadoutPreviewValue{
+                          .actorFormId = request.actorFormId,
+                          .plan = {.actorFormId = request.actorFormId},
+                      });
+              },
+              [this](const stui::core::RestoreTattooLoadoutRequest& request) {
+                  ++loadoutRestoreCount;
+                  return stui::core::RestoreTattooLoadoutResult(
+                      stui::core::TattooLoadoutRestoreResultValue{
+                          .actorFormId = request.actorFormId,
+                      });
+              },
+              [this](const stui::core::RetryTattooLoadoutSynchronizationRequest& request) {
+                  ++loadoutRetryCount;
+                  return stui::core::RestoreTattooLoadoutResult(
+                      stui::core::TattooLoadoutRestoreResultValue{
+                          .actorFormId = request.actorFormId,
+                      });
               }) {}
 
     stui::repository::TattooCatalogSnapshot snapshot =
@@ -213,6 +247,11 @@ struct Fixture {
     std::size_t recentLoadCount{};
     std::size_t recentRecordCount{};
     std::size_t appearancePresetCount{};
+    std::size_t loadoutStoreCount{};
+    std::size_t loadoutCaptureCount{};
+    std::size_t loadoutPreviewCount{};
+    std::size_t loadoutRestoreCount{};
+    std::size_t loadoutRetryCount{};
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
@@ -234,7 +273,10 @@ struct Fixture {
     stui::runtime::RecentTattooResult recentRecordResult{stui::runtime::RecentTattooList{}};
     stui::runtime::AppearancePresetResult appearancePresetResult{
         stui::runtime::AppearancePresetList{}};
+    stui::runtime::TattooLoadoutResult loadoutStoreResult{
+        stui::core::TattooLoadoutList{}};
     stui::native::AppearancePresetTicket appearancePresetTicket;
+    stui::native::TattooLoadoutStoreTicket loadoutStoreTicket;
     stui::repository::RecentTattooIdentity recordedRecentIdentity;
     std::chrono::steady_clock::time_point now{};
     NativeSlotWorkflowRuntime runtime;
@@ -1024,6 +1066,38 @@ void missingAppearancePresetOperationCompletesAsRetryableError() {
         "expected missing preset operation exposed as retryable error");
 }
 
+void loadoutStoreAndPreviewPublishThroughMailboxes() {
+    Fixture fixture;
+    stui::core::TattooLoadout saved{.name = "Crimson Set"};
+    fixture.loadoutStoreResult = stui::core::TattooLoadoutList{saved};
+
+    fixture.model.initializeTattooLoadouts();
+    fixture.runtime.pump();
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 1 && fixture.loadoutStoreCount == 0,
+        "expected one loadout store task under the single in-flight guard");
+    fixture.scheduled.back()();
+    expect(fixture.loadoutStoreCount == 1 && fixture.model.tattooLoadouts().empty(),
+        "expected worker completion held in the loadout mailbox");
+    fixture.runtime.pump();
+    expect(fixture.model.tattooLoadouts() == stui::core::TattooLoadoutList{saved},
+        "expected loadout store completion published on presentation pump");
+
+    fixture.model.selectTattooLoadout(0);
+    expect(fixture.model.requestTattooLoadoutPreview(),
+        "expected selected loadout preview intent");
+    fixture.runtime.pump();
+    expect(fixture.scheduled.size() == 2 && fixture.loadoutPreviewCount == 0,
+        "expected preview scheduled once");
+    fixture.scheduled.back()();
+    expect(fixture.loadoutPreviewCount == 1 && !fixture.model.tattooLoadoutPreview(),
+        "expected Actor completion held in the loadout mailbox");
+    fixture.runtime.pump();
+    expect(fixture.model.tattooLoadoutPreview() &&
+            fixture.model.tattooLoadoutPreview()->actorFormId == 0x14,
+        "expected preview completion published for the explicit Player Actor");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -1079,5 +1153,7 @@ int main() {
         appearancePresetCompletionPublishesOnlyOnNextPumpAndMapsFailures);
     failures += run("missing appearance preset operation is retryable",
         missingAppearancePresetOperationCompletesAsRetryableError);
+    failures += run("loadout store and preview publish through mailboxes",
+        loadoutStoreAndPreviewPublishThroughMailboxes);
     return failures == 0 ? 0 : 1;
 }
