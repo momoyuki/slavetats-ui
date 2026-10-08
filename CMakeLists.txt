@@ -42,6 +42,7 @@ set(headers
     src/runtime/RecentTattooStore.h
     src/runtime/AppearancePresetStore.h
     src/runtime/TattooLoadoutStore.h
+    src/runtime/TattooLoadoutOrchestration.h
     src/runtime/UpdateTattooAppearanceOrchestration.h
     src/runtime/SlaveTatsRuntime.h
     src/repository/TattooCatalogLoader.h
@@ -80,6 +81,7 @@ set(sources
     src/runtime/RecentTattooStore.cpp
     src/runtime/AppearancePresetStore.cpp
     src/runtime/TattooLoadoutStore.cpp
+    src/runtime/TattooLoadoutOrchestration.cpp
     src/runtime/UpdateTattooAppearanceOrchestration.cpp
     src/runtime/SlaveTatsRuntime.cpp
     src/repository/TattooCatalogLoader.cpp
@@ -278,6 +280,13 @@ if(BUILD_TESTING)
     )
     target_include_directories(TattooLoadoutPlannerTests PRIVATE src)
     add_test(NAME TattooLoadoutPlannerTests COMMAND TattooLoadoutPlannerTests)
+
+    add_executable(TattooLoadoutOrchestrationTests
+        src/runtime/TattooLoadoutOrchestration.cpp
+        tests/runtime/TattooLoadoutOrchestrationTests.cpp
+    )
+    target_include_directories(TattooLoadoutOrchestrationTests PRIVATE src)
+    add_test(NAME TattooLoadoutOrchestrationTests COMMAND TattooLoadoutOrchestrationTests)
 
     add_executable(OverlaySlotConfigurationTests
         src/runtime/OverlaySlotConfiguration.cpp
