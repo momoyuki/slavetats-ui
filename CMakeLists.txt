@@ -31,6 +31,7 @@ set(headers
     src/core/SlaveTatsService.h
     src/core/TattooModels.h
     src/core/TattooLoadoutModels.h
+    src/core/TattooLoadoutPlanner.h
     src/runtime/OverlaySlotConfiguration.h
     src/runtime/AppliedTattooHandleMembership.h
     src/runtime/SlaveTatsAlpha.h
@@ -70,6 +71,7 @@ set(sources
     src/native/NativeThumbnailRuntime.cpp
     src/native/D3D11NativeThumbnailSource.cpp
     src/core/SlaveTatsService.cpp
+    src/core/TattooLoadoutPlanner.cpp
     src/runtime/OverlaySlotConfiguration.cpp
     src/runtime/ApplicationRuntime.cpp
     src/runtime/HotkeyBinding.cpp
@@ -269,6 +271,13 @@ if(BUILD_TESTING)
     )
     target_include_directories(SlaveTatsUICoreTests PRIVATE src)
     add_test(NAME SlaveTatsUICoreTests COMMAND SlaveTatsUICoreTests)
+
+    add_executable(TattooLoadoutPlannerTests
+        src/core/TattooLoadoutPlanner.cpp
+        tests/core/TattooLoadoutPlannerTests.cpp
+    )
+    target_include_directories(TattooLoadoutPlannerTests PRIVATE src)
+    add_test(NAME TattooLoadoutPlannerTests COMMAND TattooLoadoutPlannerTests)
 
     add_executable(OverlaySlotConfigurationTests
         src/runtime/OverlaySlotConfiguration.cpp
