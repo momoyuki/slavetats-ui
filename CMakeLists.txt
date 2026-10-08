@@ -328,8 +328,10 @@ if(BUILD_TESTING)
     )
 
     add_executable(SlaveTatsRuntimeAppearanceTests
+        src/core/TattooLoadoutPlanner.cpp
         src/runtime/OverlaySlotConfiguration.cpp
         src/runtime/SlaveTatsRuntime.cpp
+        src/runtime/TattooLoadoutOrchestration.cpp
         src/runtime/UpdateTattooAppearanceOrchestration.cpp
         tests/runtime/SlaveTatsRuntimeAppearanceTests.cpp
     )
@@ -341,9 +343,11 @@ if(BUILD_TESTING)
     )
 
     add_executable(ApplicationRuntimeTests
+        src/core/TattooLoadoutPlanner.cpp
         src/runtime/ApplicationRuntime.cpp
         src/runtime/OverlaySlotConfiguration.cpp
         src/runtime/SlaveTatsRuntime.cpp
+        src/runtime/TattooLoadoutOrchestration.cpp
         src/runtime/UpdateTattooAppearanceOrchestration.cpp
         src/core/SlaveTatsService.cpp
         tests/runtime/ApplicationRuntimeTests.cpp

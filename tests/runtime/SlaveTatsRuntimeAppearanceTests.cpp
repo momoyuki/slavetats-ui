@@ -61,6 +61,7 @@ struct QueryState {
     std::int32_t nextArrayHandle{900};
     std::int32_t availableTattoo{};
     std::int32_t slotTattoo{};
+    std::int32_t appliedTattoo{73};
     std::map<std::int32_t, std::vector<std::int32_t>> objectArrays;
     std::map<std::int32_t, std::vector<std::int32_t>> integerArrays;
     std::map<TattooFieldKey, std::int32_t> integers;
@@ -222,11 +223,13 @@ std::int32_t getAppliedTattooInSlot(RE::Actor*, RE::BSFixedString, std::int32_t 
 
 std::int32_t addAndGetTattoo(RE::Actor*, int, int, bool, bool, bool) {
     ++g_queryState->applyCount;
-    return 73;
+    g_queryState->slotTattoo = g_queryState->appliedTattoo;
+    return g_queryState->appliedTattoo;
 }
 
 bool removeTattooFromSlot(RE::Actor*, RE::BSFixedString, int, bool, bool) {
     ++g_queryState->removeCount;
+    g_queryState->slotTattoo = 0;
     return false;
 }
 
@@ -319,6 +322,7 @@ struct BindingState {
     std::string ineffectiveReadbackKey;
     std::int32_t updatedValue{};
     std::string updatedPath;
+    QueryState* queryMirror{};
 };
 
 void expect(bool condition, std::string_view message) {
@@ -344,6 +348,7 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
             ++state.integerWriteCount;
             state.appearanceWriteKeys.emplace_back(key);
             state.integers[{handle, key}] = value;
+            if (state.queryMirror) state.queryMirror->integers[{handle, key}] = value;
         },
         .getTattooInt = [&state](
                             std::int32_t handle,
@@ -360,6 +365,7 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
             ++state.floatWriteCount;
             state.appearanceWriteKeys.emplace_back(key);
             state.floats[{handle, key}] = value;
+            if (state.queryMirror) state.queryMirror->floats[{handle, key}] = value;
         },
         .getTattooFloat = [&state](std::int32_t handle, const char* key, float fallback) {
             state.appearanceReadKeys.emplace_back(key);
@@ -368,6 +374,21 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
             }
             const auto found = state.floats.find({handle, key});
             return found == state.floats.end() ? fallback : found->second;
+        },
+        .setTattooString = [&state](
+                               std::int32_t handle,
+                               const char* key,
+                               const char* value) {
+            if (state.queryMirror) state.queryMirror->strings[{handle, key}] = value;
+        },
+        .getTattooString = [&state](
+                               std::int32_t handle,
+                               const char* key,
+                               const char* fallback) {
+            if (!state.queryMirror) return std::string(fallback);
+            const auto found = state.queryMirror->strings.find({handle, key});
+            return found == state.queryMirror->strings.end() ?
+                std::string(fallback) : found->second;
         },
         .setActorInt = [&state](void* actor, const char* path, std::int32_t value) {
             ++state.updatedWriteCount;
@@ -545,6 +566,201 @@ void runtimeQueriesReadMissingAdvancedKeysWithDocumentedDefaults() {
         "expected legacy occupied slot tattoo snapshot");
     expectAdvancedDefaults(*slots->slots.front().tattoo);
     expectAdvancedKeysReadWithDefaults(queryState, queryState.slotTattoo);
+}
+
+void capturesManagedTattoosAcrossAllFourAreas() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.slotTattoo = 74;
+    seedAdvancedTattoo(queryState, queryState.slotTattoo);
+
+    const auto captured = runtime.captureLoadout({.actorFormId = 0x14});
+
+    expect(captured.has_value(), "expected four-area tattoo loadout capture");
+    expect(captured->actorFormId == 0x14,
+        "expected capture to preserve the explicit actor ID");
+    expect(captured->entries.size() == 4,
+        "expected one managed tattoo captured from each configured area");
+    const std::vector<stui::core::TattooArea> expectedAreas{
+        stui::core::TattooArea::body,
+        stui::core::TattooArea::face,
+        stui::core::TattooArea::hands,
+        stui::core::TattooArea::feet,
+    };
+    for (std::size_t index = 0; index < expectedAreas.size(); ++index) {
+        const auto& entry = captured->entries[index];
+        expect(entry.area == expectedAreas[index] && entry.slot == 0,
+            "expected deterministic area and slot ordering");
+        expect(entry.domain == "default" && entry.section == "Test Section" &&
+                entry.name == "Test Tattoo",
+            "expected captured persistent tattoo identity");
+        expect(entry.color == 0xA0B0C0 && entry.alpha == 0.75F &&
+                entry.glow == 0x102030 && entry.emissiveMult == 3.75F &&
+                entry.glossiness == 2.5F && entry.specularStrength == 1.25F,
+            "expected captured persistent appearance fields");
+    }
+}
+
+void previewsLoadoutFromFreshFourAreaSnapshotsAndCatalog() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.availableTattoo = 73;
+    queryState.slotTattoo = 74;
+    seedAdvancedTattoo(queryState, queryState.availableTattoo);
+    seedAdvancedTattoo(queryState, queryState.slotTattoo);
+
+    stui::core::TattooLoadout loadout{
+        .name = "Exact Set",
+        .entries = {{
+            .area = stui::core::TattooArea::body,
+            .slot = 0,
+            .domain = "default",
+            .section = "Test Section",
+            .name = "Test Tattoo",
+            .color = 0xA0B0C0,
+            .alpha = 0.75F,
+            .glow = 0x102030,
+            .emissiveMult = 3.75F,
+            .glossiness = 2.5F,
+            .specularStrength = 1.25F,
+        }},
+    };
+
+    const auto preview = runtime.previewLoadout({
+        .actorFormId = 0x14,
+        .loadout = std::move(loadout),
+    });
+
+    expect(preview.has_value(), "expected fresh runtime loadout Preflight");
+    expect(preview->actorFormId == 0x14 && preview->plan.actorFormId == 0x14,
+        "expected Preflight to preserve the explicit actor ID");
+    expect(!preview->plan.actions.empty() &&
+            preview->plan.actions.front().kind ==
+                stui::core::TattooLoadoutActionKind::unchanged,
+        "expected planner to classify the exact target slot as unchanged");
+    expect(queryState.applyCount == 0 && queryState.removeCount == 0 &&
+            queryState.synchronizeCount == 0,
+        "expected Preflight to perform no mutation or synchronization");
+}
+
+void restoresEmptyLoadoutWithOneSynchronization() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.slotTattoo = 74;
+    seedAdvancedTattoo(queryState, queryState.slotTattoo);
+
+    const auto restored = runtime.restoreLoadout({
+        .actorFormId = 0x14,
+        .loadout = {.name = "Empty Set"},
+    });
+
+    expect(restored.has_value() &&
+            restored->state == stui::core::TattooLoadoutRestoreState::success,
+        "expected empty loadout restore success");
+    expect(queryState.removeCount == 4,
+        "expected one no-sync removal for each occupied managed area");
+    expect(bindingState.updatedWriteCount == 1 && bindingState.synchronizeCount == 1,
+        "expected batch restore to mark once and synchronize exactly once");
+}
+
+void restoresAddedTattooWithVerifiedAppearanceAndOneSynchronization() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    bindingState.queryMirror = &queryState;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.availableTattoo = 73;
+    seedBaseTattoo(queryState, queryState.availableTattoo);
+    queryState.strings[{73, "area"}] = "BODY";
+    queryState.appliedTattoo = 74;
+    seedBaseTattoo(queryState, queryState.appliedTattoo);
+    queryState.strings[{74, "area"}] = "BODY";
+    bindingState.handles = {74};
+
+    const auto restored = runtime.restoreLoadout({
+        .actorFormId = 0x14,
+        .loadout = {
+            .name = "Added Set",
+            .entries = {{
+                .area = stui::core::TattooArea::body,
+                .slot = 0,
+                .domain = "default",
+                .section = "Test Section",
+                .name = "Test Tattoo",
+                .color = 0x123456,
+                .alpha = 0.25F,
+                .glow = 0x102030,
+                .emissiveMult = 3.0F,
+                .glossiness = 2.5F,
+                .specularStrength = 1.25F,
+            }},
+        },
+    });
+
+    expect(restored.has_value(), "expected exact added tattoo restore result");
+    expect(restored->state == stui::core::TattooLoadoutRestoreState::success,
+        std::string("expected exact added tattoo restore success, state=") +
+            std::to_string(static_cast<int>(restored->state)));
+    expect(queryState.applyCount == 1 && queryState.removeCount == 0,
+        "expected exactly one no-sync add");
+    expect(bindingState.integerWriteCount == 2 && bindingState.floatWriteCount == 4,
+        "expected all six appearance fields written and verified");
+    expect(bindingState.updatedWriteCount == 1 && bindingState.synchronizeCount == 1,
+        "expected one batch synchronization after the add");
+}
+
+void retriesForwardSynchronizationWithoutRepeatingWrites() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    bindingState.synchronizationFailed = true;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.slotTattoo = 74;
+    seedAdvancedTattoo(queryState, queryState.slotTattoo);
+    const auto pending = runtime.restoreLoadout({
+        .actorFormId = 0x14,
+        .loadout = {.name = "Empty Set"},
+    });
+    expect(pending &&
+            pending->state ==
+                stui::core::TattooLoadoutRestoreState::forwardSynchronizationPending &&
+            pending->retryId.has_value(),
+        "expected forward synchronization-only retry context");
+    const int writesBeforeRetry = queryState.removeCount;
+
+    bindingState.synchronizationFailed = false;
+    const auto retried = runtime.retryLoadoutSynchronization({
+        .actorFormId = 0x14,
+        .retryId = *pending->retryId,
+    });
+
+    expect(retried && retried->state == stui::core::TattooLoadoutRestoreState::success,
+        "expected synchronization-only retry success");
+    expect(queryState.removeCount == writesBeforeRetry,
+        "expected synchronization retry not to repeat completed removals");
+    expect(bindingState.synchronizeCount == 2,
+        "expected one failed synchronization and one retry");
 }
 
 void productionDelegationQueriesRequestedActorAndWritesExactAppearance() {
@@ -937,6 +1153,16 @@ int main() {
         runtimeQueriesPreserveAdvancedSnapshotFields);
     failures += run("runtime queries read missing advanced keys with documented defaults",
         runtimeQueriesReadMissingAdvancedKeysWithDocumentedDefaults);
+    failures += run("runtime captures managed tattoos across all four areas",
+        capturesManagedTattoosAcrossAllFourAreas);
+    failures += run("runtime previews loadout from fresh snapshots and catalog",
+        previewsLoadoutFromFreshFourAreaSnapshotsAndCatalog);
+    failures += run("runtime restores empty loadout with one synchronization",
+        restoresEmptyLoadoutWithOneSynchronization);
+    failures += run("runtime restores added tattoo with exact appearance",
+        restoresAddedTattooWithVerifiedAppearanceAndOneSynchronization);
+    failures += run("runtime retries forward synchronization without repeated writes",
+        retriesForwardSynchronizationWithoutRepeatingWrites);
     failures += run("production delegation queries actor and writes exact appearance",
         productionDelegationQueriesRequestedActorAndWritesExactAppearance);
     failures += run("glowing appearance restores zero glow and emission with verified writes",

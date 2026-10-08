@@ -6,7 +6,9 @@
 #include "SKSE/SKSE.h"
 
 #include <expected>
+#include <array>
 #include <limits>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -47,6 +49,19 @@ const char* areaName(core::TattooArea area) noexcept {
     }
 
     return nullptr;
+}
+
+bool sameRollbackTattoo(
+    const core::TattooEntry& current,
+    const core::TattooEntry& expected) {
+    return current.domain == expected.domain && current.section == expected.section &&
+        current.name == expected.name && current.texturePath == expected.texturePath &&
+        current.color == expected.color && current.locked == expected.locked &&
+        current.alpha == expected.alpha && current.glow == expected.glow &&
+        current.glossiness == expected.glossiness &&
+        current.specularStrength == expected.specularStrength &&
+        current.bump == expected.bump && current.glowTexture == expected.glowTexture &&
+        current.emissiveMult == expected.emissiveMult;
 }
 
 std::expected<std::unordered_set<int>, core::ServiceError> queryExternalSlots(
@@ -334,13 +349,21 @@ core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain
 core::TattooSlotsResult SlaveTatsRuntime::querySlots(
     std::uint32_t actorFormId,
     core::TattooArea area) {
-    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(actorFormId));
+    auto* actor = resolveLoadedActor(actorFormId);
     if (!actor) {
         return std::unexpected(core::ServiceError{
             core::ServiceErrorCode::actorNotFound,
             "Actor not found",
         });
     }
+    return querySlotsForActor(actorFormId, area, actor);
+}
+
+core::TattooSlotsResult SlaveTatsRuntime::querySlotsForActor(
+    const std::uint32_t actorFormId,
+    const core::TattooArea area,
+    void* actorHandle) {
+    auto* actor = static_cast<RE::Actor*>(actorHandle);
 
     const char* areaString = areaName(area);
     if (!areaString) {
@@ -688,6 +711,429 @@ core::SetTattooLockedResult SlaveTatsRuntime::setTattooLocked(
         .runtimeHandle = request.runtimeHandle,
         .locked = request.locked,
     };
+}
+
+core::CaptureTattooLoadoutResult SlaveTatsRuntime::captureLoadout(
+    const core::CaptureTattooLoadoutRequest& request) {
+    core::TattooLoadoutCaptureValue captured{.actorFormId = request.actorFormId};
+    constexpr std::array areas{
+        core::TattooArea::body,
+        core::TattooArea::face,
+        core::TattooArea::hands,
+        core::TattooArea::feet,
+    };
+    auto* actor = resolveLoadedActor(request.actorFormId);
+    if (!actor) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+
+    for (const auto area : areas) {
+        auto snapshot = querySlotsForActor(request.actorFormId, area, actor);
+        if (!snapshot) {
+            return std::unexpected(std::move(snapshot.error()));
+        }
+        for (const auto& slot : snapshot->slots) {
+            if (slot.occupancy != core::SlotOccupancy::slaveTats || !slot.tattoo) {
+                continue;
+            }
+            const auto& tattoo = *slot.tattoo;
+            captured.entries.push_back(core::TattooLoadoutEntry{
+                .area = area,
+                .slot = slot.index,
+                .domain = tattoo.domain,
+                .section = tattoo.section,
+                .name = tattoo.name,
+                .color = tattoo.color,
+                .alpha = tattoo.alpha,
+                .glow = tattoo.glow,
+                .emissiveMult = tattoo.emissiveMult,
+                .glossiness = tattoo.glossiness,
+                .specularStrength = tattoo.specularStrength,
+            });
+        }
+    }
+    return captured;
+}
+
+core::PreviewTattooLoadoutResult SlaveTatsRuntime::previewLoadout(
+    const core::PreviewTattooLoadoutRequest& request) {
+    auto plan = preflight(request);
+    if (!plan) {
+        return std::unexpected(core::ServiceError{
+            .code = core::ServiceErrorCode::applyFailed,
+            .message = "Tattoo loadout Preflight found blocking conflicts",
+        });
+    }
+    return core::TattooLoadoutPreviewValue{
+        .actorFormId = request.actorFormId,
+        .plan = std::move(*plan),
+    };
+}
+
+core::TattooLoadoutPlanResult SlaveTatsRuntime::preflight(
+    const core::PreviewTattooLoadoutRequest& request) {
+    constexpr std::array areas{
+        core::TattooArea::body,
+        core::TattooArea::face,
+        core::TattooArea::hands,
+        core::TattooArea::feet,
+    };
+    core::TattooLoadoutPlanningInput input{
+        .actorFormId = request.actorFormId,
+        .loadout = request.loadout,
+    };
+    auto* actor = resolveLoadedActor(request.actorFormId);
+    if (!actor) {
+        return std::unexpected(std::vector<core::TattooLoadoutBlocker>{{
+            .code = core::TattooLoadoutBlockerCode::actorMismatch,
+            .slot = -1,
+            .message = "Actor not found",
+        }});
+    }
+    for (std::size_t index = 0; index < areas.size(); ++index) {
+        auto snapshot = querySlotsForActor(request.actorFormId, areas[index], actor);
+        if (!snapshot) {
+            return std::unexpected(std::vector<core::TattooLoadoutBlocker>{{
+                .code = core::TattooLoadoutBlockerCode::actorMismatch,
+                .area = areas[index],
+                .slot = -1,
+                .message = snapshot.error().message,
+            }});
+        }
+        input.slots[index] = std::move(*snapshot);
+    }
+
+    std::set<std::string> domains;
+    for (const auto& entry : request.loadout.entries) {
+        domains.insert(entry.domain);
+    }
+    for (const auto& domain : domains) {
+        auto available = queryAvailable(domain);
+        if (!available) {
+            return std::unexpected(std::vector<core::TattooLoadoutBlocker>{{
+                .code = core::TattooLoadoutBlockerCode::missingTattoo,
+                .message = available.error().message,
+            }});
+        }
+        input.available.insert(
+            input.available.end(),
+            std::make_move_iterator(available->begin()),
+            std::make_move_iterator(available->end()));
+    }
+
+    auto plan = core::planTattooLoadout(input);
+    if (plan) m_loadoutActorFormId = request.actorFormId;
+    return plan;
+}
+
+core::RestoreTattooLoadoutResult SlaveTatsRuntime::restoreLoadout(
+    const core::RestoreTattooLoadoutRequest& request) {
+    return executeTattooLoadout(request, *this, m_loadoutRetries);
+}
+
+core::RestoreTattooLoadoutResult SlaveTatsRuntime::retryLoadoutSynchronization(
+    const core::RetryTattooLoadoutSynchronizationRequest& request) {
+    return runtime::retryTattooLoadoutSynchronization(
+        request, *this, m_loadoutRetries);
+}
+
+std::expected<core::TattooLoadoutRollbackSnapshot, core::ServiceError>
+SlaveTatsRuntime::captureRollback(const core::TattooLoadoutPlan& plan) {
+    core::TattooLoadoutRollbackSnapshot snapshot{.actorFormId = plan.actorFormId};
+    constexpr std::array areas{
+        core::TattooArea::body,
+        core::TattooArea::face,
+        core::TattooArea::hands,
+        core::TattooArea::feet,
+    };
+    for (std::size_t index = 0; index < areas.size(); ++index) {
+        auto slots = querySlots(plan.actorFormId, areas[index]);
+        if (!slots) return std::unexpected(std::move(slots.error()));
+        snapshot.areas[index] = std::move(*slots);
+    }
+    m_loadoutActorFormId = plan.actorFormId;
+    return snapshot;
+}
+
+std::expected<void, core::ServiceError> SlaveTatsRuntime::applyAction(
+    const core::TattooLoadoutPlanAction& action) {
+    if (action.kind == core::TattooLoadoutActionKind::unchanged) return {};
+    auto* actor = static_cast<RE::Actor*>(resolveLoadedActor(m_loadoutActorFormId));
+    const char* area = areaName(action.area);
+    if (!actor) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::actorNotFound, "Actor not found"});
+    }
+    if (!area) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::invalidArea, "Invalid tattoo area"});
+    }
+
+    if (action.kind == core::TattooLoadoutActionKind::remove ||
+        action.kind == core::TattooLoadoutActionKind::replace) {
+        if (m_api->remove_tattoo_from_slot(
+                actor, RE::BSFixedString(area), action.slot, false, false)) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::removeFailed,
+                "Failed to remove tattoo during loadout restore",
+                core::MutationSideEffect::mayHaveOccurred,
+            });
+        }
+        if (action.kind == core::TattooLoadoutActionKind::remove) return {};
+    }
+
+    std::int32_t runtimeHandle = action.before ? action.before->runtimeHandle : 0;
+    if (action.kind == core::TattooLoadoutActionKind::add ||
+        action.kind == core::TattooLoadoutActionKind::replace) {
+        const auto& desired = *action.after;
+        const int available = jcmini::JValue::addToPool(
+            jcmini::JArray::object(), kApplyAvailablePool);
+        const JContainerPoolGuard poolGuard(kApplyAvailablePool);
+        if (m_api->query_available_tattoos(
+                0, available, 0, RE::BSFixedString(desired.domain.c_str()))) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::applyFailed,
+                "query_available_tattoos failed during loadout restore"});
+        }
+        int templateHandle = 0;
+        for (int index = 0; index < jcmini::JArray::count(available); ++index) {
+            const int candidate = jcmini::JArray::getObj(available, index);
+            if (jcmini::JMap::getStr(candidate, "section") == desired.section &&
+                jcmini::JMap::getStr(candidate, "name") == desired.name) {
+                templateHandle = candidate;
+                break;
+            }
+        }
+        if (templateHandle == 0) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::tattooNotFound,
+                "Tattoo disappeared after loadout Preflight"});
+        }
+        const TattooTemplateAppearanceGuard appearance(
+            templateHandle, desired.color, desired.alpha);
+        runtimeHandle = m_api->add_and_get_tattoo(
+            actor, templateHandle, action.slot, false, false, true);
+        if (runtimeHandle == 0) {
+            return std::unexpected(core::ServiceError{
+                core::ServiceErrorCode::applyFailed,
+                "Failed to add tattoo during loadout restore",
+                core::MutationSideEffect::mayHaveOccurred,
+            });
+        }
+    }
+
+    if (!action.after) return {};
+    SlaveTatsAppearanceBackend appearance(
+        m_api,
+        m_appearanceBindings ? &*m_appearanceBindings : nullptr,
+        [this](std::uint32_t actorFormId) { return resolveLoadedActor(actorFormId); });
+    auto handles = appearance.queryAppliedTattooHandles(actor);
+    if (!handles || std::ranges::find(*handles, runtimeHandle) == handles->end()) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::staleTattooHandle,
+            "Tattoo handle became stale during loadout restore",
+            core::MutationSideEffect::mayHaveOccurred,
+        });
+    }
+    const auto& desired = *action.after;
+    if (!appearance.writeAppearance(runtimeHandle, {
+            .actorFormId = m_loadoutActorFormId,
+            .runtimeHandle = runtimeHandle,
+            .color = desired.color,
+            .alpha = desired.alpha,
+            .glow = desired.glow,
+            .glossiness = desired.glossiness,
+            .specularStrength = desired.specularStrength,
+            .emissiveMult = desired.emissiveMult,
+        })) {
+        return std::unexpected(core::ServiceError{
+            core::ServiceErrorCode::updateFailed,
+            "Failed to verify tattoo appearance during loadout restore",
+            core::MutationSideEffect::mayHaveOccurred,
+        });
+    }
+    return {};
+}
+
+bool SlaveTatsRuntime::synchronize(const std::uint32_t actorFormId) {
+    auto* actor = resolveLoadedActor(actorFormId);
+    if (!actor) return false;
+    if (m_appearanceBindings) {
+        if (!m_appearanceBindings->setActorInt || !m_appearanceBindings->getActorInt ||
+            !m_appearanceBindings->synchronizeTattoos) {
+            return false;
+        }
+        m_appearanceBindings->setActorInt(actor, ".SlaveTats.updated", 1);
+        if (m_appearanceBindings->getActorInt(actor, ".SlaveTats.updated", 0) != 1) {
+            return false;
+        }
+        return !m_appearanceBindings->synchronizeTattoos(actor, false);
+    }
+    jcmini::JFormDB::setInt(static_cast<RE::Actor*>(actor), ".SlaveTats.updated", 1);
+    return !m_api->synchronize_tattoos(static_cast<RE::Actor*>(actor), false);
+}
+
+core::TattooLoadoutVerification SlaveTatsRuntime::verifyForward(
+    const core::TattooLoadoutPlan& plan) {
+    core::TattooLoadoutVerification result{.matches = true};
+    for (const auto& action : plan.actions) {
+        auto slots = querySlots(plan.actorFormId, action.area);
+        if (!slots) {
+            result.matches = false;
+            result.affectedSlots.push_back({action.area, action.slot, slots.error().message});
+            continue;
+        }
+        const auto found = std::ranges::find(slots->slots, action.slot, &core::TattooSlot::index);
+        const bool expectsEmpty = !action.after;
+        bool matches = found != slots->slots.end();
+        if (matches && expectsEmpty) {
+            matches = found->occupancy == core::SlotOccupancy::empty;
+        } else if (matches) {
+            const auto& desired = *action.after;
+            matches = found->occupancy == core::SlotOccupancy::slaveTats && found->tattoo &&
+                found->tattoo->domain == desired.domain &&
+                found->tattoo->section == desired.section &&
+                found->tattoo->name == desired.name &&
+                found->tattoo->color == desired.color && found->tattoo->alpha == desired.alpha &&
+                found->tattoo->glow == desired.glow &&
+                found->tattoo->emissiveMult == desired.emissiveMult &&
+                found->tattoo->glossiness == desired.glossiness &&
+                found->tattoo->specularStrength == desired.specularStrength;
+        }
+        if (!matches) {
+            result.matches = false;
+            result.affectedSlots.push_back(
+                {action.area, action.slot, "Forward tattoo state did not verify"});
+        }
+    }
+    return result;
+}
+
+std::expected<void, core::ServiceError> SlaveTatsRuntime::applyRollback(
+    const core::TattooLoadoutRollbackSnapshot& snapshot) {
+    m_loadoutActorFormId = snapshot.actorFormId;
+    for (const auto& area : snapshot.areas) {
+        auto current = querySlots(snapshot.actorFormId, area.area);
+        if (!current) return std::unexpected(std::move(current.error()));
+        for (const auto& target : area.slots) {
+            const auto found = std::ranges::find(
+                current->slots, target.index, &core::TattooSlot::index);
+            if (found != current->slots.end() &&
+                found->occupancy == core::SlotOccupancy::slaveTats) {
+                auto removed = applyAction({
+                    .kind = core::TattooLoadoutActionKind::remove,
+                    .area = area.area,
+                    .slot = target.index,
+                    .before = found->tattoo,
+                });
+                if (!removed) return removed;
+            }
+            if (target.occupancy == core::SlotOccupancy::slaveTats && target.tattoo) {
+                const auto& tattoo = *target.tattoo;
+                auto added = applyAction({
+                    .kind = core::TattooLoadoutActionKind::add,
+                    .area = area.area,
+                    .slot = target.index,
+                    .after = core::TattooLoadoutEntry{
+                        .area = area.area,
+                        .slot = target.index,
+                        .domain = tattoo.domain,
+                        .section = tattoo.section,
+                        .name = tattoo.name,
+                        .color = tattoo.color,
+                        .alpha = tattoo.alpha,
+                        .glow = tattoo.glow,
+                        .emissiveMult = tattoo.emissiveMult,
+                        .glossiness = tattoo.glossiness,
+                        .specularStrength = tattoo.specularStrength,
+                    },
+                });
+                if (!added) return added;
+
+                auto restoredSlots = querySlots(snapshot.actorFormId, area.area);
+                if (!restoredSlots) {
+                    return std::unexpected(std::move(restoredSlots.error()));
+                }
+                const auto restored = std::ranges::find(
+                    restoredSlots->slots, target.index, &core::TattooSlot::index);
+                if (restored == restoredSlots->slots.end() || !restored->tattoo) {
+                    return std::unexpected(core::ServiceError{
+                        core::ServiceErrorCode::updateFailed,
+                        "Rollback tattoo could not be read after restore",
+                        core::MutationSideEffect::mayHaveOccurred,
+                    });
+                }
+                const auto handle = restored->tattoo->runtimeHandle;
+                bool metadataRestored = false;
+                if (m_appearanceBindings) {
+                    if (m_appearanceBindings->setTattooString &&
+                        m_appearanceBindings->getTattooString &&
+                        m_appearanceBindings->setTattooInt &&
+                        m_appearanceBindings->getTattooInt) {
+                        m_appearanceBindings->setTattooString(
+                            handle, "bump", tattoo.bump.c_str());
+                        m_appearanceBindings->setTattooString(
+                            handle, "glowTexture", tattoo.glowTexture.c_str());
+                        m_appearanceBindings->setTattooInt(
+                            handle, "locked", tattoo.locked ? 1 : 0);
+                        metadataRestored =
+                            m_appearanceBindings->getTattooString(handle, "bump", "") ==
+                                tattoo.bump &&
+                            m_appearanceBindings->getTattooString(
+                                handle, "glowTexture", "") == tattoo.glowTexture &&
+                            m_appearanceBindings->getTattooInt(handle, "locked", -1) ==
+                                (tattoo.locked ? 1 : 0);
+                    }
+                } else {
+                    jcmini::JMap::setStr(handle, "bump", tattoo.bump.c_str());
+                    jcmini::JMap::setStr(
+                        handle, "glowTexture", tattoo.glowTexture.c_str());
+                    metadataRestored =
+                        jcmini::JMap::getStr(handle, "bump") == tattoo.bump &&
+                        jcmini::JMap::getStr(handle, "glowTexture") == tattoo.glowTexture &&
+                        jcmini::JMap::setIntAndVerify(
+                            handle, "locked", tattoo.locked ? 1 : 0);
+                }
+                if (!metadataRestored) {
+                    return std::unexpected(core::ServiceError{
+                        core::ServiceErrorCode::updateFailed,
+                        "Rollback tattoo metadata did not verify",
+                        core::MutationSideEffect::mayHaveOccurred,
+                    });
+                }
+            }
+        }
+    }
+    return {};
+}
+
+core::TattooLoadoutVerification SlaveTatsRuntime::verifyRollback(
+    const core::TattooLoadoutRollbackSnapshot& snapshot) {
+    core::TattooLoadoutVerification result{.matches = true};
+    for (const auto& area : snapshot.areas) {
+        auto current = querySlots(snapshot.actorFormId, area.area);
+        if (!current) {
+            result.matches = false;
+            result.affectedSlots.push_back({area.area, -1, current.error().message});
+            continue;
+        }
+        for (const auto& target : area.slots) {
+            const auto found = std::ranges::find(
+                current->slots, target.index, &core::TattooSlot::index);
+            bool matches = found != current->slots.end() &&
+                found->occupancy == target.occupancy;
+            if (matches && target.tattoo) {
+                matches = found->tattoo && sameRollbackTattoo(*found->tattoo, *target.tattoo);
+            }
+            if (!matches) {
+                result.matches = false;
+                result.affectedSlots.push_back(
+                    {area.area, target.index, "Rollback tattoo state did not verify"});
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace stui::runtime
