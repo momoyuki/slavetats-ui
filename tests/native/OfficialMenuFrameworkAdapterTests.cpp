@@ -13,6 +13,67 @@
 
 namespace {
 
+void loadoutPresentationDistinguishesOutcomesAndAnchorsFooter() {
+    using namespace stui;
+    if (native::loadoutStatusMessage(0, false) != "No loadouts saved." ||
+        native::canCreateLoadout(20, false) || native::canCreateLoadout(0, true) ||
+        !native::canCreateLoadout(19, false)) {
+        throw std::runtime_error("expected empty, limit and pending presentation");
+    }
+    const auto labels = native::loadoutDropdownLabels({{.name = "Zebra"}, {.name = "Alpha"}});
+    if (labels != std::vector<std::string>{"Zebra", "Alpha"})
+        throw std::runtime_error("expected JSON order without sorting");
+    const auto counts = native::loadoutCaptureCounts({.entries = {
+        {.area = core::TattooArea::body}, {.area = core::TattooArea::body},
+        {.area = core::TattooArea::feet}}});
+    if (counts != std::array<std::size_t, 4>{2, 0, 0, 1})
+        throw std::runtime_error("expected all four capture counts");
+    if (native::loadoutResultLabel(core::TattooLoadoutRestoreState::success) != "Loadout applied" ||
+        native::loadoutResultLabel(core::TattooLoadoutRestoreState::rollbackComplete) != "Rollback complete" ||
+        native::loadoutResultLabel(core::TattooLoadoutRestoreState::rollbackIncomplete) != "Rollback incomplete" ||
+        native::loadoutResultLabel(core::TattooLoadoutRestoreState::preflightRejected) != "Preflight rejected" ||
+        native::loadoutResultLabel(core::TattooLoadoutRestoreState::forwardSynchronizationPending) != "Synchronization pending" ||
+        native::loadoutResultLabel(core::TattooLoadoutRestoreState::rollbackSynchronizationPending) != "Rollback synchronization pending")
+        throw std::runtime_error("expected distinct terminal and retry outcomes");
+    if (native::formatLoadoutSlotReason(core::TattooArea::hands, 3, "Locked") != "HANDS / Slot 3: Locked")
+        throw std::runtime_error("expected blocker area, slot and reason");
+    const auto progress = native::loadoutFooterPresentation(native::TattooLoadoutScreen::restoring, false);
+    const auto blocked = native::loadoutFooterPresentation(native::TattooLoadoutScreen::preview, false);
+    if (progress.back || progress.cancel || progress.close || progress.primaryEnabled ||
+        !blocked.back || !blocked.cancel || blocked.primaryEnabled ||
+        blocked.primary != "Apply Loadout")
+        throw std::runtime_error("expected no cancellation during mutation and disabled blocked Apply");
+    const auto layout = native::calculateLoadoutContentLayout(400, 30);
+    if (layout.contentHeight != 370 || layout.footerOffset != 370)
+        throw std::runtime_error("expected scrollable content above anchored footer");
+    const stui::core::TattooLoadoutList full(20, {.name = "Crimson"});
+    if (native::canSaveLoadoutName(full, "New", false) ||
+        !native::canSaveLoadoutName(full, "  CRIMSON  ", false) ||
+        native::canSaveLoadoutName(full, "Crimson", true) ||
+        native::canSaveLoadoutName({}, " \t ", false))
+        throw std::runtime_error("full store permits only a named overwrite, and blank or pending Save is disabled");
+}
+
+void loadoutSummaryGroupsActionsAndPreservedSlotsAcrossAreas() {
+    using namespace stui;
+    core::TattooLoadoutPlan plan;
+    plan.actions = {
+        {.kind = core::TattooLoadoutActionKind::add, .area = core::TattooArea::body},
+        {.kind = core::TattooLoadoutActionKind::replace, .area = core::TattooArea::body},
+        {.kind = core::TattooLoadoutActionKind::remove, .area = core::TattooArea::face},
+        {.kind = core::TattooLoadoutActionKind::appearance, .area = core::TattooArea::hands},
+        {.kind = core::TattooLoadoutActionKind::unchanged, .area = core::TattooArea::feet},
+    };
+    plan.preservedExternal = {{core::TattooArea::face, 2}, {core::TattooArea::feet, 5}};
+    const auto summary = native::summarizeLoadoutPlan(plan);
+    if (summary[0].add != 1 || summary[0].replace != 1 || summary[0].remove != 0 ||
+        summary[1].remove != 1 || summary[1].preserved != 1 ||
+        summary[2].appearance != 1 || summary[3].unchanged != 1 ||
+        summary[3].preserved != 1) {
+        throw std::runtime_error("expected grouped actions and read-only preserved slots");
+    }
+}
+
 void expect(bool condition, std::string_view message) {
     if (!condition) {
         throw std::runtime_error(std::string(message));
@@ -1309,6 +1370,10 @@ void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
 
 int main() {
     try {
+        loadoutPresentationDistinguishesOutcomesAndAnchorsFooter();
+        std::cout << "PASS loadout outcomes, limits and anchored footer\n";
+        loadoutSummaryGroupsActionsAndPreservedSlotsAcrossAreas();
+        std::cout << "PASS grouped loadout actions and preserved slots\n";
         actorTargetIdentityUsesFixedWidthUppercaseFormId();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();

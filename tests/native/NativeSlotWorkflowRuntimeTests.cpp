@@ -214,6 +214,7 @@ struct Fixture {
               },
               [this](const stui::core::RestoreTattooLoadoutRequest& request) {
                   ++loadoutRestoreCount;
+                  loadoutRestoreRequest = request;
                   return stui::core::RestoreTattooLoadoutResult(
                       stui::core::TattooLoadoutRestoreResultValue{
                           .actorFormId = request.actorFormId,
@@ -252,6 +253,7 @@ struct Fixture {
     std::size_t loadoutPreviewCount{};
     std::size_t loadoutRestoreCount{};
     std::size_t loadoutRetryCount{};
+    stui::core::RestoreTattooLoadoutRequest loadoutRestoreRequest;
     std::uint32_t queriedActor{};
     TattooArea queriedArea{TattooArea::feet};
     ApplyTattooRequest appliedRequest;
@@ -1096,6 +1098,14 @@ void loadoutStoreAndPreviewPublishThroughMailboxes() {
     expect(fixture.model.tattooLoadoutPreview() &&
             fixture.model.tattooLoadoutPreview()->actorFormId == 0x14,
         "expected preview completion published for the explicit Player Actor");
+    const auto approved = fixture.model.tattooLoadoutPreview()->plan;
+    expect(fixture.model.confirmTattooLoadoutRestore(), "expected approved restore");
+    fixture.runtime.pump();
+    fixture.scheduled.back()();
+    expect(fixture.loadoutRestoreCount == 1 && fixture.loadoutRestoreRequest.approvedPlan == approved &&
+        fixture.loadoutRestoreRequest.actorFormId == 0x14 && fixture.loadoutRestoreRequest.loadout == saved,
+        "scheduler must forward the approved plan and exact Actor/loadout through the service boundary");
+    fixture.runtime.pump();
 }
 
 template <class Test>

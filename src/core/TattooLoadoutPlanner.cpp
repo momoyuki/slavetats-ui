@@ -160,6 +160,17 @@ TattooLoadoutPlanResult planTattooLoadout(const TattooLoadoutPlanningInput& inpu
                 .before = before ? std::optional<TattooEntry>(*before) : std::nullopt,
                 .after = after ? std::optional<TattooLoadoutEntry>(*after) : std::nullopt,
             });
+            if (after) {
+                const auto definition = std::ranges::find_if(input.available, [&](const auto& candidate) {
+                    return identityMatches(candidate, *after) && areaMatches(candidate, after->area);
+                });
+                if (definition != input.available.end()) {
+                    auto resolved = *definition;
+                    resolved.runtimeHandle = 0;
+                    resolved.slot = -1;
+                    plan.actions.back().resolvedDefinition = std::move(resolved);
+                }
+            }
         }
     }
 

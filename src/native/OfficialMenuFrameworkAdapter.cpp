@@ -21,6 +21,75 @@
 #include "SKSEMenuFramework.h"
 
 namespace stui::native {
+std::string_view loadoutStatusMessage(std::size_t count, bool pending) noexcept {
+    if (pending) return "Saving or loading loadouts...";
+    if (count == 0) return "No loadouts saved.";
+    if (count >= core::kTattooLoadoutLimit) return "Loadout limit reached. Overwrite, rename or delete an existing loadout.";
+    return {};
+}
+bool canCreateLoadout(std::size_t count, bool pending) noexcept {
+    return !pending && count < core::kTattooLoadoutLimit;
+}
+std::vector<std::string> loadoutDropdownLabels(const core::TattooLoadoutList& loadouts) {
+    std::vector<std::string> result;
+    for (const auto& loadout : loadouts) result.push_back(loadout.name);
+    return result;
+}
+std::array<std::size_t, 4> loadoutCaptureCounts(const core::TattooLoadoutCaptureValue& capture) noexcept {
+    std::array<std::size_t, 4> result{};
+    for (const auto& entry : capture.entries) ++result[static_cast<std::size_t>(entry.area)];
+    return result;
+}
+std::string_view loadoutResultLabel(core::TattooLoadoutRestoreState state) noexcept {
+    switch (state) {
+    case core::TattooLoadoutRestoreState::success: return "Loadout applied";
+    case core::TattooLoadoutRestoreState::preflightRejected: return "Preflight rejected";
+    case core::TattooLoadoutRestoreState::forwardSynchronizationPending: return "Synchronization pending";
+    case core::TattooLoadoutRestoreState::rollbackSynchronizationPending: return "Rollback synchronization pending";
+    case core::TattooLoadoutRestoreState::rollbackComplete: return "Rollback complete";
+    case core::TattooLoadoutRestoreState::rollbackIncomplete: return "Rollback incomplete";
+    }
+    return "Loadout failed";
+}
+std::string formatLoadoutSlotReason(core::TattooArea area, std::int32_t slot, std::string_view reason) {
+    return slot < 0 ? std::format("{}: {}", slotAreaLabel(area), reason)
+        : std::format("{} / Slot {}: {}", slotAreaLabel(area), slot, reason);
+}
+LoadoutFooterPresentation loadoutFooterPresentation(TattooLoadoutScreen screen, bool primaryEnabled) noexcept {
+    if (screen == TattooLoadoutScreen::restoring) return {};
+    if (screen == TattooLoadoutScreen::result) return {.back = true, .close = true};
+    const auto primary = screen == TattooLoadoutScreen::preview ? "Apply Loadout"
+        : screen == TattooLoadoutScreen::manage ? "Rename"
+        : screen == TattooLoadoutScreen::overwriteConfirmation ? "Overwrite"
+        : screen == TattooLoadoutScreen::deleteConfirmation ? "Delete" : "Save Loadout";
+    return {.back = true, .cancel = true,
+        .primary = primary,
+        .primaryEnabled = primaryEnabled};
+}
+LoadoutContentLayout calculateLoadoutContentLayout(float availableHeight, float footerHeight) noexcept {
+    const auto height = std::max(0.0F, availableHeight - footerHeight);
+    return {height, height};
+}
+
+std::array<LoadoutAreaSummary, 4> summarizeLoadoutPlan(
+    const core::TattooLoadoutPlan& plan) noexcept {
+    std::array<LoadoutAreaSummary, 4> result{};
+    for (const auto& action : plan.actions) {
+        auto& area = result[static_cast<std::size_t>(action.area)];
+        switch (action.kind) {
+        case core::TattooLoadoutActionKind::add: ++area.add; break;
+        case core::TattooLoadoutActionKind::replace: ++area.replace; break;
+        case core::TattooLoadoutActionKind::remove: ++area.remove; break;
+        case core::TattooLoadoutActionKind::appearance: ++area.appearance; break;
+        case core::TattooLoadoutActionKind::unchanged: ++area.unchanged; break;
+        }
+    }
+    for (const auto& slot : plan.preservedExternal) {
+        ++result[static_cast<std::size_t>(slot.area)].preserved;
+    }
+    return result;
+}
+
 namespace {
 
 SKSEMenuFramework::Model::AddSectionItemFunction g_addSectionItem{};
@@ -738,6 +807,15 @@ std::string_view appearancePresetStatusMessage(
     return {};
 }
 
+bool canSaveLoadoutName(const core::TattooLoadoutList& loadouts, std::string_view name, bool pending) noexcept {
+    const auto first = name.find_first_not_of(" \t\r\n");
+    if (pending || first == std::string_view::npos) return false;
+    name = name.substr(first, name.find_last_not_of(" \t\r\n") - first + 1);
+    return canCreateLoadout(loadouts.size(), pending) || std::ranges::any_of(loadouts, [&](const auto& loadout) {
+        return equalsFoldedASCII(loadout.name, name);
+    });
+}
+
 bool canCreateAppearancePreset(const std::size_t count, const bool pending) noexcept {
     return !pending && count < runtime::kAppearancePresetLimit;
 }
@@ -1118,6 +1196,187 @@ bool renderActorTargetHeader(
     return applyActorTargetHeaderIntent(workflow, intent);
 }
 
+void renderLoadoutStoreStatus(NativeSlotWorkflowModel& workflow) {
+    const auto status = loadoutStatusMessage(workflow.tattooLoadouts().size(), workflow.tattooLoadoutStorePending());
+    if (!status.empty()) ImGuiMCP::TextUnformatted(status.data());
+    if (const auto* error = workflow.tattooLoadoutStoreError()) {
+        const auto message = "Loadouts: " + error->message;
+        ImGuiMCP::TextWrapped("%s", message.c_str());
+        ImGuiMCP::BeginDisabled(workflow.tattooLoadoutStorePending());
+        if (ImGuiMCP::Button("Retry##LoadoutStore"))
+            (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::retryStore);
+        ImGuiMCP::EndDisabled();
+    }
+}
+
+void renderLoadoutControls(NativeSlotWorkflowModel& workflow) {
+    ImGuiMCP::SeparatorText("Loadouts");
+    const auto& loadouts = workflow.tattooLoadouts();
+    const auto selected = workflow.selectedTattooLoadout();
+    const auto labels = loadoutDropdownLabels(loadouts);
+    const bool pending = workflow.tattooLoadoutStorePending() || workflow.tattooLoadoutActorPending();
+    const bool actorEnabled = actorTargetActionsEnabled(workflow.isActorTargetResolutionInFlight(), workflow.actorTarget()) &&
+        !workflow.isMutationInFlight();
+    ImGuiMCP::BeginDisabled(pending || loadouts.empty() || workflow.isMutationInFlight());
+    if (ImGuiMCP::BeginCombo("Loadout", selected ? labels[*selected].c_str() : "Select loadout")) {
+        for (std::size_t index = 0; index < labels.size(); ++index) {
+            ImGuiMCP::PushID(static_cast<int>(index));
+            if (ImGuiMCP::Selectable(labels[index].c_str(), selected == index)) workflow.selectTattooLoadout(index);
+            ImGuiMCP::PopID();
+        }
+        ImGuiMCP::EndCombo();
+    }
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::BeginDisabled(pending || !actorEnabled || !selected);
+    if (ImGuiMCP::Button("Load##Loadout")) (void)workflow.requestTattooLoadoutPreview();
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(pending || !actorEnabled);
+    if (ImGuiMCP::Button("Save Current")) (void)workflow.requestTattooLoadoutCapture();
+    ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(pending || !selected || workflow.isMutationInFlight());
+    if (ImGuiMCP::Button("Manage##Loadouts")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::manage);
+    ImGuiMCP::EndDisabled();
+    if (workflow.tattooLoadoutActorPending()) ImGuiMCP::TextUnformatted("Reading fresh Actor state...");
+    renderLoadoutStoreStatus(workflow);
+}
+
+void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<void()>& close) {
+    const auto* viewport = ImGuiMCP::GetMainViewport();
+    if (!viewport) return;
+    const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {viewport->Pos.x, viewport->Pos.y}, {viewport->Size.x, viewport->Size.y});
+    ImGuiMCP::SetNextWindowPos({layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0, 0});
+    ImGuiMCP::SetNextWindowSize({layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
+    const auto screen = workflow.tattooLoadoutScreen();
+    bool open = true;
+    ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
+    ImGuiMCP::Begin("Tattoo Browser##SlaveTatsUI",
+        workflow.tattooLoadoutCanDismiss() ? &open : nullptr,
+        ImGuiMCP::ImGuiWindowFlags_NoCollapse | ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
+            ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
+    if (renderActorTargetHeader(workflow)) {
+        ImGuiMCP::End(); ImGuiMCP::PopStyleVar(); return;
+    }
+    ImGuiMCP::TextUnformatted("Saved Tattoo Loadouts");
+    const auto selected = workflow.selectedTattooLoadout();
+    if (selected) ImGuiMCP::TextUnformatted(workflow.tattooLoadouts()[*selected].name.c_str());
+    const float startY = ImGuiMCP::GetCursorPosY();
+    const auto content = calculateLoadoutContentLayout(ImGuiMCP::GetContentRegionAvail().y, ImGuiMCP::GetFrameHeightWithSpacing());
+    const bool pending = workflow.tattooLoadoutStorePending() || workflow.tattooLoadoutActorPending();
+    bool primaryEnabled = !pending;
+    if (ImGuiMCP::BeginChild("LoadoutContent", {0, content.contentHeight})) {
+        renderLoadoutStoreStatus(workflow);
+        if (const auto* error = workflow.error()) ImGuiMCP::TextWrapped("%s", error->message.c_str());
+        if (screen == TattooLoadoutScreen::captureSummary) {
+            ImGuiMCP::TextUnformatted("Save managed tattoos from all four areas. External overlays are omitted.");
+            if (const auto* capture = workflow.tattooLoadoutCapture()) {
+                const auto counts = loadoutCaptureCounts(*capture);
+                for (std::size_t index = 0; index < counts.size(); ++index)
+                    ImGuiMCP::Text("%s: %zu", slotAreaLabel(static_cast<core::TattooArea>(index)).data(), counts[index]);
+            }
+            ImGuiMCP::BeginDisabled(pending);
+            (void)inputTextString("Name##Loadout", workflow.tattooLoadoutName());
+            ImGuiMCP::EndDisabled();
+            primaryEnabled = canSaveLoadoutName(workflow.tattooLoadouts(), workflow.tattooLoadoutName(), pending);
+        } else if (screen == TattooLoadoutScreen::manage) {
+            ImGuiMCP::BeginDisabled(pending);
+            (void)inputTextString("Name##RenameLoadout", workflow.tattooLoadoutName());
+            if (ImGuiMCP::Button("Delete...")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::requestDelete);
+            ImGuiMCP::EndDisabled();
+            primaryEnabled = primaryEnabled && workflow.tattooLoadoutName().find_first_not_of(" \t\r\n") != std::string::npos;
+        } else if (screen == TattooLoadoutScreen::overwriteConfirmation) {
+            ImGuiMCP::TextWrapped("Overwrite the selected loadout with the captured four-area state?");
+        } else if (screen == TattooLoadoutScreen::deleteConfirmation) {
+            ImGuiMCP::TextWrapped("Delete this saved loadout? Actor tattoos will remain unchanged.");
+        } else if (screen == TattooLoadoutScreen::preview) {
+            const auto* preview = workflow.tattooLoadoutPreview();
+            primaryEnabled = primaryEnabled && preview && preview->blockers.empty();
+            ImGuiMCP::TextWrapped("Exact restore removes managed tattoos absent from this loadout.");
+            if (preview && preview->blockers.empty()) {
+                const auto summary = summarizeLoadoutPlan(preview->plan);
+                for (std::size_t index = 0; index < summary.size(); ++index) {
+                    const auto& area = summary[index];
+                    ImGuiMCP::SeparatorText(slotAreaLabel(static_cast<core::TattooArea>(index)).data());
+                    ImGuiMCP::Text("Add: %zu / Replace: %zu / Remove: %zu", area.add, area.replace, area.remove);
+                    ImGuiMCP::Text("Appearance: %zu / Unchanged: %zu / Preserved: %zu", area.appearance, area.unchanged, area.preserved);
+                }
+            } else if (preview) {
+                ImGuiMCP::TextUnformatted("Preflight rejected. Resolve these conflicts and run Load again:");
+                for (const auto& blocker : preview->blockers) {
+                    const auto reason = formatLoadoutSlotReason(blocker.area, blocker.slot, blocker.message);
+                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                }
+            }
+        } else if (screen == TattooLoadoutScreen::restoring) {
+            ImGuiMCP::TextUnformatted("Restoring loadout... Please wait.");
+        } else if (screen == TattooLoadoutScreen::result) {
+            if (const auto* result = workflow.tattooLoadoutResult()) {
+                ImGuiMCP::TextUnformatted(loadoutResultLabel(result->state).data());
+                if (result->state == core::TattooLoadoutRestoreState::rollbackComplete)
+                    ImGuiMCP::TextWrapped("Restore failed. The original managed tattoos were recovered and verified.");
+                if (result->state == core::TattooLoadoutRestoreState::rollbackIncomplete)
+                    ImGuiMCP::TextWrapped("Restore failed and recovery could not be verified. Inspect the affected slots.");
+                if (!result->synchronizationRetryAvailable && !workflow.tattooLoadoutCanDismiss())
+                    ImGuiMCP::TextWrapped("Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.");
+                for (const auto& blocker : result->blockers) {
+                    const auto reason = formatLoadoutSlotReason(blocker.area, blocker.slot, blocker.message);
+                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                }
+                for (const auto& slot : result->affectedSlots) {
+                    const auto reason = formatLoadoutSlotReason(slot.area, slot.slot, slot.message);
+                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                }
+            }
+        }
+    }
+    ImGuiMCP::EndChild();
+    ImGuiMCP::SetCursorPosY(startY + content.footerOffset);
+    const auto footer = loadoutFooterPresentation(screen, primaryEnabled);
+    const auto* style = ImGuiMCP::GetStyle();
+    const auto padding = style ? style->FramePadding.x * 2 : 16.0F;
+    const auto rightLabel = footer.cancel ? "Cancel" : "Close";
+    if (ImGuiMCP::BeginTable("LoadoutFooter", 3, ImGuiMCP::ImGuiTableFlags_SizingStretchProp | ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
+        ImGuiMCP::TableSetupColumn("Back", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ImGuiMCP::CalcTextSize("Back").x + padding);
+        ImGuiMCP::TableSetupColumn("Actions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+        ImGuiMCP::TableSetupColumn("Close", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ImGuiMCP::CalcTextSize(rightLabel).x + padding);
+        ImGuiMCP::TableNextRow(); ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::BeginDisabled(pending || !workflow.tattooLoadoutCanDismiss());
+        if (footer.back && ImGuiMCP::Button("Back")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::back);
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::TableSetColumnIndex(1);
+        if (!footer.primary.empty()) {
+            ImGuiMCP::BeginDisabled(!footer.primaryEnabled);
+            if (ImGuiMCP::Button(footer.primary.data())) {
+                if (screen == TattooLoadoutScreen::preview) (void)workflow.confirmTattooLoadoutRestore();
+                else (void)workflow.applyTattooLoadoutIntent(
+                    screen == TattooLoadoutScreen::manage ? TattooLoadoutIntent::rename :
+                    screen == TattooLoadoutScreen::overwriteConfirmation ? TattooLoadoutIntent::overwrite :
+                    screen == TattooLoadoutScreen::deleteConfirmation ? TattooLoadoutIntent::deleteConfirmed : TattooLoadoutIntent::save);
+            }
+            ImGuiMCP::EndDisabled();
+        }
+        if (const auto* result = workflow.tattooLoadoutResult(); result && result->synchronizationRetryAvailable && result->retryId) {
+            ImGuiMCP::BeginDisabled(pending);
+            if (ImGuiMCP::Button("Retry Synchronization")) (void)workflow.retryTattooLoadoutSynchronization();
+            ImGuiMCP::EndDisabled();
+        } else if (workflow.tattooLoadoutResult()) {
+            ImGuiMCP::BeginDisabled(pending);
+            if (ImGuiMCP::Button("Refresh Slots")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::refreshSlots);
+            ImGuiMCP::EndDisabled();
+        }
+        ImGuiMCP::TableSetColumnIndex(2);
+        ImGuiMCP::BeginDisabled(pending || !workflow.tattooLoadoutCanDismiss());
+        if (footer.cancel && ImGuiMCP::Button("Cancel")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::cancel);
+        if (footer.close && ImGuiMCP::Button("Close")) open = false;
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::EndTable();
+    }
+    ImGuiMCP::End(); ImGuiMCP::PopStyleVar();
+    if (!open && workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::cancel) && close) close();
+}
+
 void renderCurrentSlots(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
@@ -1190,6 +1449,8 @@ void renderCurrentSlots(
     if (const auto* error = workflow.error()) {
         ImGuiMCP::TextUnformatted(error->message.c_str());
     }
+
+    renderLoadoutControls(workflow);
 
     const auto* style = ImGuiMCP::GetStyle();
     const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
@@ -2257,6 +2518,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const std::function<void()>& close) {
     slotRuntime.pump();
     if (dispatchMenuCloseRequest(workflow, close)) {
+        return;
+    }
+    if (workflow.tattooLoadoutScreen() != TattooLoadoutScreen::none) {
+        renderLoadoutScreen(workflow, close);
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::currentSlots) {

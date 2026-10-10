@@ -38,6 +38,8 @@ struct TattooLoadoutPlanAction {
     std::int32_t slot{-1};
     std::optional<TattooEntry> before;
     std::optional<TattooLoadoutEntry> after;
+    // Catalog values bind preview to the resolved pack, without session handles.
+    std::optional<TattooEntry> resolvedDefinition;
 
     bool operator==(const TattooLoadoutPlanAction&) const = default;
 };

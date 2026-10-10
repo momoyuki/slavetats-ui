@@ -638,7 +638,7 @@ void previewsLoadoutFromFreshFourAreaSnapshotsAndCatalog() {
 
     const auto preview = runtime.previewLoadout({
         .actorFormId = 0x14,
-        .loadout = std::move(loadout),
+        .loadout = loadout,
     });
 
     expect(preview.has_value(), "expected fresh runtime loadout Preflight");
@@ -651,6 +651,22 @@ void previewsLoadoutFromFreshFourAreaSnapshotsAndCatalog() {
     expect(queryState.applyCount == 0 && queryState.removeCount == 0 &&
             queryState.synchronizeCount == 0,
         "expected Preflight to perform no mutation or synchronization");
+    queryState.integers[{queryState.slotTattoo, "color"}] = 0x010203;
+    const auto changed = runtime.restoreLoadout({
+        .actorFormId = 0x14, .loadout = loadout, .approvedPlan = preview->plan});
+    expect(changed && changed->state == stui::core::TattooLoadoutRestoreState::preflightRejected &&
+        queryState.applyCount == 0 && queryState.removeCount == 0 && bindingState.updatedWriteCount == 0,
+        "changed state since preview must reject before any writes");
+    queryState.integers[{queryState.slotTattoo, "color"}] = 0xA0B0C0;
+    queryState.strings[{queryState.availableTattoo, "texture"}] = "textures\\packs\\changed.dds";
+    const auto changedPack = runtime.restoreLoadout({
+        .actorFormId = 0x14, .loadout = loadout, .approvedPlan = preview->plan});
+    expect(changedPack && changedPack->state == stui::core::TattooLoadoutRestoreState::preflightRejected &&
+        bindingState.updatedWriteCount == 0, "changed pack metadata must reject the approved preview without writes");
+    loadout.entries.front().name = "Missing Tattoo";
+    const auto blocked = runtime.previewLoadout({.actorFormId = 0x14, .loadout = loadout});
+    expect(blocked && !blocked->blockers.empty() && blocked->blockers.front().slot == 0 &&
+        blocked->plan.actions.empty(), "blocked preview must expose typed area/slot reasons without a partial plan");
 }
 
 void restoresEmptyLoadoutWithOneSynchronization() {

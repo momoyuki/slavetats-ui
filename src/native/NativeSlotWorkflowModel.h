@@ -138,7 +138,13 @@ struct AppearancePresetTicket {
 };
 
 enum class TattooLoadoutRequestKind { load, create, overwrite, rename, erase };
-enum class TattooLoadoutScreen { none, captureSummary, preview, restoring, result };
+enum class TattooLoadoutScreen {
+    none, captureSummary, preview, restoring, result, manage,
+    overwriteConfirmation, deleteConfirmation
+};
+enum class TattooLoadoutIntent {
+    manage, save, overwrite, rename, requestDelete, deleteConfirmed, back, cancel, retryStore, refreshSlots
+};
 enum class TattooLoadoutActorOperation { capture, preview, restore, retrySynchronization };
 
 struct TattooLoadoutStoreTicket {
@@ -154,6 +160,7 @@ struct TattooLoadoutActorTicket {
     TattooLoadoutActorOperation operation{TattooLoadoutActorOperation::capture};
     std::optional<core::TattooLoadout> loadout;
     std::optional<core::TattooLoadoutRetryId> retryId;
+    std::optional<core::TattooLoadoutPlan> approvedPlan;
 };
 
 class NativeSlotWorkflowModel {
@@ -235,6 +242,11 @@ public:
     [[nodiscard]] bool requestTattooLoadoutPreview();
     [[nodiscard]] bool confirmTattooLoadoutRestore();
     [[nodiscard]] bool retryTattooLoadoutSynchronization();
+    [[nodiscard]] bool tattooLoadoutStorePending() const noexcept;
+    [[nodiscard]] bool tattooLoadoutActorPending() const noexcept;
+    [[nodiscard]] bool tattooLoadoutCanDismiss() const noexcept;
+    [[nodiscard]] std::string& tattooLoadoutName() noexcept;
+    [[nodiscard]] bool applyTattooLoadoutIntent(TattooLoadoutIntent intent);
 
     [[nodiscard]] std::optional<SlotQueryTicket> takeSlotQuery();
     [[nodiscard]] std::optional<SlotApplyTicket> takeApplyRequest();
@@ -415,6 +427,8 @@ private:
     std::optional<TattooLoadoutStoreTicket> m_activeTattooLoadoutStore;
     std::optional<std::uint64_t> m_activeTattooLoadoutStoreRequestId;
     std::optional<runtime::ConfigError> m_tattooLoadoutStoreError;
+    std::optional<TattooLoadoutStoreTicket> m_failedTattooLoadoutStore;
+    std::string m_tattooLoadoutName;
     std::uint64_t m_tattooLoadoutStoreRequestId{};
     std::optional<TattooLoadoutActorTicket> m_pendingTattooLoadoutActor;
     std::optional<TattooLoadoutActorTicket> m_activeTattooLoadoutActor;

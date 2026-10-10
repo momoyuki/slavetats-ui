@@ -22,6 +22,7 @@ struct PreviewTattooLoadoutRequest {
 struct RestoreTattooLoadoutRequest {
     std::uint32_t actorFormId{};
     TattooLoadout loadout;
+    std::optional<TattooLoadoutPlan> approvedPlan;
 };
 
 using TattooLoadoutRetryId = std::uint64_t;
@@ -39,6 +40,7 @@ struct TattooLoadoutCaptureValue {
 struct TattooLoadoutPreviewValue {
     std::uint32_t actorFormId{};
     TattooLoadoutPlan plan;
+    std::vector<TattooLoadoutBlocker> blockers;
 };
 
 struct TattooLoadoutAffectedSlot {

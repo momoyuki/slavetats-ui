@@ -97,6 +97,11 @@ core::RestoreTattooLoadoutResult executeTattooLoadout(
         return rejected;
     }
 
+    if (request.approvedPlan && *request.approvedPlan != *planned) {
+        auto rejected = result(request.actorFormId, core::TattooLoadoutRestoreState::preflightRejected);
+        rejected.blockers.push_back({.message = "Actor or tattoo state changed since preview. Run Preflight again."});
+        return rejected;
+    }
     auto snapshot = backend.captureRollback(*planned);
     if (!snapshot) return std::unexpected(std::move(snapshot.error()));
 

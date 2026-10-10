@@ -523,7 +523,7 @@ void NativeSlotWorkflowRuntime::scheduleTattooLoadoutActor(
                     ticket.targetGeneration,
                     m_tattooLoadoutRestoreOperation && ticket.loadout ?
                         m_tattooLoadoutRestoreOperation(
-                            {ticket.actorFormId, *ticket.loadout}) :
+                            {ticket.actorFormId, *ticket.loadout, ticket.approvedPlan}) :
                         core::RestoreTattooLoadoutResult(std::unexpected(error)));
                 return;
             case TattooLoadoutActorOperation::retrySynchronization:

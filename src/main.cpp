@@ -11,6 +11,7 @@
 #include "native/OfficialMenuFrameworkAdapter.h"
 #include "runtime/ApplicationRuntime.h"
 #include "runtime/AppearancePresetStore.h"
+#include "runtime/TattooLoadoutStore.h"
 #include "runtime/HotkeyBinding.h"
 #include "runtime/PluginConfigFile.h"
 #include "runtime/FavoriteStore.h"
@@ -36,6 +37,7 @@ std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
 std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
 std::unique_ptr<runtime::RecentTattooStore> g_recentTattooStore;
 std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
+std::unique_ptr<runtime::TattooLoadoutStore> g_tattooLoadoutStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
     [] { return native::resolveCrosshairActorTarget(); },
@@ -108,6 +110,39 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
         }
         return runtime::AppearancePresetResult(std::unexpected(runtime::ConfigError{
             .message = "Appearance preset request is incomplete."}));
+    },
+    [](const native::TattooLoadoutStoreTicket& ticket) {
+        if (!g_tattooLoadoutStore) {
+            return runtime::TattooLoadoutResult(std::unexpected(runtime::ConfigError{
+                .message = "Loadout storage is unavailable."}));
+        }
+        switch (ticket.kind) {
+        case native::TattooLoadoutRequestKind::load: return g_tattooLoadoutStore->load();
+        case native::TattooLoadoutRequestKind::create:
+            if (ticket.loadout) return g_tattooLoadoutStore->create(*ticket.loadout);
+            break;
+        case native::TattooLoadoutRequestKind::overwrite:
+            if (ticket.loadout) return g_tattooLoadoutStore->overwrite(*ticket.loadout);
+            break;
+        case native::TattooLoadoutRequestKind::rename:
+            if (ticket.loadout) return g_tattooLoadoutStore->rename(ticket.existingName, ticket.loadout->name);
+            break;
+        case native::TattooLoadoutRequestKind::erase: return g_tattooLoadoutStore->erase(ticket.existingName);
+        }
+        return runtime::TattooLoadoutResult(std::unexpected(runtime::ConfigError{
+            .message = "Loadout request is incomplete."}));
+    },
+    [](const core::CaptureTattooLoadoutRequest& request) {
+        return g_applicationRuntime.service().captureLoadout(request);
+    },
+    [](const core::PreviewTattooLoadoutRequest& request) {
+        return g_applicationRuntime.service().previewLoadout(request);
+    },
+    [](const core::RestoreTattooLoadoutRequest& request) {
+        return g_applicationRuntime.service().restoreLoadout(request);
+    },
+    [](const core::RetryTattooLoadoutSynchronizationRequest& request) {
+        return g_applicationRuntime.service().retryLoadoutSynchronization(request);
     });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
@@ -366,9 +401,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         g_recentTattooStore = std::make_unique<runtime::RecentTattooStore>(g_pluginConfig);
         g_appearancePresetStore =
             std::make_unique<runtime::AppearancePresetStore>(g_pluginConfig);
+        g_tattooLoadoutStore = std::make_unique<runtime::TattooLoadoutStore>(g_pluginConfig);
     }
     g_nativeSlotWorkflow.initializeRecentTattoos();
     g_nativeSlotWorkflow.initializeAppearancePresets();
+    g_nativeSlotWorkflow.initializeTattooLoadouts();
 
     static native::OfficialMenuFrameworkAdapter menuFrameworkAdapter;
     static native::NativeMenu nativeMenu([](native::NativeMenu& menu) {
@@ -389,6 +426,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
     });
     nativeMenu.setOpenCallback([] { g_nativeSlotWorkflow.resetSession(); });
     nativeMenu.setCloseRequestCallback([] {
+        if (g_nativeSlotWorkflow.tattooLoadoutActorPending()) return true;
+        if (g_nativeSlotWorkflow.tattooLoadoutScreen() != native::TattooLoadoutScreen::none) {
+            return !g_nativeSlotWorkflow.applyTattooLoadoutIntent(native::TattooLoadoutIntent::cancel);
+        }
         if (!g_nativeSlotWorkflow.editAppearance()) {
             return false;
         }

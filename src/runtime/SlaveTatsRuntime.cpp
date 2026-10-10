@@ -760,10 +760,10 @@ core::PreviewTattooLoadoutResult SlaveTatsRuntime::previewLoadout(
     const core::PreviewTattooLoadoutRequest& request) {
     auto plan = preflight(request);
     if (!plan) {
-        return std::unexpected(core::ServiceError{
-            .code = core::ServiceErrorCode::applyFailed,
-            .message = "Tattoo loadout Preflight found blocking conflicts",
-        });
+        return core::TattooLoadoutPreviewValue{
+            .actorFormId = request.actorFormId,
+            .blockers = std::move(plan.error()),
+        };
     }
     return core::TattooLoadoutPreviewValue{
         .actorFormId = request.actorFormId,

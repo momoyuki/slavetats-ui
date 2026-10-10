@@ -996,6 +996,92 @@ void NativeSlotWorkflowModel::initializeTattooLoadouts() {
     (void)queueTattooLoadoutStoreRequest({.kind = TattooLoadoutRequestKind::load});
 }
 
+bool NativeSlotWorkflowModel::tattooLoadoutStorePending() const noexcept {
+    return m_pendingTattooLoadoutStore.has_value() || m_activeTattooLoadoutStoreRequestId.has_value();
+}
+bool NativeSlotWorkflowModel::tattooLoadoutActorPending() const noexcept {
+    return m_pendingTattooLoadoutActor.has_value() || m_activeTattooLoadoutActor.has_value();
+}
+std::string& NativeSlotWorkflowModel::tattooLoadoutName() noexcept {
+    return m_tattooLoadoutName;
+}
+bool NativeSlotWorkflowModel::tattooLoadoutCanDismiss() const noexcept {
+    if (tattooLoadoutStorePending() || tattooLoadoutActorPending() || isMutationInFlight() ||
+        !m_tattooLoadoutRefreshAreas.empty() || m_activeSlotQueryGeneration || m_pendingSlotQuery) return false;
+    if (!m_tattooLoadoutResult) return true;
+    if (m_tattooLoadoutResult->synchronizationRetryAvailable) return false;
+    if (m_tattooLoadoutResult->state == core::TattooLoadoutRestoreState::preflightRejected) return true;
+    return m_actorTarget && std::ranges::all_of(m_areaStates, [&](const auto& state) {
+        return state.slots && state.slots->actorFormId == m_actorTarget->formId;
+    });
+}
+bool NativeSlotWorkflowModel::applyTattooLoadoutIntent(TattooLoadoutIntent intent) {
+    if (tattooLoadoutStorePending() || tattooLoadoutActorPending() || isMutationInFlight()) return false;
+    switch (intent) {
+    case TattooLoadoutIntent::manage:
+        if (!m_selectedTattooLoadout) return false;
+        m_tattooLoadoutName = m_tattooLoadouts[*m_selectedTattooLoadout].name;
+        m_tattooLoadoutScreen = TattooLoadoutScreen::manage;
+        return true;
+    case TattooLoadoutIntent::save: {
+        if (m_tattooLoadoutScreen != TattooLoadoutScreen::captureSummary) return false;
+        const auto name = trimASCII(m_tattooLoadoutName);
+        const auto found = std::ranges::find_if(m_tattooLoadouts, [&](const auto& loadout) {
+            return equalsFoldedASCII(loadout.name, name);
+        });
+        if (found != m_tattooLoadouts.end()) {
+            m_selectedTattooLoadout = static_cast<std::size_t>(std::distance(m_tattooLoadouts.begin(), found));
+            m_tattooLoadoutScreen = TattooLoadoutScreen::overwriteConfirmation;
+            return true;
+        }
+        return requestCreateTattooLoadout(name);
+    }
+    case TattooLoadoutIntent::overwrite:
+        return m_tattooLoadoutScreen == TattooLoadoutScreen::overwriteConfirmation && requestOverwriteTattooLoadout();
+    case TattooLoadoutIntent::rename:
+        return m_tattooLoadoutScreen == TattooLoadoutScreen::manage && requestRenameTattooLoadout(m_tattooLoadoutName);
+    case TattooLoadoutIntent::requestDelete:
+        if (m_tattooLoadoutScreen != TattooLoadoutScreen::manage || !m_selectedTattooLoadout) return false;
+        m_tattooLoadoutScreen = TattooLoadoutScreen::deleteConfirmation;
+        return true;
+    case TattooLoadoutIntent::deleteConfirmed:
+        return m_tattooLoadoutScreen == TattooLoadoutScreen::deleteConfirmation && requestDeleteTattooLoadout();
+    case TattooLoadoutIntent::back:
+        if (m_tattooLoadoutScreen == TattooLoadoutScreen::overwriteConfirmation) {
+            m_tattooLoadoutScreen = TattooLoadoutScreen::captureSummary;
+            return true;
+        }
+        if (m_tattooLoadoutScreen == TattooLoadoutScreen::deleteConfirmation) {
+            m_tattooLoadoutScreen = TattooLoadoutScreen::manage;
+            return true;
+        }
+        [[fallthrough]];
+    case TattooLoadoutIntent::cancel:
+        if (!tattooLoadoutCanDismiss()) return false;
+        m_tattooLoadoutScreen = TattooLoadoutScreen::none;
+        m_tattooLoadoutPreview.reset();
+        m_tattooLoadoutCapture.reset();
+        m_tattooLoadoutResult.reset();
+        m_error.reset();
+        return true;
+    case TattooLoadoutIntent::refreshSlots:
+        if (!m_actorTarget || !m_tattooLoadoutResult ||
+            m_tattooLoadoutResult->synchronizationRetryAvailable ||
+            m_activeSlotQueryGeneration || m_pendingSlotQuery || !m_tattooLoadoutRefreshAreas.empty()) return false;
+        m_tattooLoadoutRefreshAreas.push_back(m_selectedArea);
+        for (const auto area : {core::TattooArea::body, core::TattooArea::face,
+                 core::TattooArea::hands, core::TattooArea::feet}) {
+            if (area != m_selectedArea) m_tattooLoadoutRefreshAreas.push_back(area);
+        }
+        scheduleNextTattooLoadoutRefresh();
+        return true;
+    case TattooLoadoutIntent::retryStore:
+        if (!m_failedTattooLoadoutStore) return false;
+        return queueTattooLoadoutStoreRequest(*m_failedTattooLoadoutStore);
+    }
+    return false;
+}
+
 const core::TattooLoadoutList& NativeSlotWorkflowModel::tattooLoadouts() const noexcept {
     return m_tattooLoadouts;
 }
@@ -1005,6 +1091,7 @@ std::optional<std::size_t> NativeSlotWorkflowModel::selectedTattooLoadout() cons
 }
 
 void NativeSlotWorkflowModel::selectTattooLoadout(std::optional<std::size_t> index) {
+    if (tattooLoadoutActorPending() || tattooLoadoutStorePending() || isMutationInFlight()) return;
     m_selectedTattooLoadout = index && *index < m_tattooLoadouts.size() ? index : std::nullopt;
     m_tattooLoadoutPreview.reset();
     m_tattooLoadoutResult.reset();
@@ -1012,7 +1099,8 @@ void NativeSlotWorkflowModel::selectTattooLoadout(std::optional<std::size_t> ind
 }
 
 bool NativeSlotWorkflowModel::requestTattooLoadoutCapture() {
-    if (!m_actorTarget || isMutationInFlight()) return false;
+    if (!m_actorTarget || isActorTargetResolutionInFlight() || isMutationInFlight() ||
+        m_tattooLoadoutScreen == TattooLoadoutScreen::result || !m_tattooLoadoutRefreshAreas.empty()) return false;
     m_tattooLoadoutCapture.reset();
     return queueTattooLoadoutActorRequest({
         .targetGeneration = m_targetGeneration,
@@ -1068,7 +1156,8 @@ bool NativeSlotWorkflowModel::requestDeleteTattooLoadout() {
 }
 
 bool NativeSlotWorkflowModel::requestTattooLoadoutPreview() {
-    if (!m_actorTarget || isMutationInFlight() || !m_selectedTattooLoadout ||
+    if (!m_actorTarget || isActorTargetResolutionInFlight() || isMutationInFlight() ||
+        m_tattooLoadoutScreen == TattooLoadoutScreen::result || !m_tattooLoadoutRefreshAreas.empty() || !m_selectedTattooLoadout ||
         *m_selectedTattooLoadout >= m_tattooLoadouts.size()) return false;
     m_tattooLoadoutPreview.reset();
     m_tattooLoadoutResult.reset();
@@ -1081,7 +1170,7 @@ bool NativeSlotWorkflowModel::requestTattooLoadoutPreview() {
 }
 
 bool NativeSlotWorkflowModel::confirmTattooLoadoutRestore() {
-    if (!m_actorTarget || !m_tattooLoadoutPreview || isMutationInFlight() ||
+    if (!m_actorTarget || !m_tattooLoadoutPreview || !m_tattooLoadoutPreview->blockers.empty() || isMutationInFlight() ||
         !m_selectedTattooLoadout || *m_selectedTattooLoadout >= m_tattooLoadouts.size()) {
         return false;
     }
@@ -1091,6 +1180,7 @@ bool NativeSlotWorkflowModel::confirmTattooLoadoutRestore() {
         .actorFormId = m_actorTarget->formId,
         .operation = TattooLoadoutActorOperation::restore,
         .loadout = m_tattooLoadouts[*m_selectedTattooLoadout],
+        .approvedPlan = m_tattooLoadoutPreview->plan,
     });
 }
 
@@ -1111,6 +1201,7 @@ bool NativeSlotWorkflowModel::queueTattooLoadoutStoreRequest(
     TattooLoadoutStoreTicket ticket) {
     if (m_pendingTattooLoadoutStore || m_activeTattooLoadoutStoreRequestId) return false;
     ticket.requestId = ++m_tattooLoadoutStoreRequestId;
+    m_tattooLoadoutStoreError.reset();
     m_pendingTattooLoadoutStore = std::move(ticket);
     return true;
 }
@@ -1182,6 +1273,7 @@ void NativeSlotWorkflowModel::completeSlotQuery(
     m_activeSlotQueryGeneration.reset();
     if (!result) {
         m_error = std::move(result.error());
+        scheduleNextTattooLoadoutRefresh();
         return;
     }
 
@@ -1415,13 +1507,20 @@ void NativeSlotWorkflowModel::completeTattooLoadoutStore(
         requestId != *m_activeTattooLoadoutStoreRequestId) return;
     m_activeTattooLoadoutStoreRequestId.reset();
     const auto completed = std::move(m_activeTattooLoadoutStore);
+    m_activeTattooLoadoutStore.reset();
     if (!result) {
+        m_failedTattooLoadoutStore = completed;
         m_tattooLoadoutStoreError = std::move(result.error());
         return;
     }
     m_tattooLoadouts = std::move(*result);
+    m_failedTattooLoadoutStore.reset();
     m_tattooLoadoutStoreError.reset();
     m_selectedTattooLoadout.reset();
+    if (completed && (completed->kind == TattooLoadoutRequestKind::create ||
+        completed->kind == TattooLoadoutRequestKind::overwrite || completed->kind == TattooLoadoutRequestKind::erase)) {
+        m_tattooLoadoutScreen = TattooLoadoutScreen::none;
+    }
     if (completed && completed->kind != TattooLoadoutRequestKind::load &&
         completed->kind != TattooLoadoutRequestKind::erase && completed->loadout) {
         const auto found = std::ranges::find_if(m_tattooLoadouts,
@@ -1451,6 +1550,7 @@ void NativeSlotWorkflowModel::completeTattooLoadoutCapture(
     if (!m_actorTarget || result->actorFormId != actorFormId ||
         result->actorFormId != m_actorTarget->formId) return;
     m_tattooLoadoutCapture = std::move(*result);
+    m_tattooLoadoutName.clear();
     m_tattooLoadoutScreen = TattooLoadoutScreen::captureSummary;
     m_error.reset();
 }
@@ -1822,6 +1922,7 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_tattooLoadoutResult.reset();
     m_tattooLoadoutScreen = TattooLoadoutScreen::none;
     m_tattooLoadoutRefreshAreas.clear();
+    m_tattooLoadoutName.clear();
 }
 
 bool NativeSlotWorkflowModel::isMutationInFlight() const noexcept {
@@ -1852,7 +1953,8 @@ bool NativeSlotWorkflowModel::hasAppearanceTransactionWork() const noexcept {
 
 bool NativeSlotWorkflowModel::hasActorSnapshot() const noexcept {
     const auto* current = slots();
-    return m_actorTarget && !isActorTargetResolutionInFlight() && current &&
+    return m_tattooLoadoutScreen != TattooLoadoutScreen::result &&
+        m_actorTarget && !isActorTargetResolutionInFlight() && current &&
         current->actorFormId == m_actorTarget->formId;
 }
 

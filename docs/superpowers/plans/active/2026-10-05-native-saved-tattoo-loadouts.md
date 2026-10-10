@@ -643,6 +643,21 @@ Commit only after explicit approval.
 
 ### Task 7: Native UI and Production Composition
 
+Implementation prerequisite discovered during UI integration: carry typed blockers
+in `TattooLoadoutPreviewValue` and pass the approved plan through the workflow
+ticket and service restore request. Compare fresh planning state (including resolved
+pack metadata, excluding catalog session handles) before any mutation. These
+narrow Core/runtime changes complete the existing blocked-preview and stale-plan
+contracts; they do not introduce another roadmap feature.
+
+Result acknowledgement remains blocked until every area snapshot has loaded.
+If one area query fails, finish querying the other areas and offer a read-only
+four-area refresh retry without repeating the completed restore or rollback.
+
+Environment prerequisite on the restored Windows host: retain a configured
+`VCPKG_ROOT` when importing the MSVC environment in `build.ps1`. Review this
+build-script fix separately from the Loadouts feature commit.
+
 **Files:**
 - Modify: `src/native/OfficialMenuFrameworkAdapter.h`
 - Modify: `src/native/OfficialMenuFrameworkAdapter.cpp`

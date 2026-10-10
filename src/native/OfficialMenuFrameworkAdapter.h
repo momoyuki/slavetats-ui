@@ -4,7 +4,9 @@
 #include "native/ActorTarget.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
+#include "core/ITattooRuntime.h"
 
+#include <array>
 #include <cstddef>
 #include <functional>
 #include <optional>
@@ -18,6 +20,38 @@ class HotkeyBinding;
 }
 
 namespace stui::native {
+
+struct LoadoutAreaSummary {
+    std::size_t add{};
+    std::size_t replace{};
+    std::size_t remove{};
+    std::size_t appearance{};
+    std::size_t unchanged{};
+    std::size_t preserved{};
+};
+[[nodiscard]] std::array<LoadoutAreaSummary, 4> summarizeLoadoutPlan(
+    const core::TattooLoadoutPlan& plan) noexcept;
+enum class TattooLoadoutScreen;
+struct LoadoutFooterPresentation {
+    bool back{};
+    bool cancel{};
+    bool close{};
+    std::string_view primary;
+    bool primaryEnabled{};
+};
+struct LoadoutContentLayout {
+    float contentHeight{};
+    float footerOffset{};
+};
+[[nodiscard]] std::string_view loadoutStatusMessage(std::size_t count, bool pending) noexcept;
+[[nodiscard]] bool canCreateLoadout(std::size_t count, bool pending) noexcept;
+[[nodiscard]] bool canSaveLoadoutName(const core::TattooLoadoutList& loadouts, std::string_view name, bool pending) noexcept;
+[[nodiscard]] std::vector<std::string> loadoutDropdownLabels(const core::TattooLoadoutList& loadouts);
+[[nodiscard]] std::array<std::size_t, 4> loadoutCaptureCounts(const core::TattooLoadoutCaptureValue& capture) noexcept;
+[[nodiscard]] std::string_view loadoutResultLabel(core::TattooLoadoutRestoreState state) noexcept;
+[[nodiscard]] std::string formatLoadoutSlotReason(core::TattooArea area, std::int32_t slot, std::string_view reason);
+[[nodiscard]] LoadoutFooterPresentation loadoutFooterPresentation(TattooLoadoutScreen screen, bool primaryEnabled) noexcept;
+[[nodiscard]] LoadoutContentLayout calculateLoadoutContentLayout(float availableHeight, float footerHeight) noexcept;
 
 class NativeThumbnailRuntime;
 class NativeSlotWorkflowModel;
