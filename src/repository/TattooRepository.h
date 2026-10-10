@@ -59,6 +59,13 @@ struct TattooFacets {
     std::vector<std::string> areas;
 };
 
+struct TattooMaterialTextureOptions {
+    std::vector<TattooTextureOption> glow;
+    std::vector<TattooTextureOption> bump;
+
+    bool operator==(const TattooMaterialTextureOptions&) const = default;
+};
+
 class TattooRepository {
 public:
     explicit TattooRepository(std::vector<TattooDefinition> definitions);
@@ -66,6 +73,11 @@ public:
     [[nodiscard]] TattooPage query(const TattooFilter& filter = {}) const;
     [[nodiscard]] const TattooFacets& facets() const noexcept;
     [[nodiscard]] TattooFacets contextualFacets(const TattooFilter& filter) const;
+    [[nodiscard]] std::optional<TattooMaterialTextureOptions> materialTextureOptions(
+        std::string_view domain,
+        std::string_view section,
+        std::string_view name,
+        std::string_view area) const;
 
 private:
     struct IndexedDefinition {

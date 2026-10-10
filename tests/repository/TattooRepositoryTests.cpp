@@ -467,6 +467,70 @@ void recentIdentityFilterUsesExactAreaAndNewestFirstOrder() {
         "expected area-scoped history not to match another area");
 }
 
+void resolvesMaterialTextureOptionsByExactRuntimeIdentity() {
+    auto selected = definition(
+        "selected.json", "Pack", "Marks", "Selected", "selected.dds", "Body");
+    selected.domain = "default";
+    selected.glowTexture = "Pack\\selected_g.dds";
+    selected.bump = "Pack\\selected_n.dds";
+    selected.glowTextureOptions = {
+        {.label = "Selected default duplicate", .path = "pack\\SELECTED_G.dds"},
+        {.label = "Blue glow", .path = "Pack\\blue_g.dds"},
+    };
+    selected.bumpOptions = {
+        {.label = "Fine normal", .path = "Pack\\fine_n.dds"},
+        {.label = "Selected normal duplicate", .path = "PACK\\SELECTED_N.DDS"},
+        {.label = "Rough normal", .path = "Pack\\rough_n.dds"},
+    };
+    auto caseDifferent = selected;
+    caseDifferent.name = "selected";
+    auto duplicate = selected;
+    duplicate.sourceId = "duplicate.json";
+    TattooRepository repository({selected, caseDifferent, duplicate});
+
+    const auto ambiguous = repository.materialTextureOptions(
+        "default", "Marks", "Selected", "Body");
+    const auto differentCase = repository.materialTextureOptions(
+        "default", "Marks", "SELECTED", "Body");
+    const auto noMatch = repository.materialTextureOptions(
+        "default", "Missing", "Selected", "Body");
+    expect(!ambiguous && !differentCase && !noMatch,
+        "expected non-unique or case-different identity to resolve no options");
+
+    TattooRepository uniqueRepository({selected, caseDifferent});
+    const auto options = uniqueRepository.materialTextureOptions(
+        "default", "Marks", "Selected", "Body");
+    expect(options.has_value(), "expected one exact runtime identity to resolve options");
+    expect(options->glow == std::vector<stui::repository::TattooTextureOption>{
+               {.label = "Pack default", .path = "Pack\\selected_g.dds"},
+               {.label = "Blue glow", .path = "Pack\\blue_g.dds"},
+           }, "expected glow default prepended and duplicate removed without reordering");
+    expect(options->bump == std::vector<stui::repository::TattooTextureOption>{
+               {.label = "Pack default", .path = "Pack\\selected_n.dds"},
+               {.label = "Fine normal", .path = "Pack\\fine_n.dds"},
+               {.label = "Rough normal", .path = "Pack\\rough_n.dds"},
+           }, "expected bump default prepended and duplicate removed without reordering");
+}
+
+void resolvesEmptyMaterialTextureDefaults() {
+    auto selected = definition(
+        "selected.json", "Pack", "Marks", "Selected", "selected.dds", "Body");
+    selected.domain = "default";
+    selected.glowTextureOptions = {
+        {.label = "Blue glow", .path = "Pack\\blue_g.dds"},
+    };
+    selected.bumpOptions = {
+        {.label = "Fine normal", .path = "Pack\\fine_n.dds"},
+    };
+    TattooRepository repository({selected});
+
+    const auto options = repository.materialTextureOptions(
+        "default", "Marks", "Selected", "Body");
+    expect(options.has_value(), "expected empty defaults to retain declared options");
+    expect(options->glow == selected.glowTextureOptions && options->bump == selected.bumpOptions,
+        "expected empty defaults to avoid synthetic Pack default choices");
+}
+
 void emptyRepositoryReturnsEmptyPageAndFacets() {
     TattooRepository repository(std::vector<TattooDefinition>{});
 
@@ -559,6 +623,12 @@ int main() {
     failures += run(
         "recent identity filter uses exact area and newest-first order",
         recentIdentityFilterUsesExactAreaAndNewestFirstOrder);
+    failures += run(
+        "resolves material texture options by exact runtime identity",
+        resolvesMaterialTextureOptionsByExactRuntimeIdentity);
+    failures += run(
+        "resolves empty material texture defaults",
+        resolvesEmptyMaterialTextureDefaults);
     failures += run(
         "empty repository returns empty page and facets",
         emptyRepositoryReturnsEmptyPageAndFacets);

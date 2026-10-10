@@ -120,6 +120,27 @@ bool matchesMaterialFilter(
         (!filter.glossOnly || material.gloss);
 }
 
+std::vector<TattooTextureOption> effectiveTextureOptions(
+    const std::optional<std::string>& defaultPath,
+    const std::vector<TattooTextureOption>& declaredOptions) {
+    std::vector<TattooTextureOption> effective;
+    effective.reserve(declaredOptions.size() + (defaultPath && !defaultPath->empty() ? 1 : 0));
+    std::unordered_set<std::string> seenPaths;
+    if (defaultPath && !defaultPath->empty()) {
+        effective.push_back(TattooTextureOption{
+            .label = "Pack default",
+            .path = *defaultPath,
+        });
+        seenPaths.insert(foldASCII(*defaultPath));
+    }
+    for (const auto& option : declaredOptions) {
+        if (seenPaths.insert(foldASCII(option.path)).second) {
+            effective.push_back(option);
+        }
+    }
+    return effective;
+}
+
 }  // namespace
 
 TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
@@ -293,6 +314,36 @@ TattooFacets TattooRepository::contextualFacets(const TattooFilter& filter) cons
     result.sections = buildFacetValues(std::move(sections));
     result.areas = buildFacetValues(std::move(areas));
     return result;
+}
+
+std::optional<TattooMaterialTextureOptions> TattooRepository::materialTextureOptions(
+    std::string_view domain,
+    std::string_view section,
+    std::string_view name,
+    std::string_view area) const {
+    const IndexedDefinition* match = nullptr;
+    for (const auto& entry : m_entries) {
+        const auto& definition = entry.definition;
+        if (definition.domain != domain || definition.section != section ||
+            definition.name != name || definition.area != area) {
+            continue;
+        }
+        if (match != nullptr) {
+            return std::nullopt;
+        }
+        match = &entry;
+    }
+    if (match == nullptr) {
+        return std::nullopt;
+    }
+    return TattooMaterialTextureOptions{
+        .glow = effectiveTextureOptions(
+            match->definition.glowTexture,
+            match->definition.glowTextureOptions),
+        .bump = effectiveTextureOptions(
+            match->definition.bump,
+            match->definition.bumpOptions),
+    };
 }
 
 }  // namespace stui::repository
