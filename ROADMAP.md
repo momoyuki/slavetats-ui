@@ -147,6 +147,8 @@ The same browse/apply/edit/remove workflow works for a deliberately selected loa
 
 **Status:** Current priority
 
+**Active design:** `docs/superpowers/specs/2026-10-10-controlled-material-texture-selection-design.md`
+
 **Release baseline:** The accepted capabilities checked below are being prepared
 for public testing as `v1.8.0-beta.1`. This release does not mark the remaining
 unchecked candidates complete.
