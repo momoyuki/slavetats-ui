@@ -529,6 +529,30 @@ void previewDoesNotApplyAndCancelReturnsToSlots() {
         "expected Cancel to preserve picker filters and page for the next target");
 }
 
+void materialTextureSelectionUsesCapturedAllowlistAndTickets() {
+    auto selected = tattoo("Existing", 0);
+    selected.glowTextureOptions = {{.label = "Warm", .path = "marks/warm_g.dds"}};
+    selected.bumpOptions = {{.label = "Fine", .path = "marks/fine_n.dds"}};
+    auto snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({selected}), .sourceCount = 1});
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.beginEditAppearance(), "expected edit session");
+    expect(!model.selectGlowTexture(1) && !model.selectBumpTexture(1),
+        "expected out-of-range texture choices rejected");
+    expect(model.selectGlowTexture(0) && model.selectBumpTexture(0),
+        "expected captured texture choices accepted");
+    const auto start = std::chrono::steady_clock::time_point{};
+    model.advanceLivePreview(start);
+    model.advanceLivePreview(start + 1s);
+    const auto preview = model.takeAppearanceRequest();
+    expect(preview && preview->request.glowTexture == "marks/warm_g.dds" &&
+            preview->request.bump == "marks/fine_n.dds",
+        "expected preview ticket to carry selected material textures");
+}
+
 void previewBackReturnsToPickerAndKeepsApplyingState() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(2);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -2607,6 +2631,8 @@ int main() {
         "material filters delegate and persist across Preview navigation",
         materialFiltersDelegateAndPersistAcrossPreviewNavigation);
     failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
+    failures += run("material texture selection uses captured allowlist and tickets",
+        materialTextureSelectionUsesCapturedAllowlistAndTickets);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);

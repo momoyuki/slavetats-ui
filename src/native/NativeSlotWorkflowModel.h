@@ -67,6 +67,8 @@ struct TattooAppearance {
     float glossiness{};
     float specularStrength{};
     float emissiveMult{1.0F};
+    std::string glowTexture;
+    std::string bump;
 
     bool operator==(const TattooAppearance&) const = default;
 };
@@ -88,6 +90,8 @@ struct AppearanceEditSession {
     std::string texturePath;
     std::string glowTexture;
     std::string bump;
+    std::vector<repository::TattooTextureOption> glowTextureOptions;
+    std::vector<repository::TattooTextureOption> bumpOptions;
     TattooAppearance original;
     TattooAppearance edited;
     std::optional<TattooAppearance> lastPreviewed;
@@ -207,6 +211,8 @@ public:
         float glossiness,
         float specularStrength,
         float emissiveMult) noexcept;
+    [[nodiscard]] bool selectGlowTexture(std::size_t index) noexcept;
+    [[nodiscard]] bool selectBumpTexture(std::size_t index) noexcept;
     [[nodiscard]] bool loadAppearancePreset(const runtime::AppearancePreset& preset);
     [[nodiscard]] const runtime::AppearancePresetList& appearancePresets() const noexcept;
     [[nodiscard]] std::optional<std::size_t> selectedAppearancePreset() const noexcept;

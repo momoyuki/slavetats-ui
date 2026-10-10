@@ -446,6 +446,8 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .glossiness = found->tattoo->glossiness,
         .specularStrength = found->tattoo->specularStrength,
         .emissiveMult = found->tattoo->emissiveMult,
+        .glowTexture = found->tattoo->glowTexture,
+        .bump = found->tattoo->bump,
     };
     m_editAppearance = AppearanceEditSession{
         .actorFormId = currentSlots->actorFormId,
@@ -459,6 +461,15 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .original = appearance,
         .edited = appearance,
     };
+    if (const auto snapshot = m_catalog.snapshot()) {
+        const auto options = snapshot->repository.materialTextureOptions(
+            found->tattoo->domain, found->tattoo->section, found->tattoo->name,
+            found->tattoo->area);
+        if (options) {
+            m_editAppearance->glowTextureOptions = options->glow;
+            m_editAppearance->bumpOptions = options->bump;
+        }
+    }
     // An older refresh must not replace the snapshot captured by this edit session.
     m_pendingSlotQuery.reset();
     m_activeSlotQueryGeneration.reset();
@@ -564,6 +575,28 @@ void NativeSlotWorkflowModel::setEditedAppearance(
             updateLivePreviewStatus();
         }
     }
+}
+
+bool NativeSlotWorkflowModel::selectGlowTexture(std::size_t index) noexcept {
+    if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        index >= m_editAppearance->glowTextureOptions.size()) return false;
+    const auto& path = m_editAppearance->glowTextureOptions[index].path;
+    if (m_editAppearance->edited.glowTexture == path) return false;
+    m_editAppearance->edited.glowTexture = path;
+    ++m_editAppearance->editRevision;
+    updateLivePreviewStatus();
+    return true;
+}
+
+bool NativeSlotWorkflowModel::selectBumpTexture(std::size_t index) noexcept {
+    if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        index >= m_editAppearance->bumpOptions.size()) return false;
+    const auto& path = m_editAppearance->bumpOptions[index].path;
+    if (m_editAppearance->edited.bump == path) return false;
+    m_editAppearance->edited.bump = path;
+    ++m_editAppearance->editRevision;
+    updateLivePreviewStatus();
+    return true;
 }
 
 bool NativeSlotWorkflowModel::loadAppearancePreset(
@@ -741,6 +774,8 @@ bool NativeSlotWorkflowModel::queueAppearanceOperation(
             .glossiness = appearance.glossiness,
             .specularStrength = appearance.specularStrength,
             .emissiveMult = appearance.emissiveMult,
+            .glowTexture = appearance.glowTexture,
+            .bump = appearance.bump,
             .mode = m_editAppearance->mode,
         },
         .purpose = purpose,
