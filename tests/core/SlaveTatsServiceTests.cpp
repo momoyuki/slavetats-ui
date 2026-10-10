@@ -204,6 +204,8 @@ UpdateTattooAppearanceRequest validAppearanceRequest() {
         .glossiness = 2.5F,
         .specularStrength = 1.25F,
         .emissiveMult = 3.0F,
+        .glowTexture = "Pack\\sigil_g.dds",
+        .bump = "Pack\\sigil_n.dds",
         .mode = UpdateTattooAppearanceMode::updateAndSynchronize,
     };
 }
@@ -784,6 +786,9 @@ void appearanceBoundariesAreForwardedUnchanged() {
     expect(runtime.updatedRequest.glow == 0x102030 && runtime.updatedRequest.glossiness == 2.5F &&
             runtime.updatedRequest.specularStrength == 1.25F && runtime.updatedRequest.emissiveMult == 3.0F,
         "expected advanced appearance values forwarded unchanged");
+    expect(runtime.updatedRequest.glowTexture == "Pack\\sigil_g.dds" &&
+            runtime.updatedRequest.bump == "Pack\\sigil_n.dds",
+        "expected material texture paths forwarded unchanged");
 }
 
 void zeroEmissiveAppearanceIsAcceptedAndForwardedUnchanged() {
@@ -837,6 +842,8 @@ void synchronizeOnlyAppearanceBypassesAppearanceValueValidation() {
         .glossiness = -1.0F,
         .specularStrength = std::numeric_limits<float>::infinity(),
         .emissiveMult = -1.0F,
+        .glowTexture = "unvalidated_glow.dds",
+        .bump = "unvalidated_bump.dds",
         .mode = UpdateTattooAppearanceMode::synchronizeOnly,
     };
 

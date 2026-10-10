@@ -311,12 +311,14 @@ struct BindingState {
     int queryCount{};
     int integerWriteCount{};
     int floatWriteCount{};
+    int stringWriteCount{};
     int updatedWriteCount{};
     int synchronizeCount{};
     bool synchronizedSilently{true};
     std::vector<std::int32_t> handles{73};
     std::map<TattooFieldKey, std::int32_t> integers;
     std::map<TattooFieldKey, float> floats;
+    std::map<TattooFieldKey, std::string> strings;
     std::vector<std::string> appearanceWriteKeys;
     std::vector<std::string> appearanceReadKeys;
     std::string ineffectiveReadbackKey;
@@ -379,15 +381,19 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
                                std::int32_t handle,
                                const char* key,
                                const char* value) {
+            ++state.stringWriteCount;
+            state.appearanceWriteKeys.emplace_back(key);
+            state.strings[{handle, key}] = value;
             if (state.queryMirror) state.queryMirror->strings[{handle, key}] = value;
         },
         .getTattooString = [&state](
                                std::int32_t handle,
                                const char* key,
                                const char* fallback) {
-            if (!state.queryMirror) return std::string(fallback);
-            const auto found = state.queryMirror->strings.find({handle, key});
-            return found == state.queryMirror->strings.end() ?
+            state.appearanceReadKeys.emplace_back(key);
+            if (state.ineffectiveReadbackKey == key) return std::string(fallback);
+            const auto found = state.strings.find({handle, key});
+            return found == state.strings.end() ?
                 std::string(fallback) : found->second;
         },
         .setActorInt = [&state](void* actor, const char* path, std::int32_t value) {
@@ -421,6 +427,8 @@ UpdateTattooAppearanceRequest request(UpdateTattooAppearanceMode mode =
         .glossiness = 2.5F,
         .specularStrength = 1.25F,
         .emissiveMult = 3.0F,
+        .glowTexture = "textures\\packs\\chosen-glow_g.dds",
+        .bump = "textures\\packs\\chosen-bump_n.dds",
         .mode = mode,
     };
 }
@@ -797,6 +805,10 @@ void productionDelegationQueriesRequestedActorAndWritesExactAppearance() {
             state.floats[{73, "specularStrength"}] == 1.25F &&
             state.floats[{73, "emissiveMult"}] == 3.0F,
         "expected exact alpha and material float writes with readback");
+    expect(state.stringWriteCount == 2 &&
+            state.strings[{73, "glowTexture"}] == "textures\\packs\\chosen-glow_g.dds" &&
+            state.strings[{73, "bump"}] == "textures\\packs\\chosen-bump_n.dds",
+        "expected exact selected material texture writes with readback");
     expect(state.appearanceWriteKeys == std::vector<std::string>{
             "color",
             "invertedAlpha",
@@ -804,6 +816,8 @@ void productionDelegationQueriesRequestedActorAndWritesExactAppearance() {
             "glossiness",
             "specularStrength",
             "emissiveMult",
+            "glowTexture",
+            "bump",
         },
         "expected stable sequential appearance write order");
     expect(state.updatedWriteCount == 1 && state.updatedActor == state.actor &&
@@ -835,6 +849,8 @@ void glowingAppearanceRestoresZeroGlowAndEmissionWithVerifiedWrites() {
             "glossiness",
             "specularStrength",
             "emissiveMult",
+            "glowTexture",
+            "bump",
         } && state.appearanceReadKeys == std::vector<std::string>{
             "color",
             "invertedAlpha",
@@ -842,6 +858,8 @@ void glowingAppearanceRestoresZeroGlowAndEmissionWithVerifiedWrites() {
             "glossiness",
             "specularStrength",
             "emissiveMult",
+            "glowTexture",
+            "bump",
         }, "expected every appearance write, including zero values, verified by readback");
     expect(state.updatedWriteCount == 1 && state.updatedActor == state.actor &&
             state.updatedPath == ".SlaveTats.updated" && state.updatedValue == 1 &&
@@ -1023,6 +1041,12 @@ void ineffectiveAppearanceReadbacksStopBeforeUpdatedMarkerAndSynchronization() {
         {"emissiveMult",
             {"color", "invertedAlpha", "glow", "glossiness", "specularStrength",
                 "emissiveMult"}},
+        {"glowTexture",
+            {"color", "invertedAlpha", "glow", "glossiness", "specularStrength",
+                "emissiveMult", "glowTexture"}},
+        {"bump",
+            {"color", "invertedAlpha", "glow", "glossiness", "specularStrength",
+                "emissiveMult", "glowTexture", "bump"}},
     };
     for (const auto& failureCase : failureCases) {
         BindingState state;
@@ -1035,7 +1059,7 @@ void ineffectiveAppearanceReadbacksStopBeforeUpdatedMarkerAndSynchronization() {
             "expected ineffective material readback to return updateFailed");
         expect(state.appearanceWriteKeys == failureCase.expectedStoredKeys,
             "expected sequential writes to stop at the first failed material readback");
-        expect(state.integers.size() + state.floats.size() ==
+        expect(state.integers.size() + state.floats.size() + state.strings.size() ==
                 failureCase.expectedStoredKeys.size(),
             "expected earlier sequential writes to remain stored after readback failure");
         expect(state.updatedWriteCount == 0 && state.synchronizeCount == 0,

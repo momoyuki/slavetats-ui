@@ -115,6 +115,8 @@ struct UpdateTattooAppearanceRequest {
     float glossiness{0.0F};
     float specularStrength{0.0F};
     float emissiveMult{1.0F};
+    std::string glowTexture;
+    std::string bump;
     UpdateTattooAppearanceMode mode{
         UpdateTattooAppearanceMode::updateAndSynchronize};
 };

@@ -170,6 +170,7 @@ public:
         if (m_bindings) {
             if (!m_bindings->setTattooInt || !m_bindings->getTattooInt ||
                 !m_bindings->setTattooFloat || !m_bindings->getTattooFloat ||
+                !m_bindings->setTattooString || !m_bindings->getTattooString ||
                 runtimeHandle == 0) {
                 return false;
             }
@@ -182,6 +183,10 @@ public:
             const auto setFloatAndVerify = [&](const char* key, float value) {
                 m_bindings->setTattooFloat(runtimeHandle, key, value);
                 return m_bindings->getTattooFloat(runtimeHandle, key, missingFloat) == value;
+            };
+            const auto setStringAndVerify = [&](const char* key, const std::string& value) {
+                m_bindings->setTattooString(runtimeHandle, key, value.c_str());
+                return m_bindings->getTattooString(runtimeHandle, key, "") == value;
             };
 
             if (!setIntAndVerify("color", request.color)) {
@@ -199,7 +204,13 @@ public:
             if (!setFloatAndVerify("specularStrength", request.specularStrength)) {
                 return false;
             }
-            return setFloatAndVerify("emissiveMult", request.emissiveMult);
+            if (!setFloatAndVerify("emissiveMult", request.emissiveMult)) {
+                return false;
+            }
+            if (!setStringAndVerify("glowTexture", request.glowTexture)) {
+                return false;
+            }
+            return setStringAndVerify("bump", request.bump);
         }
         if (!jcmini::JMap::setIntAndVerify(runtimeHandle, "color", request.color)) {
             return false;
@@ -219,10 +230,21 @@ public:
                 request.specularStrength)) {
             return false;
         }
-        return jcmini::JMap::setFltAndVerify(
-            runtimeHandle,
-            "emissiveMult",
-            request.emissiveMult);
+        if (!jcmini::JMap::setFltAndVerify(
+                runtimeHandle,
+                "emissiveMult",
+                request.emissiveMult)) {
+            return false;
+        }
+        if (!jcmini::fn_jmap_setStr || !jcmini::fn_jmap_getStr) {
+            return false;
+        }
+        jcmini::JMap::setStr(runtimeHandle, "glowTexture", request.glowTexture.c_str());
+        if (jcmini::JMap::getStr(runtimeHandle, "glowTexture", "") != request.glowTexture) {
+            return false;
+        }
+        jcmini::JMap::setStr(runtimeHandle, "bump", request.bump.c_str());
+        return jcmini::JMap::getStr(runtimeHandle, "bump", "") == request.bump;
     }
 
     bool markActorUpdated(ActorHandle actorHandle) override {

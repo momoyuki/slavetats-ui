@@ -95,6 +95,8 @@ UpdateTattooAppearanceRequest validRequest() {
         .glossiness = 2.5F,
         .specularStrength = 1.25F,
         .emissiveMult = 3.0F,
+        .glowTexture = "textures\\packs\\chosen-glow_g.dds",
+        .bump = "textures\\packs\\chosen-bump_n.dds",
         .mode = UpdateTattooAppearanceMode::updateAndSynchronize,
     };
 }
@@ -203,7 +205,9 @@ void validHandleWritesAppearanceMarksUpdatedAndSynchronizesOnce() {
             backend.writtenRequest.glow == 0x102030 &&
             backend.writtenRequest.glossiness == 2.5F &&
             backend.writtenRequest.specularStrength == 1.25F &&
-            backend.writtenRequest.emissiveMult == 3.0F,
+            backend.writtenRequest.emissiveMult == 3.0F &&
+            backend.writtenRequest.glowTexture == "textures\\packs\\chosen-glow_g.dds" &&
+            backend.writtenRequest.bump == "textures\\packs\\chosen-bump_n.dds",
         "valid update must forward the complete editable appearance request");
     expect(backend.markUpdatedCount == 1 && backend.synchronizeCount == 1,
         "valid update must mark updated and synchronize exactly once");
