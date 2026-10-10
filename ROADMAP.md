@@ -159,7 +159,7 @@ Candidates:
 - [x] Favorites
 - [x] Recently used tattoos
 - [x] Appearance presets
-- [ ] Saved tattoo sets / loadouts
+- [x] Saved tattoo sets / loadouts
 - [x] Applied-only browser filter
 - [x] Glow / Bump / Gloss catalog badges and filters
 - [ ] Controlled alternate glow/bump texture selection

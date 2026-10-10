@@ -437,3 +437,11 @@ Do not mark Saved Tattoo Sets / Loadouts complete in `ROADMAP.md` until the
 implementation, full Debug and Release verification, deployment, and intended
 in-game acceptance pass. Keep controlled alternate glow/bump texture selection
 as a separate unchecked roadmap item.
+
+## Acceptance Record
+
+Accepted in-game on 2026-10-10 after deploying the Release DLL to the dedicated
+MO2 SlaveTatsUI mod. The user confirmed the Saved Tattoo Loadouts workflow works
+in the game. The deployed DLL matched the verified Release artifact at SHA-256
+`BECDB613B11C6531E2C3EC19EA519291C027AC928D797652573017C42B7F8FE6`;
+Debug and Release CTest suites each passed 38/38 before acceptance.
