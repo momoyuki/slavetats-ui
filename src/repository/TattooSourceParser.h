@@ -10,6 +10,13 @@
 
 namespace stui::repository {
 
+struct TattooTextureOption {
+    std::string label;
+    std::string path;
+
+    bool operator==(const TattooTextureOption&) const = default;
+};
+
 struct TattooDefinition {
     std::string sourceId;
     std::string sourceFile;
@@ -28,6 +35,8 @@ struct TattooDefinition {
     std::optional<float> glossiness;
     std::optional<float> specularStrength;
     std::optional<std::string> bump;
+    std::vector<TattooTextureOption> glowTextureOptions;
+    std::vector<TattooTextureOption> bumpOptions;
 };
 
 struct TattooParseIssue {

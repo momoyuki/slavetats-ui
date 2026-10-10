@@ -1,9 +1,12 @@
 #include "repository/TattooSourceParser.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <ranges>
 #include <string_view>
 #include <utility>
 
@@ -80,6 +83,80 @@ bool readOptionalMaterialFloatField(
     return true;
 }
 
+std::string trimASCIIWhitespace(std::string value) {
+    const auto isWhitespace = [](const unsigned char character) {
+        return std::isspace(character) != 0;
+    };
+    const auto first = std::ranges::find_if_not(value, isWhitespace);
+    const auto last = std::ranges::find_if_not(value | std::views::reverse, isWhitespace).base();
+    return first < last ? std::string(first, last) : std::string{};
+}
+
+bool equalsFoldedASCII(std::string_view left, std::string_view right) {
+    return left.size() == right.size() && std::ranges::equal(
+        left,
+        right,
+        [](const char leftCharacter, const char rightCharacter) {
+            const auto fold = [](const char character) {
+                return character >= 'A' && character <= 'Z'
+                    ? static_cast<char>(character + ('a' - 'A'))
+                    : character;
+            };
+            return fold(leftCharacter) == fold(rightCharacter);
+        });
+}
+
+bool readTextureOptions(
+    const Json& entry,
+    std::string_view field,
+    std::vector<TattooTextureOption>& options,
+    std::string& error) {
+    const auto item = entry.find(field);
+    if (item == entry.end()) return true;
+    if (!item->is_array()) {
+        error = "field '" + std::string(field) + "' must be an array";
+        return false;
+    }
+
+    for (const auto& option : *item) {
+        if (!option.is_object() || option.size() != 2 ||
+            !option.contains("label") || !option.contains("path") ||
+            !option.at("label").is_string() || !option.at("path").is_string()) {
+            error = "field '" + std::string(field) +
+                "' entries must contain string label and path fields";
+            return false;
+        }
+
+        auto label = trimASCIIWhitespace(option.at("label").get<std::string>());
+        const auto path = option.at("path").get<std::string>();
+        const bool invalidLabel = label.empty() || label.contains("##") ||
+            std::ranges::any_of(label, [](const unsigned char character) {
+                return character < 0x20 || character == 0x7F;
+            });
+        if (invalidLabel) {
+            error = "field '" + std::string(field) +
+                "' labels must be non-empty and safe for display";
+            return false;
+        }
+        if (path.empty() || path.contains('\0')) {
+            error = "field '" + std::string(field) + "' paths must be non-empty";
+            return false;
+        }
+        if (std::ranges::any_of(options, [&path](const TattooTextureOption& existing) {
+                return equalsFoldedASCII(existing.path, path);
+            })) {
+            error = "field '" + std::string(field) + "' paths must be unique";
+            return false;
+        }
+
+        options.push_back(TattooTextureOption{
+            .label = std::move(label),
+            .path = path,
+        });
+    }
+    return true;
+}
+
 bool readOptionalFields(const Json& entry, TattooDefinition& definition, std::string& error) {
     if (const auto glow = entry.find("glow"); glow != entry.end()) {
         if (!glow->is_number_integer()) {
@@ -119,7 +196,9 @@ bool readOptionalFields(const Json& entry, TattooDefinition& definition, std::st
         !readOptionalMaterialFloatField(entry, "emissiveMult", definition.emissiveMult, error) ||
         !readOptionalMaterialFloatField(entry, "glossiness", definition.glossiness, error) ||
         !readOptionalMaterialFloatField(entry, "specularStrength", definition.specularStrength, error) ||
-        !readOptionalStringField(entry, "bump", definition.bump, error)) {
+        !readOptionalStringField(entry, "bump", definition.bump, error) ||
+        !readTextureOptions(entry, "glowTextureOptions", definition.glowTextureOptions, error) ||
+        !readTextureOptions(entry, "bumpOptions", definition.bumpOptions, error)) {
         return false;
     }
 

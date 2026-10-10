@@ -48,7 +48,7 @@ void expect(bool condition, std::string_view message) {
 }
 
 void parserPreservesSourceAndOptionalMetadata() {
-    TemporaryJsonFile file(R"([{"name":"Mark","section":"Marks","texture":"Pack\\mark.dds","area":"Body","glow":16777215,"in_bsa":1,"credit":"Artist","glowTexture":"Pack\\mark_g.dds","bump":"Pack\\mark_n.dds","emissiveMult":3.75,"glossiness":2.5,"specularStrength":1.25}])");
+    TemporaryJsonFile file(R"([{"name":"Mark","section":"Marks","texture":"Pack\\mark.dds","area":"Body","glow":16777215,"in_bsa":1,"credit":"Artist","glowTexture":"Pack\\mark_g.dds","bump":"Pack\\mark_n.dds","emissiveMult":3.75,"glossiness":2.5,"specularStrength":1.25,"glowTextureOptions":[{"label":"  Soft  ","path":"Pack\\soft_g.dds"},{"label":"Sharp","path":"Pack\\sharp_g.dds"}],"bumpOptions":[{"label":"Smooth","path":"Pack\\smooth_n.dds"},{"label":"Raised","path":"Pack\\raised_n.dds"}]}])");
 
     const auto report = parseTattooSource(file.source());
 
@@ -69,6 +69,18 @@ void parserPreservesSourceAndOptionalMetadata() {
     expect(tattoo.emissiveMult == 3.75F, "expected emissive multiplier metadata");
     expect(tattoo.glossiness == 2.5F, "expected glossiness metadata");
     expect(tattoo.specularStrength == 1.25F, "expected specular strength metadata");
+    expect(tattoo.glowTextureOptions.size() == 2 &&
+            tattoo.glowTextureOptions[0].label == "Soft" &&
+            tattoo.glowTextureOptions[0].path == "Pack\\soft_g.dds" &&
+            tattoo.glowTextureOptions[1].label == "Sharp" &&
+            tattoo.glowTextureOptions[1].path == "Pack\\sharp_g.dds",
+        "expected ordered glow texture options with trimmed labels and exact paths");
+    expect(tattoo.bumpOptions.size() == 2 &&
+            tattoo.bumpOptions[0].label == "Smooth" &&
+            tattoo.bumpOptions[0].path == "Pack\\smooth_n.dds" &&
+            tattoo.bumpOptions[1].label == "Raised" &&
+            tattoo.bumpOptions[1].path == "Pack\\raised_n.dds",
+        "expected ordered bump options");
 }
 
 void legacyEntryLeavesAdvancedMaterialMetadataAbsent() {
@@ -84,6 +96,47 @@ void legacyEntryLeavesAdvancedMaterialMetadataAbsent() {
     expect(!tattoo.emissiveMult.has_value(), "expected absent legacy emissive multiplier metadata");
     expect(!tattoo.glossiness.has_value(), "expected absent legacy glossiness metadata");
     expect(!tattoo.specularStrength.has_value(), "expected absent legacy specular strength metadata");
+    expect(tattoo.glowTextureOptions.empty(), "expected no legacy glow texture options");
+    expect(tattoo.bumpOptions.empty(), "expected no legacy bump options");
+}
+
+void malformedTextureOptionDoesNotDiscardValidSibling(
+    std::string_view field,
+    std::string_view value) {
+    const std::string json =
+        "[{\"name\":\"Bad\",\"section\":\"Pack\",\"texture\":\"Pack\\\\bad.dds\",\"area\":\"Body\",\"" +
+        std::string(field) + "\":" + std::string(value) +
+        "},{\"name\":\"Good\",\"section\":\"Pack\",\"texture\":\"Pack\\\\good.dds\",\"area\":\"Body\"}]";
+    TemporaryJsonFile file(json);
+
+    const auto report = parseTattooSource(file.source());
+
+    expect(report.definitions.size() == 1 && report.definitions.front().name == "Good",
+        "expected valid sibling after malformed texture options");
+    expect(report.issues.size() == 1 && report.issues.front().entryIndex == 0,
+        "expected indexed malformed texture option issue");
+}
+
+void malformedTextureOptionsAreRejected() {
+    const std::pair<std::string_view, std::string_view> cases[] = {
+        {"glowTextureOptions", "{}"},
+        {"glowTextureOptions", "[7]"},
+        {"glowTextureOptions", "[{\"label\":\"Soft\",\"path\":\"Pack\\\\soft_g.dds\",\"extra\":true}]"},
+        {"glowTextureOptions", "[{\"path\":\"Pack\\\\soft_g.dds\"}]"},
+        {"glowTextureOptions", "[{\"label\":7,\"path\":\"Pack\\\\soft_g.dds\"}]"},
+        {"glowTextureOptions", "[{\"label\":\"   \",\"path\":\"Pack\\\\soft_g.dds\"}]"},
+        {"glowTextureOptions", "[{\"label\":\"Soft\\nGlow\",\"path\":\"Pack\\\\soft_g.dds\"}]"},
+        {"glowTextureOptions", "[{\"label\":\"Soft##Hidden\",\"path\":\"Pack\\\\soft_g.dds\"}]"},
+        {"bumpOptions", "[{\"label\":\"Smooth\"}]"},
+        {"bumpOptions", "[{\"label\":\"Smooth\",\"path\":17}]"},
+        {"bumpOptions", "[{\"label\":\"Smooth\",\"path\":\"\"}]"},
+        {"bumpOptions", "[{\"label\":\"Smooth\",\"path\":\"Pack\\u0000smooth_n.dds\"}]"},
+        {"bumpOptions", "[{\"label\":\"First\",\"path\":\"Pack\\\\same_n.dds\"},{\"label\":\"Second\",\"path\":\"pack\\\\SAME_N.DDS\"}]"},
+    };
+
+    for (const auto& [field, value] : cases) {
+        malformedTextureOptionDoesNotDiscardValidSibling(field, value);
+    }
 }
 
 void parserPreservesAndNormalizesDomains() {
@@ -246,6 +299,7 @@ int main() {
     int failures = 0;
     failures += run("parser preserves source and optional metadata", parserPreservesSourceAndOptionalMetadata);
     failures += run("legacy entry leaves advanced material metadata absent", legacyEntryLeavesAdvancedMaterialMetadataAbsent);
+    failures += run("malformed texture options are rejected", malformedTextureOptionsAreRejected);
     failures += run("parser preserves and normalizes domains", parserPreservesAndNormalizesDomains);
     failures += run("malformed sibling does not discard valid entry", malformedSiblingIsSkippedWithoutDiscardingValidEntry);
     failures += run("invalid root produces source issue", invalidRootProducesSourceIssue);
