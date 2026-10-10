@@ -49,7 +49,22 @@ ActorTargetResult resolveCrosshairActorTarget() {
         return actorNotFound();
     }
 
-    const auto actorReference = crosshairPickData->targetActor.get();
+    const auto actorReference = [&]() {
+        if (REL::Module::IsVR()) {
+            for (const auto device : {
+                     RE::VR_DEVICE::kLeftController,
+                     RE::VR_DEVICE::kRightController,
+                     RE::VR_DEVICE::kHeadset,
+                 }) {
+                if (auto reference = crosshairPickData->targetActor[device].get()) {
+                    return reference;
+                }
+            }
+            return decltype(crosshairPickData->targetActor[0].get()){};
+        }
+
+        return crosshairPickData->targetActor[0].get();
+    }();
     auto* const actor = actorReference ? actorReference->As<RE::Actor>() : nullptr;
     if (!actor) {
         return actorNotFound();

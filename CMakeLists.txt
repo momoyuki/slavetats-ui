@@ -99,7 +99,7 @@ find_package(CommonLibSSE CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
 
-add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources})
+add_commonlibsse_plugin(${PROJECT_NAME} USE_ADDRESS_LIBRARY SOURCES ${headers} ${sources})
 add_library("${PROJECT_NAME}::${PROJECT_NAME}" ALIAS "${PROJECT_NAME}")
 
 target_include_directories(${PROJECT_NAME}

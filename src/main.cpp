@@ -253,8 +253,12 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                       L"Data" / L"textures" / L"actors" / L"character" / L"slavetats";
             auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
             auto* taskInterface = SKSE::GetTaskInterface();
+            // CommonLib's REX declaration and the DirectX SDK declaration describe the same COM object.
+            auto* const device = renderer
+                ? reinterpret_cast<ID3D11Device*>(renderer->GetRuntimeData().forwarder)
+                : nullptr;
 
-            if (textureRoot.empty() || !renderer || !renderer->data.forwarder || !taskInterface) {
+            if (textureRoot.empty() || !device || !taskInterface) {
                 g_nativeThumbnailRuntime = makeUnavailableNativeThumbnailRuntime(textureRoot);
                 if (!g_nativeThumbnailRuntimeUnavailableLogged) {
                     logger::warn(
@@ -264,7 +268,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
             } else {
                 auto source = std::make_unique<native::D3D11NativeThumbnailSource>(
                     textureRoot,
-                    renderer->data.forwarder,
+                    device,
                     12,
                     std::chrono::minutes(2),
                     [](std::string_view resourcePath) {

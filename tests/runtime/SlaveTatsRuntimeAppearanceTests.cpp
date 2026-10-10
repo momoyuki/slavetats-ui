@@ -119,15 +119,15 @@ public:
         database << "69192," << std::hex << release - base << '\n';
         database.close();
 
-        expect(REL::IDDatabase::inject(
+        expect(REL::IDDB::inject(
                    m_databasePath.wstring(),
-                   REL::IDDatabase::Format::VR,
+                   REL::IDDB::Format::VR,
                    REL::Version{1, 6, 999, 0}),
             "expected CommonLib test address database to initialize");
     }
 
     ~CommonLibTestHostGuard() {
-        REL::IDDatabase::reset();
+        REL::IDDB::reset();
         REL::Module::reset();
         g_fixedStringStorage.clear();
         std::error_code ignored;

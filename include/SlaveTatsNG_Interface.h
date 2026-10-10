@@ -3,6 +3,10 @@
 #include <cstdint>
 #include "RE/Skyrim.h"
 
+#ifdef interface
+#  undef interface
+#endif
+
 namespace slavetats
 {
 	typedef bool fail_t;

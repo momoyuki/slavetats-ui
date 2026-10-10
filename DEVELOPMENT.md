@@ -58,6 +58,10 @@ Requirements:
 - vcpkg with `VCPKG_ROOT` set
 - dependencies declared in `vcpkg.json`
 
+The repository overlay pins `commonlibsse-ng` to
+`alandtse/CommonLibSSE-NG` v11.0.0 and verifies the source archive hash. CMake
+uses that overlay automatically through `CMakePresets.json`.
+
 Use the repository script because it imports the MSVC environment required by
 CommonLibSSE and D3D11 headers:
 

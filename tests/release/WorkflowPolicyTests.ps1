@@ -42,6 +42,7 @@ Assert-Matches -Pattern '(?m)^\s+run:\s*\.\/build\.ps1 -Config debug\s*$' -Becau
 Assert-Matches -Pattern '(?m)^\s+run:\s*ctest --test-dir build/debug --output-on-failure\s*$' -Because 'CI runs the complete Debug suite'
 Assert-Matches -Pattern '(?m)^\s+run:\s*\.\/build\.ps1 -Config release\s*$' -Because 'CI builds Release through build.ps1'
 Assert-Matches -Pattern '(?m)^\s+run:\s*ctest --test-dir build/release --output-on-failure\s*$' -Because 'CI runs the complete Release suite'
+Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/CommonLibDependencyTests\.ps1\s*$' -Because 'CI verifies CommonLib dependency provenance'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/ReleaseMetadataTests\.ps1\s*$' -Because 'CI tests release metadata behavior'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/PackageReleaseTests\.ps1\s*$' -Because 'CI tests release packaging behavior'
 Assert-Matches -Pattern '(?m)^\s+\.\/tests/release/ReleaseGuardsTests\.ps1\s*$' -Because 'CI tests release guard behavior'
@@ -82,6 +83,7 @@ $requiredReleasePatterns = @(
     @{ Pattern = '(?m)^\s+(?:run:\s*)?\.\/scripts/release/Assert-TagOnMain\.ps1'; Because = 'tag ancestry is validated' },
     @{ Pattern = '(?m)^\s+run:\s*\.\/build\.ps1 -Config release\s*$'; Because = 'the tagged source receives a fresh Release build' },
     @{ Pattern = '(?m)^\s+run:\s*ctest --test-dir build/release --output-on-failure\s*$'; Because = 'the tagged source receives complete Release tests' },
+    @{ Pattern = '(?m)^\s+\.\/tests/release/CommonLibDependencyTests\.ps1\s*$'; Because = 'the tagged source verifies CommonLib dependency provenance' },
     @{ Pattern = '(?m)^\s+run:\s*\.\/scripts/release/Package-Release\.ps1'; Because = 'the workflow uses the tested packager' },
     @{ Pattern = '(?m)^\s+run:\s*\.\/scripts/release/Assert-ReleaseAbsent\.ps1'; Because = 'existing releases are rejected' },
     @{ Pattern = '(?m)^\s+gh release create\b'; Because = 'the publish job creates the GitHub Release' },
