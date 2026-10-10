@@ -25,11 +25,17 @@ if (-not (Test-Path $vcvarsall)) {
 }
 
 # Import MSVC environment into current session
+$configuredVcpkgRoot = $env:VCPKG_ROOT
 Write-Host "Setting up MSVC x64 environment..."
 cmd /c "`"$vcvarsall`" x64 && set" | ForEach-Object {
     if ($_ -match "^([^=]+)=(.*)$") {
         [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], "Process")
     }
+}
+
+# vcvarsall may select Visual Studio's bundled vcpkg; retain the user's install.
+if ($configuredVcpkgRoot) {
+    $env:VCPKG_ROOT = $configuredVcpkgRoot
 }
 
 if (-not $env:VCPKG_ROOT) {
