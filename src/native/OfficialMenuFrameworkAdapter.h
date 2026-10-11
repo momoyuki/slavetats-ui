@@ -54,6 +54,7 @@ struct LoadoutContentLayout {
 [[nodiscard]] LoadoutContentLayout calculateLoadoutContentLayout(float availableHeight, float footerHeight) noexcept;
 
 class NativeThumbnailRuntime;
+[[nodiscard]] std::string_view launcherModVersionLabel() noexcept;
 class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;

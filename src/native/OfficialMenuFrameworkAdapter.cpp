@@ -2539,8 +2539,13 @@ void renderEditAppearance(
 
 }  // namespace
 
+std::string_view launcherModVersionLabel() noexcept {
+    return "SlaveTats UI v" SLAVETATSUI_VERSION " (" SLAVETATSUI_GIT_REVISION ")";
+}
+
 bool OfficialMenuFrameworkAdapter::renderLauncher(runtime::HotkeyBinding& hotkey) {
     ImGuiMCP::TextUnformatted("Open SlaveTatsUI when you are ready to browse tattoos.");
+    ImGuiMCP::TextUnformatted(launcherModVersionLabel().data());
     const auto hotkeyLabel = hotkey.label();
     static bool hotkeySaveFailed = false;
     if (ImGuiMCP::BeginCombo("Hotkey", hotkeyLabel.c_str())) {

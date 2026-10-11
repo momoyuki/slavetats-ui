@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <iostream>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -688,6 +689,13 @@ void editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges() {
     const auto ranges = editAppearanceControlRanges();
     expect(ranges.glossinessMax == 1000.0F && ranges.specularStrengthMax == 100.0F,
         "expected expanded material slider ranges");
+}
+
+void launcherShowsBuiltModVersion() {
+    const std::string label(stui::native::launcherModVersionLabel());
+    expect(std::regex_match(label,
+            std::regex(R"(SlaveTats UI v1\.8\.0 \([0-9a-f]{7}(-dirty)?\))")),
+        "expected launcher version and short Git commit hash with optional dirty marker");
 }
 
 void appearancePresetPresentationCoversEmptyLimitAndPendingStates() {
@@ -1446,6 +1454,8 @@ int main() {
         std::cout << "PASS Edit Appearance uses session save and thumbnail state\n";
         editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges();
         std::cout << "PASS Edit Appearance layout and expanded ranges\n";
+        launcherShowsBuiltModVersion();
+        std::cout << "PASS launcher shows built mod version\n";
         appearancePresetPresentationCoversEmptyLimitAndPendingStates();
         std::cout << "PASS Appearance Preset presentation states\n";
         editAppearanceRendererOrchestrationOrdersInputAndCancel();

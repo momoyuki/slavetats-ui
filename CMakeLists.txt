@@ -2,6 +2,32 @@ cmake_minimum_required(VERSION 3.21)
 message("Using toolchain file ${CMAKE_TOOLCHAIN_FILE}.")
 
 project(SlaveTatsUI VERSION 1.8.0 DESCRIPTION "Native SlaveTats UI plugin" LANGUAGES CXX)
+find_package(Git QUIET)
+set(SLAVETATSUI_GIT_REVISION "unknown")
+if(Git_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -c "safe.directory=${PROJECT_SOURCE_DIR}" rev-parse --short=7 HEAD
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE SLAVETATSUI_GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE SLAVETATSUI_GIT_RESULT
+        ERROR_QUIET
+    )
+    if(SLAVETATSUI_GIT_RESULT EQUAL 0)
+        set(SLAVETATSUI_GIT_REVISION "${SLAVETATSUI_GIT_HASH}")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" -c "safe.directory=${PROJECT_SOURCE_DIR}" status --porcelain --untracked-files=no
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            OUTPUT_VARIABLE SLAVETATSUI_GIT_CHANGES
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(SLAVETATSUI_GIT_CHANGES)
+            string(APPEND SLAVETATSUI_GIT_REVISION "-dirty")
+        endif()
+    endif()
+endif()
+message(STATUS "SlaveTatsUI build revision: ${SLAVETATSUI_GIT_REVISION}")
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -101,6 +127,10 @@ find_package(directxtex CONFIG REQUIRED)
 
 add_commonlibsse_plugin(${PROJECT_NAME} USE_ADDRESS_LIBRARY SOURCES ${headers} ${sources})
 add_library("${PROJECT_NAME}::${PROJECT_NAME}" ALIAS "${PROJECT_NAME}")
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    SLAVETATSUI_VERSION="${PROJECT_VERSION}"
+    SLAVETATSUI_GIT_REVISION="${SLAVETATSUI_GIT_REVISION}"
+)
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
@@ -264,6 +294,10 @@ if(BUILD_TESTING)
         tests/native/OfficialMenuFrameworkAdapterTests.cpp
     )
     target_include_directories(OfficialMenuFrameworkAdapterTests PRIVATE src include)
+    target_compile_definitions(OfficialMenuFrameworkAdapterTests PRIVATE
+        SLAVETATSUI_VERSION="${PROJECT_VERSION}"
+        SLAVETATSUI_GIT_REVISION="${SLAVETATSUI_GIT_REVISION}"
+    )
     target_link_libraries(OfficialMenuFrameworkAdapterTests PRIVATE CommonLibSSE::CommonLibSSE nlohmann_json::nlohmann_json)
     add_test(NAME OfficialMenuFrameworkAdapterTests COMMAND OfficialMenuFrameworkAdapterTests)
 
