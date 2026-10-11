@@ -772,6 +772,24 @@ bool shouldShowAppearanceTextureMetadata(std::string_view texturePath) noexcept 
     return !texturePath.empty();
 }
 
+MaterialTextureSelectorPresentation materialTextureSelectorPresentation(
+    const std::vector<repository::TattooTextureOption>& options,
+    std::string_view currentPath,
+    bool glow) noexcept {
+    MaterialTextureSelectorPresentation presentation{
+        .visible = !options.empty(),
+        .currentLabel = "Current (unlisted)",
+        .widgetId = glow ? "##GlowTextureSelector" : "##BumpTextureSelector",
+    };
+    for (const auto& option : options) {
+        if (option.path == currentPath) {
+            presentation.currentLabel = option.label;
+            break;
+        }
+    }
+    return presentation;
+}
+
 EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
     float availableWidth,
     float availableHeight,
@@ -2354,6 +2372,40 @@ void renderEditAppearance(
     ImGuiMCP::EndDisabled();
 
     if (session) {
+        const auto renderTextureSelector = [&workflow, targetActionsEnabled](
+                                               const char* label,
+                                               const std::vector<repository::TattooTextureOption>& options,
+                                               const std::string& selectedPath,
+                                               bool glow,
+                                               auto select) {
+            const auto presentation = materialTextureSelectorPresentation(options, selectedPath, glow);
+            if (!presentation.visible) return;
+            ImGuiMCP::TextUnformatted(label);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
+                !isAppearanceEditingEnabled(workflow.screen(), workflow.editAppearance()));
+            if (ImGuiMCP::BeginCombo(presentation.widgetId.data(),
+                    presentation.currentLabel.data())) {
+                for (std::size_t index = 0; index < options.size(); ++index) {
+                    const bool selected = options[index].path == selectedPath;
+                    if (ImGuiMCP::Selectable(options[index].label.c_str(), selected)) {
+                        (void)(workflow.*select)(index);
+                    }
+                    if (ImGuiMCP::IsItemHovered()) {
+                        ImGuiMCP::SetTooltip("%s", options[index].path.c_str());
+                    }
+                    if (selected) ImGuiMCP::SetItemDefaultFocus();
+                }
+                ImGuiMCP::EndCombo();
+            }
+            ImGuiMCP::EndDisabled();
+        };
+        renderTextureSelector("Glow Texture", session->glowTextureOptions,
+            session->edited.glowTexture, true,
+            &NativeSlotWorkflowModel::selectGlowTexture);
+        renderTextureSelector("Bump Texture", session->bumpOptions,
+            session->edited.bump, false,
+            &NativeSlotWorkflowModel::selectBumpTexture);
         if (session->edited.glow != 0 || !session->glowTexture.empty() ||
             session->edited.emissiveMult != 1.0F) {
             ImGuiMCP::SameLine();

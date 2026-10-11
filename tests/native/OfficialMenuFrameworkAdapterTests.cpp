@@ -655,6 +655,22 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
 
 void editAppearanceLayoutHidesEmptyMetadataAndUsesExpandedRanges() {
     using namespace stui::native;
+    const std::vector<stui::repository::TattooTextureOption> options{
+        {.label = "Pack default", .path = "marks/default_g.dds"},
+        {.label = "Soft glow", .path = "marks/soft_g.dds"},
+    };
+    const auto hidden = materialTextureSelectorPresentation({}, "marks/current.dds", true);
+    const auto selected = materialTextureSelectorPresentation(options, "marks/soft_g.dds", true);
+    const auto unlisted = materialTextureSelectorPresentation(options, "marks/current.dds", false);
+    const auto packDefault = materialTextureSelectorPresentation(options, "marks/default_g.dds", true);
+    expect(!hidden.visible && selected.visible &&
+            selected.currentLabel == "Soft glow" &&
+            selected.widgetId == "##GlowTextureSelector" &&
+            unlisted.currentLabel == "Current (unlisted)" &&
+            unlisted.widgetId == "##BumpTextureSelector" &&
+            packDefault.currentLabel == "Pack default" &&
+            options[1].path == "marks/soft_g.dds",
+        "expected controlled texture selector labels, exact paths, and stable IDs");
     expect(!shouldShowAppearanceTextureMetadata("") &&
                shouldShowAppearanceTextureMetadata("textures/tattoos/glow.dds"),
         "expected empty texture metadata to stay hidden");

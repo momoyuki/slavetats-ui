@@ -375,6 +375,15 @@ enum class AppearancePresetUiState { unavailable, empty, ready, limitReached, pe
     std::string_view texturePath) noexcept;
 [[nodiscard]] bool shouldShowAppearanceTextureMetadata(
     std::string_view texturePath) noexcept;
+struct MaterialTextureSelectorPresentation {
+    bool visible{};
+    std::string_view currentLabel;
+    std::string_view widgetId;
+};
+[[nodiscard]] MaterialTextureSelectorPresentation materialTextureSelectorPresentation(
+    const std::vector<repository::TattooTextureOption>& options,
+    std::string_view currentPath,
+    bool glow) noexcept;
 [[nodiscard]] EditAppearanceThumbnailLayout calculateEditAppearanceThumbnailLayout(
     float availableWidth,
     float availableHeight,
