@@ -69,6 +69,44 @@ Only current-page thumbnails are requested. Loose and BSA-backed DDS textures
 are decoded and uploaded to a bounded D3D11 cache; missing textures render a
 placeholder rather than blocking the menu.
 
+## Pack-Declared Material Texture Choices
+
+Pack authors may add `glowTextureOptions` and `bumpOptions` to a tattoo entry in
+the pack's JSON array. These fields are a **SlaveTats UI extension**, not part
+of the upstream SlaveTatsNG schema. Existing `glowTexture` and `bump` fields
+remain the pack defaults.
+
+```json
+[
+  {
+    "name": "Mark",
+    "section": "Marks",
+    "texture": "Pack\\mark.dds",
+    "area": "Body",
+    "glowTexture": "Pack\\mark_g.dds",
+    "bump": "Pack\\mark_n.dds",
+    "glowTextureOptions": [
+      { "label": "Soft", "path": "Pack\\soft_g.dds" },
+      { "label": "Sharp", "path": "Pack\\sharp_g.dds" }
+    ],
+    "bumpOptions": [
+      { "label": "Smooth", "path": "Pack\\smooth_n.dds" },
+      { "label": "Raised", "path": "Pack\\raised_n.dds" }
+    ]
+  }
+]
+```
+
+Each option must be an object containing only a non-empty `label` and `path`.
+Labels are trimmed and may not contain control characters or `##`. Paths retain
+their exact bytes and may not contain NUL. Paths must be unique within each
+list, ignoring ASCII case. A malformed list rejects that tattoo entry and
+reports a catalog parse issue, while valid entries remain available.
+Non-empty singular defaults appear as `Pack default` unless already listed.
+The editor shows selectors only when it can match one catalog tattoo
+unambiguously. Older packs without option arrays keep their existing read-only
+texture display.
+
 ## Changing the Hotkey
 
 The hotkey defaults to `None`. Open the `SlaveTatsUI` section in SKSE Menu and
