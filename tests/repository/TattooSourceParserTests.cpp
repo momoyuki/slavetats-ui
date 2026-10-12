@@ -100,6 +100,16 @@ void legacyEntryLeavesAdvancedMaterialMetadataAbsent() {
     expect(tattoo.bumpOptions.empty(), "expected no legacy bump options");
 }
 
+void textureOptionsAllowDuplicateLabelsWithDistinctPaths() {
+    TemporaryJsonFile file(R"([{"name":"Mark","section":"Marks","texture":"Pack\\mark.dds","area":"Body","glowTextureOptions":[{"label":"Soft","path":"Pack\\first_g.dds"},{"label":"Soft","path":"Pack\\second_g.dds"}]}])");
+    const auto report = parseTattooSource(file.source());
+    expect(report.issues.empty() && report.definitions.size() == 1 &&
+            report.definitions.front().glowTextureOptions.size() == 2 &&
+            report.definitions.front().glowTextureOptions[0].path == "Pack\\first_g.dds" &&
+            report.definitions.front().glowTextureOptions[1].path == "Pack\\second_g.dds",
+        "expected duplicate display labels to retain two distinct selectable paths");
+}
+
 void malformedTextureOptionDoesNotDiscardValidSibling(
     std::string_view field,
     std::string_view value) {
@@ -300,6 +310,8 @@ int main() {
     failures += run("parser preserves source and optional metadata", parserPreservesSourceAndOptionalMetadata);
     failures += run("legacy entry leaves advanced material metadata absent", legacyEntryLeavesAdvancedMaterialMetadataAbsent);
     failures += run("malformed texture options are rejected", malformedTextureOptionsAreRejected);
+    failures += run("texture options allow duplicate labels with distinct paths",
+        textureOptionsAllowDuplicateLabelsWithDistinctPaths);
     failures += run("parser preserves and normalizes domains", parserPreservesAndNormalizesDomains);
     failures += run("malformed sibling does not discard valid entry", malformedSiblingIsSkippedWithoutDiscardingValidEntry);
     failures += run("invalid root produces source issue", invalidRootProducesSourceIssue);

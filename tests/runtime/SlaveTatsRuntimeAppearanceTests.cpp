@@ -55,6 +55,7 @@ struct QueryState {
     int queryCount{};
     int applyCount{};
     int removeCount{};
+    bool failNextRemove{};
     int synchronizeCount{};
     int updatedWriteCount{};
     int arrayCreateCount{};
@@ -229,6 +230,10 @@ std::int32_t addAndGetTattoo(RE::Actor*, int, int, bool, bool, bool) {
 
 bool removeTattooFromSlot(RE::Actor*, RE::BSFixedString, int, bool, bool) {
     ++g_queryState->removeCount;
+    if (g_queryState->failNextRemove) {
+        g_queryState->failNextRemove = false;
+        return true;
+    }
     g_queryState->slotTattoo = 0;
     return false;
 }
@@ -322,6 +327,8 @@ struct BindingState {
     std::vector<std::string> appearanceWriteKeys;
     std::vector<std::string> appearanceReadKeys;
     std::string ineffectiveReadbackKey;
+    std::string ineffectiveSecondStringReadKey;
+    std::map<TattooFieldKey, int> stringReadCounts;
     std::int32_t updatedValue{};
     std::string updatedPath;
     QueryState* queryMirror{};
@@ -391,7 +398,11 @@ SlaveTatsAppearanceBindings bindingsFor(BindingState& state) {
                                const char* key,
                                const char* fallback) {
             state.appearanceReadKeys.emplace_back(key);
+            const auto readCount = ++state.stringReadCounts[{handle, key}];
             if (state.ineffectiveReadbackKey == key) return std::string(fallback);
+            if (state.ineffectiveSecondStringReadKey == key && readCount >= 2) {
+                return std::string(fallback);
+            }
             const auto found = state.strings.find({handle, key});
             return found == state.strings.end() ?
                 std::string(fallback) : found->second;
@@ -749,6 +760,42 @@ void restoresAddedTattooWithVerifiedAppearanceAndOneSynchronization() {
         "expected all six appearance fields written and verified");
     expect(bindingState.updatedWriteCount == 1 && bindingState.synchronizeCount == 1,
         "expected one batch synchronization after the add");
+}
+
+void rollbackRejectsMissingReadbackOfEmptyMaterialPaths() {
+    CommonLibTestHostGuard hostGuard;
+    for (const auto& key : {"bump", "glowTexture"}) {
+        for (const bool failReadback : {false, true}) {
+            QueryState queryState;
+            JcminiPointerGuard guard(queryState);
+            BindingState bindingState;
+            bindingState.queryMirror = &queryState;
+            if (failReadback) bindingState.ineffectiveSecondStringReadKey = key;
+            bindingState.handles = {74};
+            SlaveTatsRuntime runtime(bindingsFor(bindingState));
+            runtime.bindSlaveTats(&queryApi());
+
+            queryState.availableTattoo = 73;
+            seedBaseTattoo(queryState, queryState.availableTattoo);
+            queryState.appliedTattoo = 74;
+            queryState.slotTattoo = 74;
+            seedBaseTattoo(queryState, queryState.appliedTattoo);
+            queryState.failNextRemove = true;
+            const auto restored = runtime.restoreLoadout({
+                .actorFormId = 0x14,
+                .loadout = {.name = "Empty Set"},
+            });
+            expect(queryState.applyCount == (failReadback ? 1 : 4) &&
+                    bindingState.stringWriteCount == (failReadback ? 4 : 16) &&
+                    std::ranges::find(bindingState.appearanceReadKeys, key) !=
+                        bindingState.appearanceReadKeys.end(),
+                "expected rollback to stop at the failed metadata readback");
+            expect(restored && restored->state ==
+                    (failReadback ? stui::core::TattooLoadoutRestoreState::rollbackIncomplete
+                                  : stui::core::TattooLoadoutRestoreState::rollbackComplete),
+                "expected normal rollback success and missing empty-path readback to report incomplete recovery");
+        }
+    }
 }
 
 void retriesForwardSynchronizationWithoutRepeatingWrites() {
@@ -1216,6 +1263,8 @@ int main() {
         restoresEmptyLoadoutWithOneSynchronization);
     failures += run("runtime restores added tattoo with exact appearance",
         restoresAddedTattooWithVerifiedAppearanceAndOneSynchronization);
+    failures += run("rollback rejects missing readback of empty material paths",
+        rollbackRejectsMissingReadbackOfEmptyMaterialPaths);
     failures += run("runtime retries forward synchronization without repeated writes",
         retriesForwardSynchronizationWithoutRepeatingWrites);
     failures += run("production delegation queries actor and writes exact appearance",

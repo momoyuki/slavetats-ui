@@ -2393,6 +2393,7 @@ void renderEditAppearance(
                     presentation.currentLabel.data())) {
                 for (std::size_t index = 0; index < options.size(); ++index) {
                     const bool selected = options[index].path == selectedPath;
+                    ImGuiMCP::PushID(static_cast<int>(index));
                     if (ImGuiMCP::Selectable(options[index].label.c_str(), selected)) {
                         (void)(workflow.*select)(index);
                     }
@@ -2400,6 +2401,7 @@ void renderEditAppearance(
                         ImGuiMCP::SetTooltip("%s", options[index].path.c_str());
                     }
                     if (selected) ImGuiMCP::SetItemDefaultFocus();
+                    ImGuiMCP::PopID();
                 }
                 ImGuiMCP::EndCombo();
             }

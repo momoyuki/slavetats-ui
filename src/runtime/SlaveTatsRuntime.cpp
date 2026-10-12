@@ -1103,10 +1103,13 @@ std::expected<void, core::ServiceError> SlaveTatsRuntime::applyRollback(
                         m_appearanceBindings->setTattooInt(
                             handle, "locked", tattoo.locked ? 1 : 0);
                         metadataRestored =
-                            m_appearanceBindings->getTattooString(handle, "bump", "") ==
+                            m_appearanceBindings->getTattooString(
+                                handle, "bump", tattoo.bump.empty() ? "\x01" : "") ==
                                 tattoo.bump &&
                             m_appearanceBindings->getTattooString(
-                                handle, "glowTexture", "") == tattoo.glowTexture &&
+                                handle, "glowTexture",
+                                tattoo.glowTexture.empty() ? "\x01" : "") ==
+                                tattoo.glowTexture &&
                             m_appearanceBindings->getTattooInt(handle, "locked", -1) ==
                                 (tattoo.locked ? 1 : 0);
                     }
@@ -1115,8 +1118,10 @@ std::expected<void, core::ServiceError> SlaveTatsRuntime::applyRollback(
                     jcmini::JMap::setStr(
                         handle, "glowTexture", tattoo.glowTexture.c_str());
                     metadataRestored =
-                        jcmini::JMap::getStr(handle, "bump") == tattoo.bump &&
-                        jcmini::JMap::getStr(handle, "glowTexture") == tattoo.glowTexture &&
+                        jcmini::JMap::getStr(handle, "bump",
+                            tattoo.bump.empty() ? "\x01" : "") == tattoo.bump &&
+                        jcmini::JMap::getStr(handle, "glowTexture",
+                            tattoo.glowTexture.empty() ? "\x01" : "") == tattoo.glowTexture &&
                         jcmini::JMap::setIntAndVerify(
                             handle, "locked", tattoo.locked ? 1 : 0);
                 }
