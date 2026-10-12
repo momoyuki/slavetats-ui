@@ -1065,6 +1065,21 @@ void ineffectiveAppearanceReadbacksStopBeforeUpdatedMarkerAndSynchronization() {
         expect(state.updatedWriteCount == 0 && state.synchronizeCount == 0,
             "expected material readback failure not to mark or synchronize");
     }
+
+    for (const auto& key : {"glowTexture", "bump"}) {
+        BindingState state;
+        state.ineffectiveReadbackKey = key;
+        SlaveTatsRuntime runtime(bindingsFor(state));
+        auto emptyTextureRequest = request();
+        emptyTextureRequest.glowTexture.clear();
+        emptyTextureRequest.bump.clear();
+
+        const auto result = runtime.updateAppearance(emptyTextureRequest);
+        expect(!result && result.error().code == ServiceErrorCode::updateFailed,
+            "expected missing readback to reject an empty texture write");
+        expect(state.updatedWriteCount == 0 && state.synchronizeCount == 0,
+            "expected empty texture readback failure to stop synchronization");
+    }
 }
 
 void failedUpdatedReadbackStopsBeforeSynchronization() {

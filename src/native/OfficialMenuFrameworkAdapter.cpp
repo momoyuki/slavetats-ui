@@ -768,6 +768,11 @@ std::string_view appearanceTextureMetadata(std::string_view texturePath) noexcep
     return texturePath.empty() ? "None" : texturePath;
 }
 
+std::string_view appearanceTextureMetadata(
+    const AppearanceEditSession& session, bool glow) noexcept {
+    return appearanceTextureMetadata(glow ? session.edited.glowTexture : session.edited.bump);
+}
+
 bool shouldShowAppearanceTextureMetadata(std::string_view texturePath) noexcept {
     return !texturePath.empty();
 }
@@ -2406,24 +2411,24 @@ void renderEditAppearance(
         renderTextureSelector("Bump Texture", session->bumpOptions,
             session->edited.bump, false,
             &NativeSlotWorkflowModel::selectBumpTexture);
-        if (session->edited.glow != 0 || !session->glowTexture.empty() ||
+        if (session->edited.glow != 0 || !session->edited.glowTexture.empty() ||
             session->edited.emissiveMult != 1.0F) {
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted("Glow");
         }
-        if (!session->bump.empty()) {
+        if (!session->edited.bump.empty()) {
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted("Bump");
         }
-        if (shouldShowAppearanceTextureMetadata(session->glowTexture)) {
+        if (shouldShowAppearanceTextureMetadata(session->edited.glowTexture)) {
             ImGuiMCP::TextUnformatted("Glow Texture:");
             ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted(session->glowTexture.c_str());
+            ImGuiMCP::TextUnformatted(appearanceTextureMetadata(*session, true).data());
         }
-        if (shouldShowAppearanceTextureMetadata(session->bump)) {
+        if (shouldShowAppearanceTextureMetadata(session->edited.bump)) {
             ImGuiMCP::TextUnformatted("Bump Texture:");
             ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted(session->bump.c_str());
+            ImGuiMCP::TextUnformatted(appearanceTextureMetadata(*session, false).data());
         }
     }
 

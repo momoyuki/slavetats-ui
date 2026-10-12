@@ -579,6 +579,8 @@ void NativeSlotWorkflowModel::setEditedAppearance(
 
 bool NativeSlotWorkflowModel::selectGlowTexture(std::size_t index) noexcept {
     if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+        m_editAppearance->exitIntent != AppearanceExitIntent::none ||
         index >= m_editAppearance->glowTextureOptions.size()) return false;
     const auto& path = m_editAppearance->glowTextureOptions[index].path;
     if (m_editAppearance->edited.glowTexture == path) return false;
@@ -590,6 +592,8 @@ bool NativeSlotWorkflowModel::selectGlowTexture(std::size_t index) noexcept {
 
 bool NativeSlotWorkflowModel::selectBumpTexture(std::size_t index) noexcept {
     if (m_screen != SlotWorkflowScreen::editAppearance || !m_editAppearance ||
+        m_editAppearance->mode == core::UpdateTattooAppearanceMode::synchronizeOnly ||
+        m_editAppearance->exitIntent != AppearanceExitIntent::none ||
         index >= m_editAppearance->bumpOptions.size()) return false;
     const auto& path = m_editAppearance->bumpOptions[index].path;
     if (m_editAppearance->edited.bump == path) return false;

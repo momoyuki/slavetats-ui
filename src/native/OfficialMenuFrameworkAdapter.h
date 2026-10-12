@@ -374,6 +374,8 @@ enum class AppearancePresetUiState { unavailable, empty, ready, limitReached, pe
     TattooColorComponents components) noexcept;
 [[nodiscard]] std::string_view appearanceTextureMetadata(
     std::string_view texturePath) noexcept;
+[[nodiscard]] std::string_view appearanceTextureMetadata(
+    const AppearanceEditSession& session, bool glow) noexcept;
 [[nodiscard]] bool shouldShowAppearanceTextureMetadata(
     std::string_view texturePath) noexcept;
 struct MaterialTextureSelectorPresentation {

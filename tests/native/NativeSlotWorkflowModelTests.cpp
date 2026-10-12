@@ -553,6 +553,55 @@ void materialTextureSelectionUsesCapturedAllowlistAndTickets() {
         "expected preview ticket to carry selected material textures");
 }
 
+void materialTextureSelectionRejectsPendingExitAndSyncRetry() {
+    auto selected = tattoo("Existing", 0);
+    selected.glowTextureOptions = {
+        {.label = "Warm", .path = "marks/warm_g.dds"},
+        {.label = "Cool", .path = "marks/cool_g.dds"},
+    };
+    selected.bumpOptions = {
+        {.label = "Fine", .path = "marks/fine_n.dds"},
+        {.label = "Coarse", .path = "marks/coarse_n.dds"},
+    };
+    auto snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({selected}), .sourceCount = 1});
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+
+    NativeSlotWorkflowModel saving(catalog);
+    completeInitialQuery(saving, slotsWithEditableOwnedTattoo());
+    expect(saving.selectSlot(1) && saving.beginEditAppearance() &&
+            saving.selectGlowTexture(0) && saving.selectBumpTexture(0),
+        "expected texture save session to start");
+    const auto start = std::chrono::steady_clock::time_point{};
+    saving.advanceLivePreview(start);
+    saving.advanceLivePreview(start + 1s);
+    expect(saving.takeAppearanceRequest() && saving.confirmAppearanceUpdate(),
+        "expected Save to wait for an active preview");
+    expect(!saving.selectGlowTexture(1) && !saving.selectBumpTexture(1) &&
+            saving.editAppearance()->edited.glowTexture == "marks/warm_g.dds" &&
+            saving.editAppearance()->edited.bump == "marks/fine_n.dds",
+        "expected pending Save to reject later texture choices");
+
+    NativeSlotWorkflowModel retrying(catalog);
+    completeInitialQuery(retrying, slotsWithEditableOwnedTattoo());
+    expect(retrying.selectSlot(1) && retrying.beginEditAppearance() &&
+            retrying.selectGlowTexture(0) && retrying.selectBumpTexture(0),
+        "expected texture preview to start");
+    retrying.advanceLivePreview(start);
+    retrying.advanceLivePreview(start + 1s);
+    const auto preview = retrying.takeAppearanceRequest();
+    expect(preview.has_value(), "expected texture preview ticket");
+    retrying.completeAppearanceUpdate(preview->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::synchronizeFailed, "sync failed"}));
+    expect(retrying.editAppearance() &&
+            retrying.editAppearance()->mode == UpdateTattooAppearanceMode::synchronizeOnly &&
+            !retrying.selectGlowTexture(1) && !retrying.selectBumpTexture(1) &&
+            retrying.editAppearance()->edited.glowTexture == "marks/warm_g.dds" &&
+            retrying.editAppearance()->edited.bump == "marks/fine_n.dds",
+        "expected Retry Sync to reject later texture choices");
+}
+
 void previewBackReturnsToPickerAndKeepsApplyingState() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(2);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -2633,6 +2682,8 @@ int main() {
     failures += run("preview does not apply and Cancel returns to Slots", previewDoesNotApplyAndCancelReturnsToSlots);
     failures += run("material texture selection uses captured allowlist and tickets",
         materialTextureSelectionUsesCapturedAllowlistAndTickets);
+    failures += run("material texture selection rejects pending exit and Retry Sync",
+        materialTextureSelectionRejectsPendingExitAndSyncRetry);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);

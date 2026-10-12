@@ -600,6 +600,14 @@ void editAppearanceUsesSessionStateForSaveAndThumbnailPresentation() {
                "textures/tattoos/edited_n.dds" &&
                stui::native::appearanceTextureMetadata("") == "None",
         "expected advanced texture metadata to remain read-only and show None when absent");
+    auto textureSelectedSession = changedSession;
+    textureSelectedSession.edited.glowTexture = "textures/tattoos/selected_g.dds";
+    textureSelectedSession.edited.bump = "textures/tattoos/selected_n.dds";
+    expect(stui::native::appearanceTextureMetadata(textureSelectedSession, true) ==
+               "textures/tattoos/selected_g.dds" &&
+               stui::native::appearanceTextureMetadata(textureSelectedSession, false) ==
+               "textures/tattoos/selected_n.dds",
+        "expected current texture metadata to follow edited selections");
 
     const auto thumbnail = stui::native::editAppearanceThumbnailPresentation(&changedSession);
     expect(thumbnail && thumbnail->color.red == 128.0F / 255.0F &&

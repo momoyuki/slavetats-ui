@@ -186,7 +186,8 @@ public:
             };
             const auto setStringAndVerify = [&](const char* key, const std::string& value) {
                 m_bindings->setTattooString(runtimeHandle, key, value.c_str());
-                return m_bindings->getTattooString(runtimeHandle, key, "") == value;
+                return m_bindings->getTattooString(
+                    runtimeHandle, key, value.empty() ? "\x01" : "") == value;
             };
 
             if (!setIntAndVerify("color", request.color)) {
@@ -240,11 +241,13 @@ public:
             return false;
         }
         jcmini::JMap::setStr(runtimeHandle, "glowTexture", request.glowTexture.c_str());
-        if (jcmini::JMap::getStr(runtimeHandle, "glowTexture", "") != request.glowTexture) {
+        if (jcmini::JMap::getStr(runtimeHandle, "glowTexture",
+                request.glowTexture.empty() ? "\x01" : "") != request.glowTexture) {
             return false;
         }
         jcmini::JMap::setStr(runtimeHandle, "bump", request.bump.c_str());
-        return jcmini::JMap::getStr(runtimeHandle, "bump", "") == request.bump;
+        return jcmini::JMap::getStr(runtimeHandle, "bump",
+            request.bump.empty() ? "\x01" : "") == request.bump;
     }
 
     bool markActorUpdated(ActorHandle actorHandle) override {
