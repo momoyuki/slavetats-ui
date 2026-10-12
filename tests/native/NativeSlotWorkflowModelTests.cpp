@@ -642,6 +642,51 @@ void materialTexturePreviewRestoresOriginalPathsOnCancelAndClose() {
     }
 }
 
+void materialTextureChangesDuringPreviewKeepLatestSelection() {
+    auto selected = tattoo("Existing", 0);
+    selected.glowTextureOptions = {
+        {.label = "Warm", .path = "marks/warm_g.dds"},
+        {.label = "Cool", .path = "marks/cool_g.dds"},
+    };
+    selected.bumpOptions = {
+        {.label = "Fine", .path = "marks/fine_n.dds"},
+        {.label = "Coarse", .path = "marks/coarse_n.dds"},
+    };
+    auto snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({selected}), .sourceCount = 1});
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+    NativeSlotWorkflowModel model(catalog);
+    completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+    expect(model.selectSlot(1) && model.beginEditAppearance() &&
+            model.selectGlowTexture(0) && model.selectBumpTexture(0),
+        "expected first material selection");
+    const auto start = std::chrono::steady_clock::time_point{};
+    model.advanceLivePreview(start);
+    model.advanceLivePreview(start + 1s);
+    const auto first = model.takeAppearanceRequest();
+    expect(first && first->purpose == AppearanceOperationPurpose::preview &&
+            first->request.glowTexture == "marks/warm_g.dds" &&
+            first->request.bump == "marks/fine_n.dds",
+        "expected first texture preview in flight");
+
+    expect(model.selectGlowTexture(1) && model.selectBumpTexture(1),
+        "expected later material selection while preview is in flight");
+    model.advanceLivePreview(start + 1100ms);
+    model.completeAppearanceUpdate(first->generation, UpdateTattooAppearanceSuccess{});
+    expect(!model.takeAppearanceRequest(),
+        "expected later selection to wait for its own debounce");
+    model.advanceLivePreview(start + 2100ms);
+    const auto latest = model.takeAppearanceRequest();
+    expect(latest && latest->purpose == AppearanceOperationPurpose::preview &&
+            latest->request.glowTexture == "marks/cool_g.dds" &&
+            latest->request.bump == "marks/coarse_n.dds",
+        "expected second preview to use only the latest selected paths");
+    model.completeAppearanceUpdate(latest->generation, UpdateTattooAppearanceSuccess{});
+    expect(model.confirmAppearanceUpdate() && !model.takeAppearanceRequest(),
+        "expected Save to accept the latest successful preview without a duplicate write");
+}
+
 void previewBackReturnsToPickerAndKeepsApplyingState() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(2);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -2726,6 +2771,8 @@ int main() {
         materialTextureSelectionRejectsPendingExitAndSyncRetry);
     failures += run("material texture preview restores paths on Cancel and Close",
         materialTexturePreviewRestoresOriginalPathsOnCancelAndClose);
+    failures += run("material texture changes during preview keep latest selection",
+        materialTextureChangesDuringPreviewKeepLatestSelection);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);
