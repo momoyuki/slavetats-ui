@@ -65,6 +65,7 @@ struct QueryState {
     std::int32_t appliedTattoo{73};
     std::map<std::int32_t, std::vector<std::int32_t>> objectArrays;
     std::map<std::int32_t, std::vector<std::int32_t>> integerArrays;
+    std::vector<std::int32_t> externalSlots;
     std::map<TattooFieldKey, std::int32_t> integers;
     std::map<TattooFieldKey, float> floats;
     std::map<TattooFieldKey, std::string> strings;
@@ -213,7 +214,7 @@ bool queryAvailableTattoos(
 
 bool queryExternalSlots(RE::Actor*, RE::BSFixedString, std::int32_t matches) {
     ++g_queryState->queryCount;
-    g_queryState->integerArrays[matches] = {};
+    g_queryState->integerArrays[matches] = g_queryState->externalSlots;
     return false;
 }
 
@@ -1181,6 +1182,35 @@ void synchronizeOnlyApplySkipsMutationAndSynchronizesOnce() {
         "expected synchronization-only Apply retry to mark and synchronize once");
 }
 
+void externalOverlaySlotRejectsApplyAndRemoveBeforeMutation() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState state;
+    SlaveTatsRuntime runtime(bindingsFor(state));
+    runtime.bindSlaveTats(&queryApi());
+    queryState.externalSlots = {2};
+
+    const auto applied = runtime.applyToSlot({
+        .actorFormId = 0x14,
+        .area = stui::core::TattooArea::body,
+        .slot = 2,
+        .section = "Test Section",
+        .name = "Test Tattoo",
+    });
+    const auto removed = runtime.removeFromSlot({
+        .actorFormId = 0x14,
+        .area = stui::core::TattooArea::body,
+        .slot = 2,
+    });
+    expect(!applied && applied.error().code == ServiceErrorCode::externalSlot &&
+            !removed && removed.error().code == ServiceErrorCode::externalSlot,
+        "expected external overlay slot to reject both Apply and Remove");
+    expect(queryState.applyCount == 0 && queryState.removeCount == 0 &&
+            queryState.updatedWriteCount == 0 && queryState.synchronizeCount == 0,
+        "expected external overlay rejection before any mutation or synchronization");
+}
+
 void lockStateWritesAndVerifiesWithoutSynchronization() {
     BindingState lockedState;
     SlaveTatsRuntime lockedRuntime(bindingsFor(lockedState));
@@ -1287,6 +1317,8 @@ int main() {
         synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites);
     failures += run("synchronize-only Apply skips mutation and synchronizes once",
         synchronizeOnlyApplySkipsMutationAndSynchronizesOnce);
+    failures += run("external overlay slot rejects Apply and Remove before mutation",
+        externalOverlaySlotRejectsApplyAndRemoveBeforeMutation);
     failures += run("lock state writes and verifies without synchronization",
         lockStateWritesAndVerifiesWithoutSynchronization);
     failures += run("stale lock handle performs no write", staleLockHandlePerformsNoWrite);
