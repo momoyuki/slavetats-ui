@@ -225,3 +225,19 @@ Document the two extension fields for pack authors with one valid example and
 their validation rules. Do not mark the roadmap item complete until Debug and
 Release suites, scoped review, deployment, and the in-game acceptance checks
 pass.
+
+## Acceptance Record (2026-10-13, partial)
+
+- The user confirmed the QA fixture exposes both Glow and Bump choices, and
+  Save, reopen, and Cancel preserve or restore the intended appearance.
+- The user confirmed Crosshair Target works, Replace and Remove leave no
+  reported residual appearance, and external overlays are locked against
+  editing.
+- Debug and Release CTest suites passed 38/38 tests each at commit `36fea96`;
+  release policy checks and `git diff --check` passed.
+- In-game checks still pending explicit confirmation: legacy tattoos without
+  option arrays, rapid selection/latest-wins, and a naturally occurring
+  synchronization failure followed by Retry Sync. The latter's no-repeat-write
+  behavior is covered by automated tests.
+- The current game log was not available at its documented locations during
+  this review, so log inspection remains pending.
