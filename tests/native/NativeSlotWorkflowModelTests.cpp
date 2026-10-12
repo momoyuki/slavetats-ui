@@ -602,6 +602,46 @@ void materialTextureSelectionRejectsPendingExitAndSyncRetry() {
         "expected Retry Sync to reject later texture choices");
 }
 
+void materialTexturePreviewRestoresOriginalPathsOnCancelAndClose() {
+    auto selected = tattoo("Existing", 0);
+    selected.glowTextureOptions = {{.label = "Warm", .path = "marks/warm_g.dds"}};
+    selected.bumpOptions = {{.label = "Fine", .path = "marks/fine_n.dds"}};
+    auto snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({selected}), .sourceCount = 1});
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    catalog.refresh();
+
+    for (const bool close : {false, true}) {
+        NativeSlotWorkflowModel model(catalog);
+        completeInitialQuery(model, slotsWithEditableOwnedTattoo());
+        expect(model.selectSlot(1) && model.beginEditAppearance() &&
+                model.selectGlowTexture(0) && model.selectBumpTexture(0),
+            "expected captured texture choices for rollback");
+        const auto start = std::chrono::steady_clock::time_point{};
+        model.advanceLivePreview(start);
+        model.advanceLivePreview(start + 1s);
+        const auto preview = model.takeAppearanceRequest();
+        expect(preview && preview->request.glowTexture == "marks/warm_g.dds" &&
+                preview->request.bump == "marks/fine_n.dds",
+            "expected selected paths in the preview ticket");
+        model.completeAppearanceUpdate(preview->generation, UpdateTattooAppearanceSuccess{});
+
+        if (close) {
+            expect(model.requestEditAppearanceClose(), "expected Close to start texture rollback");
+        } else {
+            model.cancelEditAppearance();
+        }
+        const auto restore = model.takeAppearanceRequest();
+        expect(restore && restore->purpose == AppearanceOperationPurpose::restore &&
+                restore->request.glowTexture == "marks/existing_g.dds" &&
+                restore->request.bump == "marks/existing_n.dds",
+            "expected Cancel and Close to restore both original paths exactly");
+        model.completeAppearanceUpdate(restore->generation, UpdateTattooAppearanceSuccess{});
+        expect(!model.editAppearance() && model.takeMenuCloseRequest() == close,
+            "expected texture rollback to finish before leaving the editor");
+    }
+}
+
 void previewBackReturnsToPickerAndKeepsApplyingState() {
     TattooCatalogSnapshot snapshot = catalogWithEntries(2);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
@@ -2684,6 +2724,8 @@ int main() {
         materialTextureSelectionUsesCapturedAllowlistAndTickets);
     failures += run("material texture selection rejects pending exit and Retry Sync",
         materialTextureSelectionRejectsPendingExitAndSyncRetry);
+    failures += run("material texture preview restores paths on Cancel and Close",
+        materialTexturePreviewRestoresOriginalPathsOnCancelAndClose);
     failures += run("preview Back returns to Picker and keeps applying state", previewBackReturnsToPickerAndKeepsApplyingState);
     failures += run("explicit confirmation creates one exact-domain policy request", explicitConfirmationCreatesOneExactDomainPolicyRequest);
     failures += run("apply success returns to slots and refreshes area", applySuccessReturnsToSlotsAndRefreshesArea);
