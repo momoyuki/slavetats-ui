@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++23, CommonLibSSE-NG, SKSE Menu Framework/ImGui, CMake/CTest.
 
-**Spec:** `docs/superpowers/specs/2026-09-16-thumbnail-background-toggle-design.md` (Draft PR #9).
+**Spec:** `docs/superpowers/specs/2026-09-16-thumbnail-background-toggle-design.md` (implementation Draft PR #12).
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@
 
 **Files:** `src/native/OfficialMenuFrameworkAdapter.h`, `src/native/OfficialMenuFrameworkAdapter.cpp`, `tests/native/OfficialMenuFrameworkAdapterTests.cpp`.
 
-- [x] Add an adapter test for Black/White fill colors and a mode selection that leaves the selected mode unchanged on an invalid choice.
+- [x] Add an adapter test for Black/White fill colors and a mode toggle that alternates in both directions.
 - [x] Build the focused adapter target and confirm the new test fails because the API is missing.
 - [x] Add `ThumbnailBackgroundMode` and a small presentation-only choice/color helper; keep the mode out of tattoo and runtime models.
 - [x] Pass the selected mode through Current Slots, Slot Actions, Picker, Preview, and Edit Appearance; draw behind each ready fitted DDS image before the current image call.
@@ -31,13 +31,14 @@
 
 **Files:** `src/native/OfficialMenuFrameworkAdapter.cpp`, `tests/native/OfficialMenuFrameworkAdapterTests.cpp`.
 
-- [x] Add a compact Black/White control beside Picker filters, using the same presentation-session mode passed to all thumbnail surfaces.
+- [x] Add a single Black/White button beside Picker filters, labeled with the current mode and using the same presentation-session mode passed to all thumbnail surfaces.
 - [x] Confirm switching the mode does not call thumbnail reload, service, runtime, or synchronization paths; test the mode helper at the narrow stable seam.
 - [x] Run full Debug and Release builds and CTest suites, release policy scripts, and `git diff --check`.
 - [ ] Review the scoped diff and obtain explicit approval before committing or pushing.
 
 ## Task 3: In-Game Acceptance and PR
 
-- [ ] Confirm both backgrounds on dark and light tattoos, immediate change, navigation persistence, and unchanged tint/alpha, actor appearance, and thumbnail cache behavior.
-- [ ] Open a focused implementation PR from this branch after approval and push, then close the stale docs-only Draft PR #9 as superseded. Its head is 94 commits behind `main`, so do not rewrite that shared branch.
+- [x] Confirm both backgrounds on dark and light tattoos, immediate change, navigation persistence, and unchanged tint/alpha, actor appearance, and thumbnail cache behavior with the original dropdown (user in-game QA, 2026-10-13).
+- [ ] Confirm the single-button interaction in game after the updated DLL is deployed.
+- [x] Open focused implementation Draft PR #12 and close the superseded docs-only Draft PR #9.
 - [ ] Return to the active vNext.4 material-texture acceptance work in `ROADMAP.md`.

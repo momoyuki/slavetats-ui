@@ -36,13 +36,13 @@ The selected mode should apply consistently to tattoo thumbnail surfaces in the 
 
 ## UX
 
-Expose a compact control near the tattoo browser/thumbnail presentation controls, for example:
+Expose one button beside the Picker filters. Its label shows the currently selected mode:
 
 ```text
-Thumbnail BG: [ Black | White ]
+Filters   [ Thumbnail BG: Black ]
 ```
 
-An icon toggle is also acceptable if the current state is unambiguous and a tooltip names the resulting background.
+Each press switches between Black and White. The button label updates to show the new mode.
 
 Changing the mode should update visible thumbnails immediately on the next render frame. It must not reload or regenerate DDS thumbnail textures solely because the background changed.
 

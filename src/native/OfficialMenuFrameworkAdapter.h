@@ -128,8 +128,8 @@ enum class ThumbnailBackgroundMode {
 
 [[nodiscard]] std::uint32_t thumbnailBackgroundFillColor(
     ThumbnailBackgroundMode mode) noexcept;
-[[nodiscard]] bool selectThumbnailBackgroundMode(
-    ThumbnailBackgroundMode& mode, int choice) noexcept;
+[[nodiscard]] ThumbnailBackgroundMode toggledThumbnailBackgroundMode(
+    ThumbnailBackgroundMode mode) noexcept;
 
 enum class SlotCardTreatment {
     add,

@@ -566,12 +566,9 @@ std::uint32_t thumbnailBackgroundFillColor(ThumbnailBackgroundMode mode) noexcep
     return mode == ThumbnailBackgroundMode::white ? 0xFFFFFFFF : 0xFF000000;
 }
 
-bool selectThumbnailBackgroundMode(ThumbnailBackgroundMode& mode, int choice) noexcept {
-    if (choice < 0 || choice > 1) {
-        return false;
-    }
-    mode = choice == 0 ? ThumbnailBackgroundMode::black : ThumbnailBackgroundMode::white;
-    return true;
+ThumbnailBackgroundMode toggledThumbnailBackgroundMode(ThumbnailBackgroundMode mode) noexcept {
+    return mode == ThumbnailBackgroundMode::black ? ThumbnailBackgroundMode::white
+                                                   : ThumbnailBackgroundMode::black;
 }
 
 CatalogCardGridPosition catalogCardGridPosition(
@@ -2684,13 +2681,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::OpenPopup("CatalogFilters");
     }
     ImGuiMCP::SameLine();
-    ImGuiMCP::TextUnformatted("Thumbnail BG");
-    ImGuiMCP::SameLine();
-    int backgroundChoice = backgroundMode == ThumbnailBackgroundMode::white ? 1 : 0;
-    constexpr const char* backgroundLabels[]{"Black", "White"};
-    ImGuiMCP::SetNextItemWidth(90.0F);
-    if (ImGuiMCP::Combo("##ThumbnailBackground", &backgroundChoice, backgroundLabels, 2)) {
-        (void)selectThumbnailBackgroundMode(backgroundMode, backgroundChoice);
+    if (ImGuiMCP::Button(backgroundMode == ThumbnailBackgroundMode::black
+                ? "Thumbnail BG: Black"
+                : "Thumbnail BG: White")) {
+        backgroundMode = toggledThumbnailBackgroundMode(backgroundMode);
     }
 
     constexpr std::size_t searchCapacity = 256;
