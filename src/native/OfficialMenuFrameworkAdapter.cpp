@@ -1251,7 +1251,6 @@ void renderLoadoutStoreStatus(NativeSlotWorkflowModel& workflow) {
 }
 
 void renderLoadoutControls(NativeSlotWorkflowModel& workflow) {
-    ImGuiMCP::SeparatorText("Loadouts");
     const auto& loadouts = workflow.tattooLoadouts();
     const auto selected = workflow.selectedTattooLoadout();
     const auto labels = loadoutDropdownLabels(loadouts);
@@ -1462,170 +1461,179 @@ void renderCurrentSlots(
     const auto thumbnailViews = thumbnails.views();
     const auto title = currentTattoosTitle(workflow.actorTarget());
     ImGuiMCP::TextUnformatted(title.c_str());
-    ImGuiMCP::SameLine();
-    ImGuiMCP::BeginDisabled(!targetActionsEnabled);
-    if (ImGuiMCP::Button("Refresh")) {
-        workflow.refreshSelectedArea();
-    }
-    ImGuiMCP::EndDisabled();
-
-    constexpr std::array<core::TattooArea, 4> areas{
-        core::TattooArea::body,
-        core::TattooArea::face,
-        core::TattooArea::hands,
-        core::TattooArea::feet,
-    };
-    for (std::size_t index = 0; index < areas.size(); ++index) {
-        if (index != 0) {
-            ImGuiMCP::SameLine();
-        }
-        const auto label = std::string(slotAreaLabel(areas[index])) + "##SlotArea" +
-            std::to_string(index);
-        ImGuiMCP::BeginDisabled(areas[index] == workflow.selectedArea());
-        if (ImGuiMCP::Button(label.c_str())) {
-            workflow.selectArea(areas[index]);
-        }
-        ImGuiMCP::EndDisabled();
-    }
-
-    if (const auto* error = workflow.error()) {
-        ImGuiMCP::TextUnformatted(error->message.c_str());
-    }
-
-    renderLoadoutControls(workflow);
-
     const auto* style = ImGuiMCP::GetStyle();
     const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
-    const auto gridLayout = calculateCatalogBrowserGridLayout(
-        ImGuiMCP::GetContentRegionAvail().y,
-        footerHeight,
-        0.0F,
-        3);
     const auto page = slots
         ? calculateSlotPage(
               slots->slots.size(),
               workflow.slotPageIndex(),
               NativeSlotWorkflowModel::kPageSize)
         : SlotPageRange{};
-
-    if (!slots) {
-        if (ImGuiMCP::BeginChild(
-                "SlotLoadingState",
-                {0.0F, gridLayout.gridHeight},
-                ImGuiMCP::ImGuiChildFlags_None,
-                ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
-                    ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
-            const auto status = actorTargetStatusLabel(
-                workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
-            ImGuiMCP::TextUnformatted(
-                status.empty() ? "Loading tattoo slots..." : status.data());
-        }
-        ImGuiMCP::EndChild();
-    } else if (ImGuiMCP::BeginTable(
-                   "CurrentSlotCards",
-                   2,
-                   ImGuiMCP::ImGuiTableFlags_SizingStretchSame |
-                       ImGuiMCP::ImGuiTableFlags_BordersInner |
-                       ImGuiMCP::ImGuiTableFlags_NoPadOuterX |
-                       ImGuiMCP::ImGuiTableFlags_NoPadInnerX,
-                   {0.0F, gridLayout.gridHeight})) {
-        for (std::size_t index = page.begin; index < page.end; ++index) {
-            const auto gridPosition = catalogCardGridPosition(index - page.begin, 2);
-            if (gridPosition.column == 0) {
-                ImGuiMCP::TableNextRow(0, gridLayout.rowHeight);
+    bool tattoosTab = false;
+    if (ImGuiMCP::BeginTabBar("CurrentSlotsTabs")) {
+        if (ImGuiMCP::BeginTabItem("Tattoos")) {
+            tattoosTab = true;
+            ImGuiMCP::BeginDisabled(!targetActionsEnabled);
+            if (ImGuiMCP::Button("Refresh")) {
+                workflow.refreshSelectedArea();
             }
-            ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
-            const auto& slot = slots->slots[index];
-            const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
-            const bool disabled = !targetActionsEnabled || slotCardTreatment(slot.occupancy) ==
-                SlotCardTreatment::disabled;
-            bool lockClicked = false;
-            bool lockHovered = false;
-            ImGuiMCP::BeginDisabled(disabled);
-            ImGuiMCP::PushStyleColor(
-                ImGuiMCP::ImGuiCol_ChildBg,
-                ImGuiMCP::ImVec4(0.08F, 0.08F, 0.08F, 1.0F));
-            if (ImGuiMCP::BeginChild(
-                    widgetId.c_str(),
-                    {0.0F, std::max(1.0F, gridLayout.rowHeight)},
-                    ImGuiMCP::ImGuiChildFlags_Border,
-                    ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
-                        ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
-                const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
-                const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
-                renderSlotImage(slot, thumbnailViews, imageRegion, backgroundMode);
-                if (const auto swatch = calculateSlotColorSwatch(
-                        slot, imageRegion.x, imageRegion.y, 16.0F, 6.0F)) {
-                    auto* drawList = ImGuiMCP::GetWindowDrawList();
-                    const ImGuiMCP::ImVec2 minimum{
-                        imageScreenOrigin.x + swatch->x,
-                        imageScreenOrigin.y + swatch->y,
-                    };
-                    const ImGuiMCP::ImVec2 maximum{
-                        minimum.x + swatch->size,
-                        minimum.y + swatch->size,
-                    };
-                    ImGuiMCP::ImDrawListManager::AddRectFilled(
-                        drawList,
-                        minimum,
-                        maximum,
-                        swatch->fillColor,
-                        0.0F,
-                        0);
-                    ImGuiMCP::ImDrawListManager::AddRect(
-                        drawList,
-                        minimum,
-                        maximum,
-                        swatch->borderColor,
-                        0.0F,
-                        0,
-                        1.0F);
-                }
-                if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
-                    const auto lockPresentation = slotLockActionPresentation(slot.tattoo->locked);
-                    const auto lockIcon = FontAwesome::UnicodeToUtf8(
-                        lockPresentation.iconCodepoint);
-                    const auto lockWidgetId = lockIcon + "##SlotLock" +
-                        std::to_string(slot.index);
-                    FontAwesome::PushSolid();
-                    const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
-                    const float buttonSize = catalogIconButtonSize(
-                        iconSize.y,
-                        style ? style->FramePadding.y : 4.0F);
-                    ImGuiMCP::SetCursorScreenPos({
-                        imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
-                        imageScreenOrigin.y + 6.0F,
-                    });
-                    ImGuiMCP::BeginDisabled(workflow.isLockStateChangeInFlight());
-                    if (ImGuiMCP::Button(lockWidgetId.c_str(), {buttonSize, buttonSize})) {
-                        lockClicked = workflow.toggleSlotLock(slot.index);
-                    }
-                    lockHovered = ImGuiMCP::IsItemHovered(
-                        ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled);
-                    if (lockHovered) {
-                        ImGuiMCP::SetTooltip("%s", lockPresentation.tooltip.data());
-                    }
-                    ImGuiMCP::EndDisabled();
-                    FontAwesome::Pop();
-                }
-            }
-            ImGuiMCP::EndChild();
-            ImGuiMCP::PopStyleColor();
             ImGuiMCP::EndDisabled();
-            if (!disabled && !lockClicked && !lockHovered && ImGuiMCP::IsItemClicked()) {
-                (void)workflow.selectSlot(slot.index);
-            }
-            if (ImGuiMCP::IsItemHovered()) {
-                if (slot.tattoo) {
-                    ImGuiMCP::SetTooltip("Slot %d - %s", slot.index, slot.tattoo->name.c_str());
-                } else if (disabled) {
-                    ImGuiMCP::SetTooltip("Slot %d is managed by another overlay mod", slot.index);
-                } else {
-                    ImGuiMCP::SetTooltip("Add a tattoo to Slot %d", slot.index);
+
+            constexpr std::array<core::TattooArea, 4> areas{
+                core::TattooArea::body,
+                core::TattooArea::face,
+                core::TattooArea::hands,
+                core::TattooArea::feet,
+            };
+            for (std::size_t index = 0; index < areas.size(); ++index) {
+                if (index != 0) {
+                    ImGuiMCP::SameLine();
                 }
+                const auto label = std::string(slotAreaLabel(areas[index])) + "##SlotArea" +
+                    std::to_string(index);
+                ImGuiMCP::BeginDisabled(areas[index] == workflow.selectedArea());
+                if (ImGuiMCP::Button(label.c_str())) {
+                    workflow.selectArea(areas[index]);
+                }
+                ImGuiMCP::EndDisabled();
             }
+
+            if (const auto* error = workflow.error()) {
+                ImGuiMCP::TextUnformatted(error->message.c_str());
+            }
+
+            const auto gridLayout = calculateCatalogBrowserGridLayout(
+                ImGuiMCP::GetContentRegionAvail().y,
+                footerHeight,
+                0.0F,
+                3);
+
+            if (!slots) {
+                if (ImGuiMCP::BeginChild(
+                        "SlotLoadingState",
+                        {0.0F, gridLayout.gridHeight},
+                        ImGuiMCP::ImGuiChildFlags_None,
+                        ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
+                            ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
+                    const auto status = actorTargetStatusLabel(
+                        workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
+                    ImGuiMCP::TextUnformatted(
+                        status.empty() ? "Loading tattoo slots..." : status.data());
+                }
+                ImGuiMCP::EndChild();
+            } else if (ImGuiMCP::BeginTable(
+                           "CurrentSlotCards",
+                           2,
+                           ImGuiMCP::ImGuiTableFlags_SizingStretchSame |
+                               ImGuiMCP::ImGuiTableFlags_BordersInner |
+                               ImGuiMCP::ImGuiTableFlags_NoPadOuterX |
+                               ImGuiMCP::ImGuiTableFlags_NoPadInnerX,
+                           {0.0F, gridLayout.gridHeight})) {
+                for (std::size_t index = page.begin; index < page.end; ++index) {
+                    const auto gridPosition = catalogCardGridPosition(index - page.begin, 2);
+                    if (gridPosition.column == 0) {
+                        ImGuiMCP::TableNextRow(0, gridLayout.rowHeight);
+                    }
+                    ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
+                    const auto& slot = slots->slots[index];
+                    const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
+                    const bool disabled = !targetActionsEnabled || slotCardTreatment(slot.occupancy) ==
+                        SlotCardTreatment::disabled;
+                    bool lockClicked = false;
+                    bool lockHovered = false;
+                    ImGuiMCP::BeginDisabled(disabled);
+                    ImGuiMCP::PushStyleColor(
+                        ImGuiMCP::ImGuiCol_ChildBg,
+                        ImGuiMCP::ImVec4(0.08F, 0.08F, 0.08F, 1.0F));
+                    if (ImGuiMCP::BeginChild(
+                            widgetId.c_str(),
+                            {0.0F, std::max(1.0F, gridLayout.rowHeight)},
+                            ImGuiMCP::ImGuiChildFlags_Border,
+                            ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
+                                ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
+                        const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
+                        const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
+                        renderSlotImage(slot, thumbnailViews, imageRegion, backgroundMode);
+                        if (const auto swatch = calculateSlotColorSwatch(
+                                slot, imageRegion.x, imageRegion.y, 16.0F, 6.0F)) {
+                            auto* drawList = ImGuiMCP::GetWindowDrawList();
+                            const ImGuiMCP::ImVec2 minimum{
+                                imageScreenOrigin.x + swatch->x,
+                                imageScreenOrigin.y + swatch->y,
+                            };
+                            const ImGuiMCP::ImVec2 maximum{
+                                minimum.x + swatch->size,
+                                minimum.y + swatch->size,
+                            };
+                            ImGuiMCP::ImDrawListManager::AddRectFilled(
+                                drawList,
+                                minimum,
+                                maximum,
+                                swatch->fillColor,
+                                0.0F,
+                                0);
+                            ImGuiMCP::ImDrawListManager::AddRect(
+                                drawList,
+                                minimum,
+                                maximum,
+                                swatch->borderColor,
+                                0.0F,
+                                0,
+                                1.0F);
+                        }
+                        if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
+                            const auto lockPresentation = slotLockActionPresentation(slot.tattoo->locked);
+                            const auto lockIcon = FontAwesome::UnicodeToUtf8(
+                                lockPresentation.iconCodepoint);
+                            const auto lockWidgetId = lockIcon + "##SlotLock" +
+                                std::to_string(slot.index);
+                            FontAwesome::PushSolid();
+                            const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
+                            const float buttonSize = catalogIconButtonSize(
+                                iconSize.y,
+                                style ? style->FramePadding.y : 4.0F);
+                            ImGuiMCP::SetCursorScreenPos({
+                                imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
+                                imageScreenOrigin.y + 6.0F,
+                            });
+                            ImGuiMCP::BeginDisabled(workflow.isLockStateChangeInFlight());
+                            if (ImGuiMCP::Button(lockWidgetId.c_str(), {buttonSize, buttonSize})) {
+                                lockClicked = workflow.toggleSlotLock(slot.index);
+                            }
+                            lockHovered = ImGuiMCP::IsItemHovered(
+                                ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled);
+                            if (lockHovered) {
+                                ImGuiMCP::SetTooltip("%s", lockPresentation.tooltip.data());
+                            }
+                            ImGuiMCP::EndDisabled();
+                            FontAwesome::Pop();
+                        }
+                    }
+                    ImGuiMCP::EndChild();
+                    ImGuiMCP::PopStyleColor();
+                    ImGuiMCP::EndDisabled();
+                    if (!disabled && !lockClicked && !lockHovered && ImGuiMCP::IsItemClicked()) {
+                        (void)workflow.selectSlot(slot.index);
+                    }
+                    if (ImGuiMCP::IsItemHovered()) {
+                        if (slot.tattoo) {
+                            ImGuiMCP::SetTooltip("Slot %d - %s", slot.index, slot.tattoo->name.c_str());
+                        } else if (disabled) {
+                            ImGuiMCP::SetTooltip("Slot %d is managed by another overlay mod", slot.index);
+                        } else {
+                            ImGuiMCP::SetTooltip("Add a tattoo to Slot %d", slot.index);
+                        }
+                    }
+                }
+                ImGuiMCP::EndTable();
+            }
+            ImGuiMCP::EndTabItem();
         }
-        ImGuiMCP::EndTable();
+        if (ImGuiMCP::BeginTabItem("Loadouts")) {
+            renderLoadoutControls(workflow);
+            ImGuiMCP::EndTabItem();
+        }
+        ImGuiMCP::EndTabBar();
     }
 
     ImGuiMCP::SetCursorPosY(calculatePinnedFooterY(
@@ -1644,36 +1652,38 @@ void renderCurrentSlots(
             "SlotCloseAction", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, closeButtonWidth);
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
-        ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex == 0);
-        if (ImGuiMCP::Button("Prev##Slots")) {
-            workflow.previousSlotPage();
+        if (tattoosTab) {
+            ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex == 0);
+            if (ImGuiMCP::Button("Prev##Slots")) {
+                workflow.previousSlotPage();
+            }
+            ImGuiMCP::EndDisabled();
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextUnformatted("Page");
+            ImGuiMCP::SameLine();
+            static CatalogBrowserPageInputState slotPageInputState;
+            slotPageInputState.synchronize(page.pageIndex, page.pageCount);
+            ImGuiMCP::SetNextItemWidth(56.0F);
+            ImGuiMCP::InputInt(
+                "##SlotPageNumber",
+                &slotPageInputState.pendingPageNumber(),
+                0,
+                0);
+            if (const auto requestedPage = slotPageInputState.finishFrame(
+                    ImGuiMCP::IsItemActive(),
+                    false,
+                    ImGuiMCP::IsItemDeactivatedAfterEdit())) {
+                workflow.setSlotPageNumber(*requestedPage);
+            }
+            ImGuiMCP::SameLine();
+            ImGuiMCP::Text("/ %zu", page.pageCount);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex + 1 >= page.pageCount);
+            if (ImGuiMCP::Button("Next##Slots")) {
+                workflow.nextSlotPage();
+            }
+            ImGuiMCP::EndDisabled();
         }
-        ImGuiMCP::EndDisabled();
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted("Page");
-        ImGuiMCP::SameLine();
-        static CatalogBrowserPageInputState slotPageInputState;
-        slotPageInputState.synchronize(page.pageIndex, page.pageCount);
-        ImGuiMCP::SetNextItemWidth(56.0F);
-        ImGuiMCP::InputInt(
-            "##SlotPageNumber",
-            &slotPageInputState.pendingPageNumber(),
-            0,
-            0);
-        if (const auto requestedPage = slotPageInputState.finishFrame(
-                ImGuiMCP::IsItemActive(),
-                false,
-                ImGuiMCP::IsItemDeactivatedAfterEdit())) {
-            workflow.setSlotPageNumber(*requestedPage);
-        }
-        ImGuiMCP::SameLine();
-        ImGuiMCP::Text("/ %zu", page.pageCount);
-        ImGuiMCP::SameLine();
-        ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex + 1 >= page.pageCount);
-        if (ImGuiMCP::Button("Next##Slots")) {
-            workflow.nextSlotPage();
-        }
-        ImGuiMCP::EndDisabled();
 
         ImGuiMCP::TableSetColumnIndex(1);
         if (ImGuiMCP::Button("Close")) {

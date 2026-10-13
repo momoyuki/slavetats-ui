@@ -298,12 +298,19 @@ describe a partially changed Actor as successfully loaded.
 
 ## UI/UX
 
-Add a `Loadouts` section to Current Slots containing:
+Current Slots has `Tattoos` and `Loadouts` tabs. The `Tattoos` tab retains the
+area selector, slot cards, refresh, and slot pagination. The `Loadouts` tab
+contains:
 
 - a Dropdown in JSON order;
 - `Load`;
 - `Save Current`; and
 - `Manage` for rename and delete.
+
+Both tabs retain the Actor Target header and Close action. Selecting a tab is
+presentation-only and does not change the Actor Target, selected area, or
+stored loadouts. Capture summary, preview, confirmation, and result continue
+to use the existing dedicated workflow screens.
 
 When no loadouts exist, show `No loadouts saved.` Reaching twenty entries
 disables only creation under a new name. Load, overwrite, rename, and delete
