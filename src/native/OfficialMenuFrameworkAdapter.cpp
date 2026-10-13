@@ -241,6 +241,50 @@ SlotCardTreatment slotCardTreatment(core::SlotOccupancy occupancy) noexcept {
     return SlotCardTreatment::disabled;
 }
 
+std::string_view slotCardStatusLabel(core::SlotOccupancy occupancy) noexcept {
+    switch (occupancy) {
+    case core::SlotOccupancy::empty: return "Add Tattoo";
+    case core::SlotOccupancy::slaveTats: return "Edit Tattoo";
+    case core::SlotOccupancy::external: return "External - Read Only";
+    }
+    return "Unavailable";
+}
+
+std::string_view workflowBreadcrumb(
+    SlotWorkflowScreen screen, TattooLoadoutScreen loadoutScreen) noexcept {
+    switch (loadoutScreen) {
+    case TattooLoadoutScreen::captureSummary:
+    case TattooLoadoutScreen::manage:
+        return "Current Slots / Loadouts";
+    case TattooLoadoutScreen::preview:
+        return "Current Slots / Loadouts / Preview";
+    case TattooLoadoutScreen::restoring:
+    case TattooLoadoutScreen::result:
+        return "Current Slots / Loadouts / Restore";
+    case TattooLoadoutScreen::overwriteConfirmation:
+        return "Current Slots / Loadouts / Confirm Overwrite";
+    case TattooLoadoutScreen::deleteConfirmation:
+        return "Current Slots / Loadouts / Confirm Delete";
+    case TattooLoadoutScreen::none:
+        break;
+    }
+    switch (screen) {
+    case SlotWorkflowScreen::currentSlots: return "Current Slots";
+    case SlotWorkflowScreen::slotActions: return "Current Slots / Slot Actions";
+    case SlotWorkflowScreen::picker: return "Current Slots / Browse";
+    case SlotWorkflowScreen::preview:
+    case SlotWorkflowScreen::applying:
+        return "Current Slots / Browse / Preview";
+    case SlotWorkflowScreen::editAppearance:
+    case SlotWorkflowScreen::savingAppearance:
+        return "Current Slots / Edit Appearance";
+    case SlotWorkflowScreen::removeConfirmation:
+    case SlotWorkflowScreen::removing:
+        return "Current Slots / Slot Actions / Confirm Remove";
+    }
+    return "Current Slots";
+}
+
 SlotPageRange calculateSlotPage(
     std::size_t slotCount,
     std::size_t requestedPage,
@@ -533,13 +577,15 @@ bool OfficialMenuFrameworkAdapter::isWindowOpen(MenuWindow window) const noexcep
 FoundationLayout OfficialMenuFrameworkAdapter::calculateFoundationLayout(
     MenuPosition viewportPosition, MenuSize viewportSize) noexcept {
     constexpr float margin = 20.0F;
+    constexpr float minimumPanelWidth = 360.0F;
+    const float availableWidth = std::max(0.0F, viewportSize.width - (margin * 2.0F));
     const MenuSize panelSize{
-        viewportSize.width * 0.4F,
-        viewportSize.height - (margin * 2.0F),
+        std::min(std::max(viewportSize.width * 0.466F, minimumPanelWidth), availableWidth),
+        std::max(0.0F, viewportSize.height - (margin * 2.0F)),
     };
     return {
         {
-            viewportPosition.x + viewportSize.width - panelSize.width - margin,
+            viewportPosition.x + margin,
             viewportPosition.y + margin,
         },
         panelSize,
@@ -1226,6 +1272,8 @@ bool renderActorTargetHeader(
     const auto identity = formatActorTargetIdentityWithPreviewStatus(
         resolving, target, previewStatus);
     ImGuiMCP::TextUnformatted(identity.c_str());
+    ImGuiMCP::TextWrapped("%s", workflowBreadcrumb(
+        workflow.screen(), workflow.tattooLoadoutScreen()).data());
     if (controls.refreshVisible) {
         ImGuiMCP::BeginDisabled(!controls.refreshEnabled);
         if (ImGuiMCP::Button("Refresh Target")) {
@@ -1551,6 +1599,8 @@ void renderCurrentSlots(
                             ImGuiMCP::ImGuiChildFlags_Border,
                             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                                 ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
+                        ImGuiMCP::Text("Slot %d", slot.index);
+                        ImGuiMCP::TextWrapped("%s", slotCardStatusLabel(slot.occupancy).data());
                         const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
                         const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
                         renderSlotImage(slot, thumbnailViews, imageRegion, backgroundMode);

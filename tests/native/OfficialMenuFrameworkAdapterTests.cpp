@@ -297,14 +297,28 @@ void defaultAdapterIsUnavailableWithoutLoadedFramework() {
     expect(adapter.version() == 0.0F, "expected zero version without loaded framework");
 }
 
-void foundationLayoutAnchorsFortyPercentPanelToRightEdge() {
+void foundationLayoutKeepsActorVisibleBesideLeftPanel() {
     const auto layout = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {10.0F, 20.0F}, {1000.0F, 800.0F});
 
-    expect(layout.position.x == 590.0F && layout.position.y == 40.0F,
-           "expected right-edge position with margin");
-    expect(layout.size.width == 400.0F && layout.size.height == 760.0F,
-           "expected forty-percent full-height side panel");
+    expect(layout.position.x == 30.0F && layout.position.y == 40.0F,
+           "expected left-edge position with margin");
+    expect(layout.size.width == 466.0F && layout.size.height == 760.0F,
+           "expected actor-visible full-height side panel");
+    const auto ultrawide = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {0.0F, 0.0F}, {2560.0F, 1080.0F});
+    expect(ultrawide.position.x == 20.0F && ultrawide.size.width > 1100.0F &&
+            ultrawide.size.width < 1280.0F && ultrawide.size.height == 1040.0F,
+        "expected the ultrawide panel to leave the actor side visible");
+    const auto narrow = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {0.0F, 0.0F}, {640.0F, 480.0F});
+    expect(narrow.position.x == 20.0F && narrow.size.width == 360.0F &&
+            narrow.size.height == 440.0F,
+        "expected a usable panel on a narrow viewport");
+    const auto tiny = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {0.0F, 0.0F}, {300.0F, 200.0F});
+    expect(tiny.size.width == 260.0F && tiny.size.height == 160.0F,
+        "expected panel bounds not to exceed a tiny viewport");
 }
 
 void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
@@ -1216,6 +1230,79 @@ void slotCardsExposeAddReplaceAndDisabledTreatments() {
         "expected external slot disabled treatment");
 }
 
+void slotCardsShowTheirActionsWithoutHover() {
+    expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::empty) ==
+               "Add Tattoo",
+        "empty slot must show its action");
+    expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::slaveTats) ==
+               "Edit Tattoo",
+        "managed slot must show its action");
+    expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::external) ==
+               "External - Read Only",
+        "external slot must visibly show its read-only state");
+}
+
+void workflowBreadcrumbTracksEveryScreenAndConfirmation() {
+    using stui::native::SlotWorkflowScreen;
+    using stui::native::TattooLoadoutScreen;
+    using stui::native::workflowBreadcrumb;
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots, TattooLoadoutScreen::none) ==
+               "Current Slots",
+        "slots breadcrumb should identify the root");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::picker, TattooLoadoutScreen::none) ==
+               "Current Slots / Browse",
+        "browse breadcrumb should retain its parent");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::preview, TattooLoadoutScreen::none) ==
+               "Current Slots / Browse / Preview",
+        "preview breadcrumb should show the selection path");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::applying, TattooLoadoutScreen::none) ==
+               "Current Slots / Browse / Preview",
+        "apply progress should keep preview context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::slotActions, TattooLoadoutScreen::none) ==
+               "Current Slots / Slot Actions",
+        "slot actions breadcrumb should identify the selected slot screen");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::editAppearance, TattooLoadoutScreen::none) ==
+               "Current Slots / Edit Appearance",
+        "appearance breadcrumb should identify the editor");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::savingAppearance, TattooLoadoutScreen::none) ==
+               "Current Slots / Edit Appearance",
+        "save progress should keep editor context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::removeConfirmation, TattooLoadoutScreen::none) ==
+               "Current Slots / Slot Actions / Confirm Remove",
+        "removal confirmation must remain distinct");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::removing, TattooLoadoutScreen::none) ==
+               "Current Slots / Slot Actions / Confirm Remove",
+        "removal progress should keep confirmation context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::captureSummary) ==
+               "Current Slots / Loadouts",
+        "loadout capture should stay in loadout context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::manage) ==
+               "Current Slots / Loadouts",
+        "loadout management should stay in loadout context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::preview) ==
+               "Current Slots / Loadouts / Preview",
+        "loadout preview should be distinct from tattoo preview");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::restoring) ==
+               "Current Slots / Loadouts / Restore",
+        "loadout restore progress should retain context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::result) ==
+               "Current Slots / Loadouts / Restore",
+        "loadout result should retain restore context");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::overwriteConfirmation) ==
+               "Current Slots / Loadouts / Confirm Overwrite",
+        "overwrite confirmation must remain distinct");
+    expect(workflowBreadcrumb(SlotWorkflowScreen::currentSlots,
+               TattooLoadoutScreen::deleteConfirmation) ==
+               "Current Slots / Loadouts / Confirm Delete",
+        "loadout confirmation must remain distinct");
+}
+
 void slotPaginationClampsToSixCardPages() {
     const auto first = stui::native::calculateSlotPage(12, 0, 6);
     expect(first.pageIndex == 0 && first.pageCount == 2 && first.begin == 0 &&
@@ -1437,8 +1524,8 @@ int main() {
         std::cout << "PASS translates section and non-pausing window state\n";
         defaultAdapterIsUnavailableWithoutLoadedFramework();
         std::cout << "PASS default adapter is unavailable without loaded framework\n";
-        foundationLayoutAnchorsFortyPercentPanelToRightEdge();
-        std::cout << "PASS foundation layout anchors panel to right edge\n";
+        foundationLayoutKeepsActorVisibleBesideLeftPanel();
+        std::cout << "PASS foundation layout keeps actor visible beside left panel\n";
         thumbnailPresentationFitsWithoutStretchingAndLabelsFailures();
         std::cout << "PASS thumbnail presentation fits and labels failures\n";
         thumbnailBackgroundButtonAlternatesBlackAndWhite();
@@ -1506,6 +1593,8 @@ int main() {
         sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds();
         std::cout << "PASS source options distinguish duplicate pack names\n";
         slotCardsExposeAddReplaceAndDisabledTreatments();
+        slotCardsShowTheirActionsWithoutHover();
+        workflowBreadcrumbTracksEveryScreenAndConfirmation();
         std::cout << "PASS slot cards expose intended treatments\n";
         slotPaginationClampsToSixCardPages();
         std::cout << "PASS slot pagination clamps to six-card pages\n";

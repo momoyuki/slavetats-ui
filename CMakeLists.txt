@@ -39,6 +39,9 @@ include(CTest)
 
 set(headers
     include/SKSEMenuFramework.h
+    include/FLICK/FUCK_API.h
+    include/FLICK/imgui/imgui.h
+    include/FLICK/imgui/imconfig.h
     include/SlaveTatsNG_Interface.h
     include/JContainers/jc_interface.h
     include/JContainers/jcontainers_constants.h
@@ -46,6 +49,8 @@ set(headers
     src/pch.h
     src/native/MenuFrameworkPort.h
     src/native/NativeMenu.h
+    src/native/FlickLauncher.h
+    src/native/OfficialFlickPort.h
     src/native/OfficialMenuFrameworkAdapter.h
     src/native/NativeCatalogBrowserModel.h
     src/native/NativeSlotWorkflowModel.h
@@ -89,6 +94,8 @@ set(headers
 set(sources
     src/main.cpp
     src/native/NativeMenu.cpp
+    src/native/FlickLauncher.cpp
+    src/native/OfficialFlickPort.cpp
     src/native/OfficialMenuFrameworkAdapter.cpp
     src/native/NativeCatalogBrowserModel.cpp
     src/native/NativeSlotWorkflowModel.cpp
@@ -136,6 +143,7 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/FLICK/imgui>
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -280,6 +288,13 @@ if(BUILD_TESTING)
     )
     target_include_directories(NativeMenuTests PRIVATE src)
     add_test(NAME NativeMenuTests COMMAND NativeMenuTests)
+
+    add_executable(FlickLauncherTests
+        src/native/FlickLauncher.cpp
+        tests/native/FlickLauncherTests.cpp
+    )
+    target_include_directories(FlickLauncherTests PRIVATE src)
+    add_test(NAME FlickLauncherTests COMMAND FlickLauncherTests)
 
     add_executable(OfficialMenuFrameworkAdapterTests
         src/native/OfficialMenuFrameworkAdapter.cpp

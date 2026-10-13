@@ -2,6 +2,8 @@
 #include "SlaveTatsNG_Interface.h"
 #include "repository/TattooCatalogStore.h"
 #include "native/NativeMenu.h"
+#include "native/FlickLauncher.h"
+#include "native/OfficialFlickPort.h"
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
@@ -163,6 +165,7 @@ std::unique_ptr<native::NativeThumbnailRuntime> g_nativeThumbnailRuntime =
     makeUnavailableNativeThumbnailRuntime();
 bool g_nativeThumbnailRuntimeUnavailableLogged{};
 native::NativeMenu* g_nativeMenu{};
+native::FlickLauncher* g_flickLauncher{};
 std::unique_ptr<runtime::HotkeyBinding> g_hotkeyBinding;
 SKSEMenuFramework::Model::InputEvent* g_hotkeyInputEvent{};
 
@@ -197,6 +200,15 @@ bool __stdcall onMenuHotkeyInput(RE::InputEvent* event) {
 
 static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
     switch (msg->type) {
+    case SKSE::MessagingInterface::kPostLoad:
+        if (g_flickLauncher && g_nativeMenu && g_nativeMenu->isRegistered()) {
+            if (g_flickLauncher->registerTool()) {
+                logger::info("SlaveTatsUI: FLICK launcher registered");
+            } else {
+                logger::info("SlaveTatsUI: FLICK unavailable; Menu Framework remains available");
+            }
+        }
+        break;
     case SKSE::MessagingInterface::kDataLoaded:
         {
             std::array<wchar_t, 32768> executablePath{};
@@ -441,6 +453,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         return true;
     });
     g_nativeMenu = &nativeMenu;
+    static native::OfficialFlickPort flickPort;
+    static native::FlickLauncher flickLauncher(
+        flickPort,
+        [](native::FlickLauncher::Task task) {
+            auto* taskInterface = SKSE::GetTaskInterface();
+            if (!taskInterface) return false;
+            taskInterface->AddTask(std::move(task));
+            return true;
+        },
+        [] {
+            if (g_nativeMenu && g_nativeMenu->isRegistered() && !g_nativeMenu->isOpen()) {
+                g_nativeMenu->open();
+            }
+        });
+    g_flickLauncher = &flickLauncher;
     if (const auto result = nativeMenu.registerMenu(menuFrameworkAdapter); !result) {
         logger::warn(
             "SlaveTatsUI: native menu unavailable: {}",

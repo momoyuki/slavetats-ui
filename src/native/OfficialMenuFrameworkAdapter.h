@@ -60,6 +60,7 @@ class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;
 enum class SlotWorkflowScreen;
+enum class TattooLoadoutScreen;
 enum class LivePreviewStatus;
 enum class NativeThumbnailStatus;
 struct NativeThumbnailView;
@@ -146,6 +147,10 @@ struct SlotPageRange {
 
 [[nodiscard]] SlotCardTreatment slotCardTreatment(
     core::SlotOccupancy occupancy) noexcept;
+[[nodiscard]] std::string_view slotCardStatusLabel(
+    core::SlotOccupancy occupancy) noexcept;
+[[nodiscard]] std::string_view workflowBreadcrumb(
+    SlotWorkflowScreen screen, TattooLoadoutScreen loadoutScreen) noexcept;
 [[nodiscard]] SlotPageRange calculateSlotPage(
     std::size_t slotCount,
     std::size_t requestedPage,

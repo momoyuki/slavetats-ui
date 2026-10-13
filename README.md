@@ -30,6 +30,10 @@ Install and enable all of these before loading SlaveTats UI:
 | [JContainers SE](https://www.nexusmods.com/skyrimspecialedition/mods/16495) | Provides SlaveTats data storage |
 | One or more SlaveTats texture packs | Loose files and BSA archives are supported |
 
+[FLICK](https://www.nexusmods.com/skyrimspecialedition/mods/181603) v1.6.0 or
+newer is optional. When installed, its **SlaveTatsUI > Tattoo Browser** tool
+opens the same native browser. FLICK does not replace SKSE Menu Framework.
+
 PrismaUI is not required by SlaveTats UI. It may remain installed if another
 mod uses it.
 
@@ -48,7 +52,10 @@ Launch Skyrim through SKSE in MO2.
 ## Usage
 
 Press **F8** by default or choose **SlaveTatsUI > Tattoo Browser** in SKSE Menu
-Framework. The configured hotkey toggles the native window.
+Framework. With FLICK installed, choose **SlaveTatsUI > Tattoo Browser** in its
+sidebar and press **Open Tattoo Browser**. The configured hotkey toggles the
+native window. The browser opens as a left-side panel so the Actor Target stays
+visible beside it.
 
 Choose the Player or a loaded Crosshair Target, then manage that Actor Target's
 current slots:
