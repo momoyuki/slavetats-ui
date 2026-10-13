@@ -333,6 +333,20 @@ void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
            "expected placeholder without a status label");
 }
 
+void thumbnailBackgroundChoiceUsesOnlyBlackOrWhite() {
+    using stui::native::ThumbnailBackgroundMode;
+    auto mode = ThumbnailBackgroundMode::black;
+    expect(stui::native::thumbnailBackgroundFillColor(mode) == 0xFF000000,
+        "expected black as the initial thumbnail background");
+    expect(stui::native::selectThumbnailBackgroundMode(mode, 1) &&
+            mode == ThumbnailBackgroundMode::white &&
+            stui::native::thumbnailBackgroundFillColor(mode) == 0xFFFFFFFF,
+        "expected white choice to change only the background mode");
+    expect(!stui::native::selectThumbnailBackgroundMode(mode, 2) &&
+            mode == ThumbnailBackgroundMode::white,
+        "expected an invalid choice to leave the background mode unchanged");
+}
+
 void thumbnailViewLookupMapsDuplicatePathVariantsToOneView() {
     const std::vector<stui::native::NativeThumbnailView> views{
         {.texturePath = "textures/actors/character/slavetats/a.dds"},
@@ -1426,6 +1440,8 @@ int main() {
         std::cout << "PASS foundation layout anchors panel to right edge\n";
         thumbnailPresentationFitsWithoutStretchingAndLabelsFailures();
         std::cout << "PASS thumbnail presentation fits and labels failures\n";
+        thumbnailBackgroundChoiceUsesOnlyBlackOrWhite();
+        std::cout << "PASS thumbnail background choices use black and white\n";
         thumbnailViewLookupMapsDuplicatePathVariantsToOneView();
         std::cout << "PASS thumbnail view lookup maps duplicate path variants\n";
         thumbnailGridGroupsTwoCardsIntoEachRow();

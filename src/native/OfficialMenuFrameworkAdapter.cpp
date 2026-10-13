@@ -562,6 +562,18 @@ CatalogThumbnailFit fitCatalogThumbnail(
     return {.width = width * scale, .height = height * scale};
 }
 
+std::uint32_t thumbnailBackgroundFillColor(ThumbnailBackgroundMode mode) noexcept {
+    return mode == ThumbnailBackgroundMode::white ? 0xFFFFFFFF : 0xFF000000;
+}
+
+bool selectThumbnailBackgroundMode(ThumbnailBackgroundMode& mode, int choice) noexcept {
+    if (choice < 0 || choice > 1) {
+        return false;
+    }
+    mode = choice == 0 ? ThumbnailBackgroundMode::black : ThumbnailBackgroundMode::white;
+    return true;
+}
+
 CatalogCardGridPosition catalogCardGridPosition(
     std::size_t index,
     std::size_t columnCount) noexcept {
@@ -1136,6 +1148,7 @@ void renderSlotImage(
     const core::TattooSlot& slot,
     const std::vector<NativeThumbnailView>& thumbnailViews,
     ImGuiMCP::ImVec2 region,
+    ThumbnailBackgroundMode backgroundMode,
     ImGuiMCP::ImVec4 tint = {1.0F, 1.0F, 1.0F, 1.0F}) {
     if (slot.occupancy == core::SlotOccupancy::empty) {
         ImGuiMCP::TextUnformatted("Add");
@@ -1168,6 +1181,14 @@ void renderSlotImage(
             origin.x + (region.x - fit.width) / 2.0F,
             origin.y + (region.y - fit.height) / 2.0F,
         });
+        const auto imageOrigin = ImGuiMCP::GetCursorScreenPos();
+        ImGuiMCP::ImDrawListManager::AddRectFilled(
+            ImGuiMCP::GetWindowDrawList(),
+            imageOrigin,
+            {imageOrigin.x + fit.width, imageOrigin.y + fit.height},
+            thumbnailBackgroundFillColor(backgroundMode),
+            0.0F,
+            0);
         ImGuiMCP::Image(
             static_cast<ImGuiMCP::ImTextureID>(
                 thumbnail->texture->shaderResourceView.get()),
@@ -1403,6 +1424,7 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
 void renderCurrentSlots(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
+    ThumbnailBackgroundMode backgroundMode,
     const std::function<void()>& close) {
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
@@ -1534,7 +1556,7 @@ void renderCurrentSlots(
                         ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
                 const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
                 const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
-                renderSlotImage(slot, thumbnailViews, imageRegion);
+                renderSlotImage(slot, thumbnailViews, imageRegion, backgroundMode);
                 if (const auto swatch = calculateSlotColorSwatch(
                         slot, imageRegion.x, imageRegion.y, 16.0F, 6.0F)) {
                     auto* drawList = ImGuiMCP::GetWindowDrawList();
@@ -1686,6 +1708,7 @@ const core::TattooSlot* selectedWorkflowSlot(
 void renderSlotActions(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
+    ThumbnailBackgroundMode backgroundMode,
     const std::function<void()>& close) {
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
@@ -1761,7 +1784,8 @@ void renderSlotActions(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                 ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
         if (slot) {
-            renderSlotImage(*slot, thumbnailViews, ImGuiMCP::GetContentRegionAvail());
+            renderSlotImage(
+                *slot, thumbnailViews, ImGuiMCP::GetContentRegionAvail(), backgroundMode);
         }
     }
     ImGuiMCP::EndChild();
@@ -1867,6 +1891,7 @@ void renderPreview(
     NativeSlotWorkflowModel& workflow,
     NativeCatalogBrowserModel& catalog,
     NativeThumbnailRuntime& thumbnails,
+    ThumbnailBackgroundMode backgroundMode,
     const std::function<void()>& close) {
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
@@ -1981,6 +2006,7 @@ void renderPreview(
                 previewSlot,
                 thumbnailViews,
                 ImGuiMCP::GetContentRegionAvail(),
+                backgroundMode,
                 {
                     tintColor.red,
                     tintColor.green,
@@ -2055,6 +2081,7 @@ void renderPreview(
 void renderEditAppearance(
     NativeSlotWorkflowModel& workflow,
     NativeThumbnailRuntime& thumbnails,
+    ThumbnailBackgroundMode backgroundMode,
     const std::function<void()>& close) {
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) {
@@ -2469,6 +2496,7 @@ void renderEditAppearance(
                         editSlot,
                         thumbnailViews,
                         ImGuiMCP::GetContentRegionAvail(),
+                        backgroundMode,
                         {
                             thumbnailPresentation.color.red,
                             thumbnailPresentation.color.green,
@@ -2580,6 +2608,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     NativeCatalogBrowserModel& model,
     NativeThumbnailRuntime& thumbnails,
     const std::function<void()>& close) {
+    static ThumbnailBackgroundMode backgroundMode = ThumbnailBackgroundMode::black;
     slotRuntime.pump();
     if (dispatchMenuCloseRequest(workflow, close)) {
         return;
@@ -2589,23 +2618,23 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::currentSlots) {
-        renderCurrentSlots(workflow, thumbnails, close);
+        renderCurrentSlots(workflow, thumbnails, backgroundMode, close);
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::slotActions ||
         workflow.screen() == SlotWorkflowScreen::removeConfirmation ||
         workflow.screen() == SlotWorkflowScreen::removing) {
-        renderSlotActions(workflow, thumbnails, close);
+        renderSlotActions(workflow, thumbnails, backgroundMode, close);
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::editAppearance ||
         workflow.screen() == SlotWorkflowScreen::savingAppearance) {
-        renderEditAppearance(workflow, thumbnails, close);
+        renderEditAppearance(workflow, thumbnails, backgroundMode, close);
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::preview ||
         workflow.screen() == SlotWorkflowScreen::applying) {
-        renderPreview(workflow, model, thumbnails, close);
+        renderPreview(workflow, model, thumbnails, backgroundMode, close);
         return;
     }
 
@@ -2653,6 +2682,15 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         const auto filterButtonMax = ImGuiMCP::GetItemRectMax();
         ImGuiMCP::SetNextWindowPos({filterButtonMin.x, filterButtonMax.y + 4.0F});
         ImGuiMCP::OpenPopup("CatalogFilters");
+    }
+    ImGuiMCP::SameLine();
+    ImGuiMCP::TextUnformatted("Thumbnail BG");
+    ImGuiMCP::SameLine();
+    int backgroundChoice = backgroundMode == ThumbnailBackgroundMode::white ? 1 : 0;
+    constexpr const char* backgroundLabels[]{"Black", "White"};
+    ImGuiMCP::SetNextItemWidth(90.0F);
+    if (ImGuiMCP::Combo("##ThumbnailBackground", &backgroundChoice, backgroundLabels, 2)) {
+        (void)selectThumbnailBackgroundMode(backgroundMode, backgroundChoice);
     }
 
     constexpr std::size_t searchCapacity = 256;
@@ -2941,6 +2979,14 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             imageOrigin.x + (imageRegion.x - fit.width) / 2.0F,
                             imageOrigin.y + (imageRegion.y - fit.height) / 2.0F,
                         });
+                        const auto fittedOrigin = ImGuiMCP::GetCursorScreenPos();
+                        ImGuiMCP::ImDrawListManager::AddRectFilled(
+                            ImGuiMCP::GetWindowDrawList(),
+                            fittedOrigin,
+                            {fittedOrigin.x + fit.width, fittedOrigin.y + fit.height},
+                            thumbnailBackgroundFillColor(backgroundMode),
+                            0.0F,
+                            0);
                         ImGuiMCP::Image(
                             static_cast<ImGuiMCP::ImTextureID>(
                                 texture->shaderResourceView.get()),
