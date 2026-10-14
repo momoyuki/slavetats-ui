@@ -103,6 +103,14 @@ void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
         "expected unnamed and missing targets never to use a Player title");
 }
 
+void actorPickerTitlesDistinguishNpcAndFollowerModes() {
+    using namespace stui::native;
+    expect(actorPickerTitle(ActorPickerMode::all) == "Choose NPC",
+        "expected the all-Actor picker title");
+    expect(actorPickerTitle(ActorPickerMode::followers) == "Choose Follower",
+        "expected the follower picker title");
+}
+
 void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
     using namespace stui::native;
     const ActorTarget actor;
@@ -124,16 +132,23 @@ void actorPickerShowsScanFailureInsteadOfEmptyState() {
     using namespace stui;
     const core::ServiceError failure{core::ServiceErrorCode::actorNotFound,
         "Loaded Actor scan failed"};
-    expect(native::loadedActorPickerStatusMessage(false, false, &failure) ==
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, false, &failure) ==
             "Loaded Actor scan failed",
         "expected picker to present the scan failure before an empty result");
-    expect(native::loadedActorPickerStatusMessage(true, false, nullptr) ==
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            true, false, nullptr) ==
             "Scanning loaded Actors...",
         "expected in-flight scan status");
-    expect(native::loadedActorPickerStatusMessage(false, false, nullptr) ==
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, false, nullptr) ==
             "No loaded NPC matches the search.",
         "expected empty result only when scanning succeeded");
-    expect(native::loadedActorPickerStatusMessage(false, true, nullptr).empty(),
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::followers,
+            false, false, nullptr) == "No loaded followers found.",
+        "expected follower empty state after a successful scan");
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, true, nullptr).empty(),
         "expected no status when selectable Actors exist");
 }
 
@@ -1542,6 +1557,7 @@ int main() {
         loadoutSummaryGroupsActionsAndPreservedSlotsAcrossAreas();
         std::cout << "PASS grouped loadout actions and preserved slots\n";
         actorTargetIdentityUsesFixedWidthUppercaseFormId();
+        actorPickerTitlesDistinguishNpcAndFollowerModes();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
         actorPickerShowsScanFailureInsteadOfEmptyState();

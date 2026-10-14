@@ -19,10 +19,12 @@ void expect(bool condition, std::string_view message) {
     if (!condition) throw std::runtime_error(std::string(message));
 }
 
-LoadedActorCandidate candidate(std::uint32_t formId, float distance, std::string name) {
+LoadedActorCandidate candidate(
+    std::uint32_t formId, float distance, std::string name, bool isPlayerTeammate = false) {
     return {
         .target = ActorTarget{ActorTargetKind::explicitNpc, formId, std::move(name)},
         .distance = distance,
+        .isPlayerTeammate = isPlayerTeammate,
     };
 }
 
@@ -75,6 +77,16 @@ void rejectsPlayerInvalidIdentityAndDistance() {
         "expected only valid explicit NPC candidates with normalized names");
 }
 
+void preservesTeammateMetadataDuringNormalization() {
+    const auto result = stui::native::normalizeLoadedActorCandidates({
+        candidate(0x20, 2.0F, "Follower", true),
+        candidate(0x21, 3.0F, "Other", false),
+    });
+    expect(result.size() == 2 && result[0].isPlayerTeammate &&
+            !result[1].isPlayerTeammate,
+        "expected follower metadata to remain attached to copied identities");
+}
+
 }  // namespace
 
 int main() {
@@ -85,6 +97,8 @@ int main() {
         std::cout << "PASS removes duplicate identities and caps at sixty-four\n";
         rejectsPlayerInvalidIdentityAndDistance();
         std::cout << "PASS rejects Player and invalid candidates\n";
+        preservesTeammateMetadataDuringNormalization();
+        std::cout << "PASS preserves follower metadata during normalization\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';
         return 1;

@@ -41,6 +41,7 @@ LoadedActorScanResult scanLoadedActors() {
                 .displayName = displayName && *displayName ? displayName : "Unnamed Actor",
             },
             .distance = distance,
+            .isPlayerTeammate = actor->IsPlayerTeammate(),
         });
         return RE::BSContainer::ForEachResult::kContinue;
     });

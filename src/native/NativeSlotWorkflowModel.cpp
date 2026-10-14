@@ -190,6 +190,17 @@ bool NativeSlotWorkflowModel::selectNearbyActor(std::size_t index) {
 bool NativeSlotWorkflowModel::chooseExplicitNpcTarget() {
     if (isMutationInFlight()) return false;
     m_explicitNpcPickerOpen = true;
+    m_actorPickerMode = ActorPickerMode::all;
+    m_explicitNpcSearch.clear();
+    m_loadedActorScanError.reset();
+    requestLoadedActorScan();
+    return true;
+}
+
+bool NativeSlotWorkflowModel::chooseFollowerTarget() {
+    if (isMutationInFlight()) return false;
+    m_explicitNpcPickerOpen = true;
+    m_actorPickerMode = ActorPickerMode::followers;
     m_explicitNpcSearch.clear();
     m_loadedActorScanError.reset();
     requestLoadedActorScan();
@@ -253,6 +264,7 @@ void NativeSlotWorkflowModel::closeExplicitNpcPicker() noexcept {
     m_pendingLoadedActorScan.reset();
     m_activeLoadedActorScanGeneration.reset();
     m_loadedActorScanError.reset();
+    m_actorPickerMode = ActorPickerMode::all;
 }
 
 void NativeSlotWorkflowModel::setExplicitNpcSearch(std::string value) {
@@ -267,12 +279,20 @@ std::vector<std::size_t> NativeSlotWorkflowModel::explicitNpcSearchResults() con
     std::vector<std::size_t> result;
     result.reserve(m_explicitNpcActors.size());
     for (std::size_t index = 0; index < m_explicitNpcActors.size(); ++index) {
+        if (m_actorPickerMode == ActorPickerMode::followers &&
+            !m_explicitNpcActors[index].isPlayerTeammate) {
+            continue;
+        }
         if (containsFoldedASCII(
                 m_explicitNpcActors[index].target.displayName, m_explicitNpcSearch)) {
             result.push_back(index);
         }
     }
     return result;
+}
+
+ActorPickerMode NativeSlotWorkflowModel::actorPickerMode() const noexcept {
+    return m_actorPickerMode;
 }
 
 bool NativeSlotWorkflowModel::explicitNpcScanRetryAvailable() const noexcept {
@@ -2145,6 +2165,7 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_activeLoadedActorScanGeneration.reset();
     m_loadedActorScanError.reset();
     m_explicitNpcPickerOpen = false;
+    m_actorPickerMode = ActorPickerMode::all;
     m_explicitNpcSearch.clear();
     m_areaStates = {};
     m_screen = SlotWorkflowScreen::currentSlots;

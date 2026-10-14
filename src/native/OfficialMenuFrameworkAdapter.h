@@ -61,6 +61,7 @@ class NativeThumbnailRuntime;
 class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;
+enum class ActorPickerMode;
 enum class SlotWorkflowScreen;
 enum class TattooLoadoutScreen;
 enum class LivePreviewStatus;
@@ -81,8 +82,10 @@ enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
     const NearbyActorCandidate& candidate, std::size_t index);
 [[nodiscard]] std::string formatLoadedActorSelectorLabel(
     const LoadedActorCandidate& candidate, std::size_t index);
+[[nodiscard]] std::string_view actorPickerTitle(ActorPickerMode mode) noexcept;
 [[nodiscard]] std::string_view loadedActorPickerStatusMessage(
-    bool resolving, bool hasResults, const core::ServiceError* error) noexcept;
+    ActorPickerMode mode, bool resolving, bool hasResults,
+    const core::ServiceError* error) noexcept;
 [[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;

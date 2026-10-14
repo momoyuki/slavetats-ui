@@ -200,11 +200,18 @@ std::string formatLoadedActorSelectorLabel(
         formatActorTargetIdentity(candidate.target), candidate.distance, index);
 }
 
+std::string_view actorPickerTitle(ActorPickerMode mode) noexcept {
+    return mode == ActorPickerMode::followers ? "Choose Follower" : "Choose NPC";
+}
+
 std::string_view loadedActorPickerStatusMessage(
-    bool resolving, bool hasResults, const core::ServiceError* error) noexcept {
+    ActorPickerMode mode, bool resolving, bool hasResults,
+    const core::ServiceError* error) noexcept {
     if (resolving) return "Scanning loaded Actors...";
     if (error) return error->message;
-    return hasResults ? "" : "No loaded NPC matches the search.";
+    if (hasResults) return "";
+    return mode == ActorPickerMode::followers
+        ? "No loaded followers found." : "No loaded NPC matches the search.";
 }
 
 std::string currentTattoosTitle(const ActorTarget* target) {
@@ -1292,10 +1299,18 @@ bool renderActorTargetHeader(
         nearbyChanged = workflow.chooseExplicitNpcTarget();
     }
     ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
+    if (ImGuiMCP::Button("Followers")) {
+        nearbyChanged = workflow.chooseFollowerTarget();
+    }
+    ImGuiMCP::EndDisabled();
 
     if (workflow.explicitNpcPickerOpen()) {
+        const auto pickerTitle = actorPickerTitle(workflow.actorPickerMode());
+        const bool followerPicker = workflow.actorPickerMode() == ActorPickerMode::followers;
         ImGuiMCP::Separator();
-        ImGuiMCP::TextUnformatted("Choose NPC");
+        ImGuiMCP::TextUnformatted(pickerTitle.data());
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
         auto search = workflow.explicitNpcSearch();
         if (inputTextString("Search##ExplicitNpc", search)) {
@@ -1316,7 +1331,8 @@ bool renderActorTargetHeader(
         }
         ImGuiMCP::EndDisabled();
         const auto pickerStatus = loadedActorPickerStatusMessage(
-            workflow.isActorTargetResolutionInFlight(), !results.empty(), workflow.error());
+            workflow.actorPickerMode(), workflow.isActorTargetResolutionInFlight(),
+            !results.empty(), workflow.error());
         if (!pickerStatus.empty()) {
             ImGuiMCP::TextWrapped("%.*s", static_cast<int>(pickerStatus.size()),
                 pickerStatus.data());

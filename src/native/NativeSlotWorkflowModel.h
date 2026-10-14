@@ -46,6 +46,8 @@ struct LoadedActorScanTicket {
     std::uint64_t generation{};
 };
 
+enum class ActorPickerMode { all, followers };
+
 struct SlotQueryTicket {
     std::uint64_t generation{};
     std::uint32_t actorFormId{};
@@ -196,12 +198,14 @@ public:
     [[nodiscard]] bool retryNearbyActorScan();
     [[nodiscard]] bool selectNearbyActor(std::size_t index);
     [[nodiscard]] bool chooseExplicitNpcTarget();
+    [[nodiscard]] bool chooseFollowerTarget();
     [[nodiscard]] bool refreshExplicitNpcTargetList();
     [[nodiscard]] std::optional<LoadedActorScanTicket> takeLoadedActorScanRequest();
     void completeLoadedActorScan(std::uint64_t generation, LoadedActorList result);
     void completeLoadedActorScan(std::uint64_t generation, LoadedActorScanResult result);
     [[nodiscard]] const LoadedActorList& explicitNpcActors() const noexcept;
     [[nodiscard]] bool explicitNpcPickerOpen() const noexcept;
+    [[nodiscard]] ActorPickerMode actorPickerMode() const noexcept;
     void closeExplicitNpcPicker() noexcept;
     void setExplicitNpcSearch(std::string value);
     [[nodiscard]] const std::string& explicitNpcSearch() const noexcept;
@@ -416,6 +420,7 @@ private:
     std::optional<std::uint64_t> m_activeLoadedActorScanGeneration;
     std::optional<core::ServiceError> m_loadedActorScanError;
     bool m_explicitNpcPickerOpen{};
+    ActorPickerMode m_actorPickerMode{ActorPickerMode::all};
     std::string m_explicitNpcSearch;
     std::uint64_t m_targetGeneration{};
     // Runtime work outlives UI navigation that discards its presentation state.
