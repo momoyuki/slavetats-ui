@@ -100,6 +100,7 @@ set(sources
     src/native/NativeCatalogBrowserModel.cpp
     src/native/NativeSlotWorkflowModel.cpp
     src/native/NearbyActorProvider.cpp
+    src/native/LoadedActorProvider.cpp
     src/native/NativeSlotWorkflowRuntime.cpp
     src/native/NativeThumbnailController.cpp
     src/native/NativeThumbnailRuntime.cpp
@@ -278,6 +279,14 @@ if(BUILD_TESTING)
     target_include_directories(NearbyActorProviderTests PRIVATE src)
     target_link_libraries(NearbyActorProviderTests PRIVATE CommonLibSSE::CommonLibSSE)
     add_test(NAME NearbyActorProviderTests COMMAND NearbyActorProviderTests)
+
+    add_executable(LoadedActorProviderTests
+        src/native/LoadedActorProvider.cpp
+        tests/native/LoadedActorProviderTests.cpp
+    )
+    target_include_directories(LoadedActorProviderTests PRIVATE src)
+    target_link_libraries(LoadedActorProviderTests PRIVATE CommonLibSSE::CommonLibSSE)
+    add_test(NAME LoadedActorProviderTests COMMAND LoadedActorProviderTests)
 
     add_executable(NativeSlotWorkflowRuntimeTests
         src/native/NativeSlotWorkflowRuntime.cpp

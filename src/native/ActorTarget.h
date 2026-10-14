@@ -11,6 +11,7 @@ namespace stui::native {
 enum class ActorTargetKind {
     player,
     nearby,
+    explicitNpc,
     // Retained during the selector migration; no new workflow path uses it.
     crosshair,
 };

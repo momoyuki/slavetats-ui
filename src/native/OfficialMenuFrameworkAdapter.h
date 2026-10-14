@@ -3,6 +3,7 @@
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/ActorTarget.h"
 #include "native/NearbyActorProvider.h"
+#include "native/LoadedActorProvider.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 #include "core/ITattooRuntime.h"
@@ -78,6 +79,10 @@ enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
 [[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
 [[nodiscard]] std::string formatNearbyActorSelectorLabel(
     const NearbyActorCandidate& candidate, std::size_t index);
+[[nodiscard]] std::string formatLoadedActorSelectorLabel(
+    const LoadedActorCandidate& candidate, std::size_t index);
+[[nodiscard]] std::string_view loadedActorPickerStatusMessage(
+    bool resolving, bool hasResults, const core::ServiceError* error) noexcept;
 [[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;
