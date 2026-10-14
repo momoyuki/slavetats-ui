@@ -133,7 +133,7 @@ Users can manage locked state and browse/apply tattoos outside the default domai
 
 ## vNext.3 — Actor Targeting
 
-**Status:** Complete
+**Status:** Implemented; explicit NPC in-game safety checks pending
 
 **Design:** `docs/superpowers/specs/2026-09-17-native-actor-targeting-design.md`
 
@@ -143,8 +143,8 @@ Move the native workflow beyond the hard-coded Player target while preserving th
 
 - [x] Player
 - [x] Nearby Actor snapshot (nearest-first, capped at 10)
-- [ ] Selected/explicit NPC
-- [ ] Follower-oriented target convenience if it can be implemented without heuristic mutation
+- [ ] Selected/explicit NPC — merged in PR #17; in-game checks 1–4 and 7 passed. Checks 5–6 (unloaded NPC and stale Refresh completion) remain deferred by user acceptance after merge.
+- [x] Follower-oriented target convenience using the player-teammate flag — merged in PR #18; in-game discovery, Search, Refresh, Close, exact selection, and switching targets passed.
 
 ### Required safety work
 

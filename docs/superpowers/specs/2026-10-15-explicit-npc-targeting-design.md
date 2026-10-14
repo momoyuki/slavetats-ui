@@ -135,3 +135,10 @@ no mutation ticket.
 6. Refresh the picker and confirm the old snapshot and stale completions cannot
    overwrite the new selection.
 7. Return to Player and nearby selection and confirm existing behavior remains.
+
+## Acceptance record
+
+- On 2026-10-15, the user confirmed in-game checks 1–4 and 7 passed.
+- The user accepted merging PR #17 with checks 5–6 deferred. The unloaded-NPC
+  no-Player-fallback path and stale Refresh completion path remain open for
+  in-game verification; automated tests cover both paths.

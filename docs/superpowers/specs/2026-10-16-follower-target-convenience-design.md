@@ -57,3 +57,9 @@ selection intent.
 - stale scan completions remain ignored;
 - adapter labels and existing Player/nearby/explicit-NPC behavior stay stable;
 - full Debug and Release suites pass.
+
+## Acceptance record
+
+On 2026-10-14, the user confirmed the in-game follower-only list, Search,
+Refresh, Close, exact follower selection, and switching back to Choose
+NPC/Player. PR #18 merged into `main` on 2026-10-15.

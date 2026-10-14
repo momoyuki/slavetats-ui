@@ -33,5 +33,15 @@ without weakening existing Player or nearby Actor safety guarantees.
 
 - [x] Run Debug/Release builds and complete both CTest suites.
 - [x] Run release policy checks and `git diff --check`.
-- [ ] Deploy only after explicit approval and record the seven in-game checks.
-- [ ] Show the scoped diff and proposed Conventional Commit subject before commit.
+- [ ] Complete and record all seven in-game checks. The user confirmed checks
+  1–4 and 7 on 2026-10-15 and accepted deferring checks 5–6 until after merge.
+  Those checks cover an unloaded NPC without Player fallback and stale Refresh
+  completion without overwriting a newer selection. Automated coverage exists,
+  but the two in-game checks remain open.
+- [x] Show the scoped diff and proposed Conventional Commit subject before commit.
+
+## Merge record
+
+- PR #17 merged into `main` on 2026-10-15 after Debug and Release builds,
+  complete CTest suites (41/41 in each), release policy checks, and hosted CI.
+- Keep this plan active until in-game checks 5–6 are reported and recorded.
