@@ -102,3 +102,11 @@ The user opens the browser, sees at most ten nearby Actors ordered nearest-first
 selects one, and can use the existing slot-first workflow against that Actor.
 Player behavior remains unchanged, the same Actor is retained while the menu is
 open, and reopening the browser refreshes the nearby list.
+
+## Acceptance Record (2026-10-14, partial)
+
+- The user confirmed that the deployed candidate DLL is usable in-game.
+- Candidate SHA-256: `9BD76B9DBA951C35F295111DEBA6EBD1D9358468BE7502108214C6C93837AF45`.
+- This confirms operational use of the candidate; the complete Nearby Actor
+  ordering, unload failure, no-fallback, and log checklist remains tracked in
+  the active implementation plan.
