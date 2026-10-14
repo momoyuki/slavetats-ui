@@ -253,3 +253,13 @@ pass.
 - Debug and Release CTest suites passed 40/40 after the fix, including a
   regression test that distinguishes a stored black value from a missing color
   key. The remaining texture-option acceptance checks are still pending.
+
+## Acceptance Record (2026-10-14, complete)
+
+- The user confirmed all ten in-game acceptance checks passed on Player and a
+  selected nearby Actor, including legacy packs without option arrays, rapid
+  latest-wins selection, Save/Cancel/Close restoration, actor-boundary safety,
+  external-slot read-only behavior, and replace/remove cleanup.
+- Debug and Release CTest suites passed 40/40, release policy suites passed,
+  and `git diff --check` passed before PR #15 was merged into `main` at
+  `e1d51c1ec1b52ac1013237c79b842acacb2663cc`.
