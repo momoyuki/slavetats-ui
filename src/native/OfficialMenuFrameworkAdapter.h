@@ -81,6 +81,8 @@ enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
     const NearbyActorCandidate& candidate, std::size_t index);
 [[nodiscard]] std::string formatLoadedActorSelectorLabel(
     const LoadedActorCandidate& candidate, std::size_t index);
+[[nodiscard]] std::string_view loadedActorPickerStatusMessage(
+    bool resolving, bool hasResults, const core::ServiceError* error) noexcept;
 [[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;

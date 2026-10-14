@@ -120,6 +120,23 @@ void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
         "expected slot and mutation actions disabled without a resolved Actor");
 }
 
+void actorPickerShowsScanFailureInsteadOfEmptyState() {
+    using namespace stui;
+    const core::ServiceError failure{core::ServiceErrorCode::actorNotFound,
+        "Loaded Actor scan failed"};
+    expect(native::loadedActorPickerStatusMessage(false, false, &failure) ==
+            "Loaded Actor scan failed",
+        "expected picker to present the scan failure before an empty result");
+    expect(native::loadedActorPickerStatusMessage(true, false, nullptr) ==
+            "Scanning loaded Actors...",
+        "expected in-flight scan status");
+    expect(native::loadedActorPickerStatusMessage(false, false, nullptr) ==
+            "No loaded NPC matches the search.",
+        "expected empty result only when scanning succeeded");
+    expect(native::loadedActorPickerStatusMessage(false, true, nullptr).empty(),
+        "expected no status when selectable Actors exist");
+}
+
 void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
     using namespace stui::native;
     const ActorTarget player;
@@ -1527,6 +1544,7 @@ int main() {
         actorTargetIdentityUsesFixedWidthUppercaseFormId();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
+        actorPickerShowsScanFailureInsteadOfEmptyState();
         std::cout << "PASS actor target status and action availability\n";
         editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity();
         std::cout << "PASS Edit Appearance header appends Preview status\n";
