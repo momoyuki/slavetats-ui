@@ -43,7 +43,7 @@ This baseline is the foundation. Future milestones should extend it instead of c
 
 ## Active UI integration — FLICK presentation host
 
-**Status:** In progress as a separate UI PR stacked on the current UI work.
+**Status:** Complete
 
 **Design:** `docs/superpowers/specs/2026-10-14-flick-ui-design.md`
 
@@ -53,8 +53,8 @@ Reuse the current model, scheduler, service, and SlaveTatsNG runtime. Camera con
 hover-to-apply preview are separate future decisions because they affect game
 state outside the current UI boundary.
 
-The remaining vNext.4 controlled material texture selection stays pending;
-this UI work does not mark that candidate complete.
+The FLICK launcher and unified presentation were merged into `main` in PR #15.
+The in-game acceptance checklist was completed on the merged candidate.
 
 ---
 
@@ -162,7 +162,7 @@ The same browse/apply/edit/remove workflow works for a deliberately selected loa
 
 ## vNext.4 — Workflow Quality of Life
 
-**Status:** Current priority
+**Status:** Complete
 
 **Active design:** `docs/superpowers/specs/2026-10-10-controlled-material-texture-selection-design.md`
 
@@ -181,9 +181,11 @@ Candidates:
 - [x] Saved tattoo sets / loadouts
 - [x] Applied-only browser filter
 - [x] Glow / Bump / Gloss catalog badges and filters
-- [ ] Controlled alternate glow/bump texture selection
+- [x] Controlled alternate glow/bump texture selection
 
-These are convenience features, not compatibility prerequisites.
+These are convenience features, not compatibility prerequisites. The complete
+vNext.4 acceptance record is maintained in the controlled material texture
+selection spec.
 
 ---
 
