@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -119,6 +120,16 @@ struct CatalogThumbnailFit {
     float width{};
     float height{};
 };
+
+enum class ThumbnailBackgroundMode {
+    black,
+    white,
+};
+
+[[nodiscard]] std::uint32_t thumbnailBackgroundFillColor(
+    ThumbnailBackgroundMode mode) noexcept;
+[[nodiscard]] ThumbnailBackgroundMode toggledThumbnailBackgroundMode(
+    ThumbnailBackgroundMode mode) noexcept;
 
 enum class SlotCardTreatment {
     add,

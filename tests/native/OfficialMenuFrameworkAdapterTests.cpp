@@ -333,6 +333,21 @@ void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
            "expected placeholder without a status label");
 }
 
+void thumbnailBackgroundButtonAlternatesBlackAndWhite() {
+    using stui::native::ThumbnailBackgroundMode;
+    auto mode = ThumbnailBackgroundMode::black;
+    expect(stui::native::thumbnailBackgroundFillColor(mode) == 0xFF000000,
+        "expected black as the initial thumbnail background");
+    mode = stui::native::toggledThumbnailBackgroundMode(mode);
+    expect(mode == ThumbnailBackgroundMode::white &&
+            stui::native::thumbnailBackgroundFillColor(mode) == 0xFFFFFFFF,
+        "expected first button press to choose white background");
+    mode = stui::native::toggledThumbnailBackgroundMode(mode);
+    expect(mode == ThumbnailBackgroundMode::black &&
+            stui::native::thumbnailBackgroundFillColor(mode) == 0xFF000000,
+        "expected second button press to restore black background");
+}
+
 void thumbnailViewLookupMapsDuplicatePathVariantsToOneView() {
     const std::vector<stui::native::NativeThumbnailView> views{
         {.texturePath = "textures/actors/character/slavetats/a.dds"},
@@ -1426,6 +1441,8 @@ int main() {
         std::cout << "PASS foundation layout anchors panel to right edge\n";
         thumbnailPresentationFitsWithoutStretchingAndLabelsFailures();
         std::cout << "PASS thumbnail presentation fits and labels failures\n";
+        thumbnailBackgroundButtonAlternatesBlackAndWhite();
+        std::cout << "PASS thumbnail background button alternates black and white\n";
         thumbnailViewLookupMapsDuplicatePathVariantsToOneView();
         std::cout << "PASS thumbnail view lookup maps duplicate path variants\n";
         thumbnailGridGroupsTwoCardsIntoEachRow();
