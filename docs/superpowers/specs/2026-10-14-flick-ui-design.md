@@ -67,9 +67,9 @@ SlavetatsUIPzx and Fitting Room, without copying their runtime or assets.
 - All redesigned screens preserve actions, disabled states, confirmations,
   pending states, errors, and retry behavior.
 - Debug and Release builds and relevant CTest suites pass. In-game QA covers
-  FLICK launch/close, all screens, Player/Crosshair, external locked slots,
-  apply/replace/remove, appearance Save/Cancel, loadouts, thumbnails, and
-  synchronization-only retry.
+  FLICK launch/close, all screens, Player/Nearby Actor selection, external
+  locked slots, apply/replace/remove, appearance Save/Cancel, loadouts,
+  thumbnails, and synchronization-only retry.
 
 ## Source references
 
