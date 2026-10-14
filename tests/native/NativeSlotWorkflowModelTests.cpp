@@ -1741,6 +1741,58 @@ void followerPickerFiltersSnapshotAndPreservesClose() {
         "expected follower selection to query the exact Actor form ID");
 }
 
+void followerSearchRefreshAndStaleCompletionStayScoped() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    const auto initialQuery = model.takeSlotQuery();
+    expect(initialQuery.has_value(), "expected Player query");
+    model.completeSlotQuery(initialQuery->generation, slots(TattooArea::body, 2));
+    expect(model.chooseFollowerTarget(), "expected follower picker");
+    const auto scan = model.takeLoadedActorScanRequest();
+    expect(scan.has_value(), "expected initial scan");
+    model.completeLoadedActorScan(scan->generation, LoadedActorList{
+        {ActorTarget{ActorTargetKind::explicitNpc, 0x20, "Lydia"}, 5.0F, true},
+        {ActorTarget{ActorTargetKind::explicitNpc, 0x30, "Lydia Guard"}, 6.0F, false},
+    });
+    model.setExplicitNpcSearch("LYD");
+    expect(model.explicitNpcSearchResults() == std::vector<std::size_t>{0} &&
+            !model.takeLoadedActorScanRequest(),
+        "expected case-insensitive follower search without rescanning");
+    expect(model.refreshExplicitNpcTargetList(), "expected explicit Refresh");
+    const auto refresh = model.takeLoadedActorScanRequest();
+    expect(refresh.has_value() && !model.refreshExplicitNpcTargetList() &&
+            !model.takeLoadedActorScanRequest(),
+        "expected only one in-flight refresh");
+    model.completeLoadedActorScan(refresh->generation, LoadedActorList{
+        {ActorTarget{ActorTargetKind::explicitNpc, 0x20, "Lydia"}, 5.0F, false},
+    });
+    expect(model.actorPickerMode() == ActorPickerMode::followers &&
+            model.explicitNpcSearch() == "LYD" && model.explicitNpcSearchResults().empty(),
+        "expected Refresh to preserve search and hide dismissed follower");
+    expect(model.refreshExplicitNpcTargetList(), "expected another Refresh");
+    const auto obsolete = model.takeLoadedActorScanRequest();
+    expect(obsolete.has_value(), "expected obsolete scan ticket");
+    model.closeExplicitNpcPicker();
+    expect(model.actorTarget() && model.actorTarget()->formId == 0x14 &&
+            model.slots() && model.slots()->configuredCount == 2,
+        "expected Close to preserve Player identity and loaded slots");
+    expect(model.chooseExplicitNpcTarget(), "expected all-NPC picker after Close");
+    const auto current = model.takeLoadedActorScanRequest();
+    expect(current.has_value(), "expected fresh all-NPC scan");
+    model.completeLoadedActorScan(obsolete->generation, LoadedActorList{
+        {ActorTarget{ActorTargetKind::explicitNpc, 0x99, "Obsolete"}, 1.0F, true},
+    });
+    expect(model.explicitNpcActors().empty(), "expected obsolete follower result ignored");
+    model.completeLoadedActorScan(current->generation, LoadedActorList{
+        {ActorTarget{ActorTargetKind::explicitNpc, 0x30, "Guard"}, 6.0F, false},
+    });
+    expect(model.actorPickerMode() == ActorPickerMode::all &&
+            model.explicitNpcSearchResults() == std::vector<std::size_t>{0},
+        "expected non-follower selectable in all-NPC mode");
+}
+
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
     resolveCrosshair(model);
     const auto query = model.takeSlotQuery();
@@ -2948,6 +3000,8 @@ int main() {
         staleExplicitNpcScanCannotReplaceNewPickerSnapshot);
     failures += run("follower picker filters snapshot and preserves close",
         followerPickerFiltersSnapshotAndPreservesClose);
+    failures += run("follower search refresh and stale completion stay scoped",
+        followerSearchRefreshAndStaleCompletionStayScoped);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);
