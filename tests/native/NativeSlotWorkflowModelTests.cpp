@@ -30,6 +30,7 @@ using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceSuccess;
 using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
+using stui::native::ActorPickerMode;
 using stui::native::NearbyActorCandidate;
 using stui::native::NearbyActorList;
 using stui::native::LoadedActorCandidate;
@@ -1706,6 +1707,40 @@ void staleExplicitNpcScanCannotReplaceNewPickerSnapshot() {
         "expected current scan completion to publish the new snapshot");
 }
 
+void followerPickerFiltersSnapshotAndPreservesClose() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    expect(model.chooseFollowerTarget(), "expected follower picker to open");
+    expect(model.actorPickerMode() == ActorPickerMode::followers,
+        "expected follower picker mode");
+    const auto scan = model.takeLoadedActorScanRequest();
+    expect(scan.has_value(), "expected follower scan request");
+    model.completeLoadedActorScan(scan->generation, LoadedActorList{
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x20, "Lydia"}, 5.0F, true},
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x30, "Serana"}, 6.0F, false},
+    });
+    expect(model.explicitNpcSearchResults().size() == 1 &&
+            model.explicitNpcSearchResults()[0] == 0,
+        "expected follower mode to exclude non-teammates from the snapshot");
+    model.closeExplicitNpcPicker();
+    expect(model.actorTarget() && model.actorTarget()->kind == ActorTargetKind::player &&
+            !model.explicitNpcPickerOpen(),
+        "expected closing follower picker to preserve the current target");
+    expect(model.chooseFollowerTarget(), "expected follower picker to reopen");
+    const auto reopened = model.takeLoadedActorScanRequest();
+    expect(reopened.has_value(), "expected one scan after reopening follower picker");
+    model.completeLoadedActorScan(reopened->generation, LoadedActorList{
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x20, "Lydia"}, 5.0F, true},
+    });
+    expect(model.selectExplicitNpc(0), "expected follower selection to use existing target path");
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x20,
+        "expected follower selection to query the exact Actor form ID");
+}
+
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
     resolveCrosshair(model);
     const auto query = model.takeSlotQuery();
@@ -2911,6 +2946,8 @@ int main() {
         explicitNpcPickerFiltersSnapshotAndSelectsExactActor);
     failures += run("stale explicit NPC scan cannot replace new picker snapshot",
         staleExplicitNpcScanCannotReplaceNewPickerSnapshot);
+    failures += run("follower picker filters snapshot and preserves close",
+        followerPickerFiltersSnapshotAndPreservesClose);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);

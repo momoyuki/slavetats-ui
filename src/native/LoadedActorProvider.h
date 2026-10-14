@@ -21,6 +21,7 @@ inline constexpr std::size_t kMaxExplicitNpcCandidates = 64;
 struct LoadedActorCandidate {
     ActorTarget target;
     float distance{};
+    bool isPlayerTeammate{};
 
     bool operator==(const LoadedActorCandidate&) const = default;
 };

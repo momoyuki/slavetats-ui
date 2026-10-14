@@ -103,6 +103,14 @@ void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
         "expected unnamed and missing targets never to use a Player title");
 }
 
+void actorPickerTitlesDistinguishNpcAndFollowerModes() {
+    using namespace stui::native;
+    expect(actorPickerTitle(ActorPickerMode::all) == "Choose NPC",
+        "expected the all-Actor picker title");
+    expect(actorPickerTitle(ActorPickerMode::followers) == "Choose Follower",
+        "expected the follower picker title");
+}
+
 void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
     using namespace stui::native;
     const ActorTarget actor;
@@ -1525,6 +1533,7 @@ int main() {
         loadoutSummaryGroupsActionsAndPreservedSlotsAcrossAreas();
         std::cout << "PASS grouped loadout actions and preserved slots\n";
         actorTargetIdentityUsesFixedWidthUppercaseFormId();
+        actorPickerTitlesDistinguishNpcAndFollowerModes();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
         std::cout << "PASS actor target status and action availability\n";

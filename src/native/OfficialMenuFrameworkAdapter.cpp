@@ -200,6 +200,10 @@ std::string formatLoadedActorSelectorLabel(
         formatActorTargetIdentity(candidate.target), candidate.distance, index);
 }
 
+std::string_view actorPickerTitle(ActorPickerMode mode) noexcept {
+    return mode == ActorPickerMode::followers ? "Choose Follower" : "Choose NPC";
+}
+
 std::string currentTattoosTitle(const ActorTarget* target) {
     if (!target) {
         return "Current Tattoos";
@@ -1285,10 +1289,18 @@ bool renderActorTargetHeader(
         nearbyChanged = workflow.chooseExplicitNpcTarget();
     }
     ImGuiMCP::EndDisabled();
+    ImGuiMCP::SameLine();
+    ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
+    if (ImGuiMCP::Button("Followers")) {
+        nearbyChanged = workflow.chooseFollowerTarget();
+    }
+    ImGuiMCP::EndDisabled();
 
     if (workflow.explicitNpcPickerOpen()) {
+        const auto pickerTitle = actorPickerTitle(workflow.actorPickerMode());
+        const bool followerPicker = workflow.actorPickerMode() == ActorPickerMode::followers;
         ImGuiMCP::Separator();
-        ImGuiMCP::TextUnformatted("Choose NPC");
+        ImGuiMCP::TextUnformatted(pickerTitle.data());
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
         auto search = workflow.explicitNpcSearch();
         if (inputTextString("Search##ExplicitNpc", search)) {
@@ -1312,7 +1324,8 @@ bool renderActorTargetHeader(
             ImGuiMCP::TextUnformatted(
                 workflow.isActorTargetResolutionInFlight()
                     ? "Scanning loaded Actors..."
-                    : "No loaded NPC matches the search.");
+                    : followerPicker ? "No loaded followers found."
+                                     : "No loaded NPC matches the search.");
         }
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
         if (ImGuiMCP::Button("Refresh NPC List")) {
