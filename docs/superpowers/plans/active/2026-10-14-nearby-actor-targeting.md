@@ -74,6 +74,8 @@
 - [x] Compose the provider into `main.cpp` without adding runtime/storage calls
   to the UI adapter.
 - [x] Run focused native model/runtime tests and verify they pass.
+- [x] Preserve a failed discovery as a retryable state without queuing scans
+  during render.
 
 ### Task 3: Target selector presentation
 
@@ -91,6 +93,8 @@
   distance; preserve existing breadcrumbs and footer controls.
 - [x] Keep external slots read-only and all mutation controls disabled while a
   scan or target transition is active.
+- [x] Render an explicit `Retry Nearby Scan` action only after discovery
+  failure.
 - [x] Run focused adapter tests and verify they pass.
 
 ### Task 4: Records and verification

@@ -1623,6 +1623,33 @@ void nearbyActorScanFailureRemainsVisibleWhilePlayerSlotsLoad() {
         "expected Player slot completion not to hide nearby scan failure");
 }
 
+void nearbyActorScanFailureCanBeRetried() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    model.resetSession();
+    const auto scan = model.takeNearbyActorScanRequest();
+    expect(scan.has_value(), "expected nearby scan request after opening the UI");
+    model.completeNearbyActorScan(scan->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "nearby scan failed"}));
+    expect(model.nearbyActorScanRetryAvailable(),
+        "expected failed nearby scan to expose a retry action");
+    expect(model.retryNearbyActorScan(), "expected nearby scan retry accepted");
+    expect(!model.nearbyActorScanRetryAvailable() && model.isActorTargetResolutionInFlight(),
+        "expected retry action to close while the new scan is active");
+    const auto retry = model.takeNearbyActorScanRequest();
+    expect(retry.has_value() && retry->generation == scan->generation,
+        "expected retry to schedule one scan for the current target generation");
+    model.completeNearbyActorScan(retry->generation, NearbyActorList{
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x1234, "Lydia"}, 12.0F},
+    });
+    expect(!model.error() && !model.nearbyActorScanRetryAvailable() &&
+            model.nearbyActors().size() == 1,
+        "expected successful retry to publish the nearby snapshot and clear the error");
+}
+
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
     resolveCrosshair(model);
     const auto query = model.takeSlotQuery();
@@ -2822,6 +2849,8 @@ int main() {
         staleNearbyActorScanCompletionCannotReplaceNewSession);
     failures += run("nearby Actor scan failure remains visible while Player slots load",
         nearbyActorScanFailureRemainsVisibleWhilePlayerSlotsLoad);
+    failures += run("nearby Actor scan failure can be retried",
+        nearbyActorScanFailureCanBeRetried);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);

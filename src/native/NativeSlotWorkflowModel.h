@@ -187,6 +187,8 @@ public:
     void completeNearbyActorScan(std::uint64_t generation, NearbyActorList result);
     void completeNearbyActorScan(std::uint64_t generation, NearbyActorScanResult result);
     [[nodiscard]] const NearbyActorList& nearbyActors() const noexcept;
+    [[nodiscard]] bool nearbyActorScanRetryAvailable() const noexcept;
+    [[nodiscard]] bool retryNearbyActorScan();
     [[nodiscard]] bool selectNearbyActor(std::size_t index);
     [[nodiscard]] std::optional<ActorTargetResolutionTicket> takeActorTargetRequest();
     void completeActorTargetResolution(std::uint64_t generation, ActorTargetResult result);

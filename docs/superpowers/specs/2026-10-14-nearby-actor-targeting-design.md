@@ -49,7 +49,9 @@ moves or the old Actor leaves the crosshair.
 Closing and reopening the browser creates a new snapshot. There is no automatic
 retargeting and no Crosshair Target mode. If a selected Actor unloads before a
 query or mutation, the existing actor error path remains visible and no Player
-fallback occurs.
+fallback occurs. If discovery fails while the Player target is active, the
+header exposes `Retry Nearby Scan`; it schedules one new snapshot attempt and
+does not poll or retarget automatically.
 
 ## Architecture
 
@@ -90,6 +92,8 @@ The runtime schedules discovery and delivers one generation-tagged completion.
 - selecting a candidate carries its exact form ID into slot queries and
   mutations;
 - target changes clear actor-scoped state and never fall back to Player;
+- a failed discovery exposes one explicit retry and does not queue repeated
+  scans while the menu renders;
 - adapter presents the pending, empty, and populated selector states.
 
 ## Acceptance

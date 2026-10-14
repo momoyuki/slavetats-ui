@@ -1297,6 +1297,12 @@ bool renderActorTargetHeader(
         ImGuiMCP::EndCombo();
     }
     ImGuiMCP::EndDisabled();
+    if (workflow.nearbyActorScanRetryAvailable()) {
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Retry Nearby Scan")) {
+            nearbyChanged = workflow.retryNearbyActorScan();
+        }
+    }
     const auto* target = workflow.actorTarget();
     const auto identity = formatActorTargetIdentityWithPreviewStatus(
         resolving, target, previewStatus);

@@ -145,6 +145,20 @@ const NearbyActorList& NativeSlotWorkflowModel::nearbyActors() const noexcept {
     return m_nearbyActors;
 }
 
+bool NativeSlotWorkflowModel::nearbyActorScanRetryAvailable() const noexcept {
+    return m_nearbyScanError.has_value() &&
+        !m_activeNearbyActorScanGeneration.has_value() && !isMutationInFlight();
+}
+
+bool NativeSlotWorkflowModel::retryNearbyActorScan() {
+    if (!nearbyActorScanRetryAvailable()) {
+        return false;
+    }
+    m_nearbyScanError.reset();
+    requestNearbyActorScan();
+    return m_activeNearbyActorScanGeneration.has_value();
+}
+
 bool NativeSlotWorkflowModel::selectNearbyActor(std::size_t index) {
     if (isMutationInFlight() || isActorTargetResolutionInFlight() || index >= m_nearbyActors.size()) {
         return false;
