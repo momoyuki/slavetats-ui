@@ -32,6 +32,8 @@ using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
 using stui::native::NearbyActorCandidate;
 using stui::native::NearbyActorList;
+using stui::native::LoadedActorCandidate;
+using stui::native::LoadedActorList;
 using stui::native::AppearanceOperationPurpose;
 using stui::native::AppearancePresetRequestKind;
 using stui::native::LivePreviewStatus;
@@ -1650,6 +1652,60 @@ void nearbyActorScanFailureCanBeRetried() {
         "expected successful retry to publish the nearby snapshot and clear the error");
 }
 
+void explicitNpcPickerFiltersSnapshotAndSelectsExactActor() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    expect(model.chooseExplicitNpcTarget(), "expected explicit NPC picker to open");
+    const auto scan = model.takeLoadedActorScanRequest();
+    expect(scan && model.explicitNpcPickerOpen(), "expected one explicit NPC scan request");
+    model.completeLoadedActorScan(scan->generation, LoadedActorList{
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x20, "Lydia"}, 90.0F},
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x10, "lidia"}, 20.0F},
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x30, "Serana"}, 10.0F},
+    });
+    expect(model.explicitNpcSearchResults().size() == 3,
+        "expected search to use only the captured snapshot");
+    model.setExplicitNpcSearch("l");
+    const auto results = model.explicitNpcSearchResults();
+    expect(results.size() == 2 && results[0] == 0 && results[1] == 1,
+        "expected case-insensitive name filtering without a rescan");
+    expect(model.selectExplicitNpc(results[1]), "expected explicit NPC selection");
+    expect(!model.explicitNpcPickerOpen() && model.selectedTargetKind() == ActorTargetKind::explicitNpc &&
+            model.actorTarget() && model.actorTarget()->formId == 0x20,
+        "expected exact selected explicit NPC identity");
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x20,
+        "expected slot query to carry the selected explicit NPC form ID");
+}
+
+void staleExplicitNpcScanCannotReplaceNewPickerSnapshot() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    expect(model.chooseExplicitNpcTarget(), "expected first explicit NPC picker");
+    const auto oldScan = model.takeLoadedActorScanRequest();
+    model.closeExplicitNpcPicker();
+    expect(model.chooseExplicitNpcTarget(), "expected refreshed explicit NPC picker");
+    const auto newScan = model.takeLoadedActorScanRequest();
+    expect(oldScan && newScan && oldScan->generation != newScan->generation,
+        "expected distinct discovery generations");
+    model.completeLoadedActorScan(oldScan->generation, LoadedActorList{
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x99, "Old"}, 1.0F},
+    });
+    expect(model.explicitNpcActors().empty(), "expected stale scan completion to be ignored");
+    model.completeLoadedActorScan(newScan->generation, LoadedActorList{
+        LoadedActorCandidate{ActorTarget{ActorTargetKind::explicitNpc, 0x42, "Current"}, 2.0F},
+    });
+    expect(model.explicitNpcActors().size() == 1 &&
+            model.explicitNpcActors()[0].target.formId == 0x42,
+        "expected current scan completion to publish the new snapshot");
+}
+
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
     resolveCrosshair(model);
     const auto query = model.takeSlotQuery();
@@ -2851,6 +2907,10 @@ int main() {
         nearbyActorScanFailureRemainsVisibleWhilePlayerSlotsLoad);
     failures += run("nearby Actor scan failure can be retried",
         nearbyActorScanFailureCanBeRetried);
+    failures += run("explicit NPC picker filters snapshot and selects exact Actor",
+        explicitNpcPickerFiltersSnapshotAndSelectsExactActor);
+    failures += run("stale explicit NPC scan cannot replace new picker snapshot",
+        staleExplicitNpcScanCannotReplaceNewPickerSnapshot);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);

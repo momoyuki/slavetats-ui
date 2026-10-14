@@ -18,6 +18,7 @@ using NativeSlotScheduler = std::function<void(NativeSlotTask)>;
 using LivePreviewClock = std::function<std::chrono::steady_clock::time_point()>;
 using ActorTargetOperation = std::function<ActorTargetResult()>;
 using NearbyActorScanOperation = std::function<NearbyActorScanResult()>;
+using LoadedActorScanOperation = std::function<LoadedActorScanResult()>;
 using SlotQueryOperation = std::function<core::TattooSlotsResult(
     std::uint32_t actorFormId,
     core::TattooArea area)>;
@@ -70,7 +71,8 @@ public:
         TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation = {},
         TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
         TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
-        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {});
+        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {},
+        LoadedActorScanOperation loadedActorScanOperation = {});
 
     NativeSlotWorkflowRuntime(
         NativeSlotWorkflowModel& model,
@@ -91,13 +93,15 @@ public:
         TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation = {},
         TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
         TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
-        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {});
+        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {},
+        LoadedActorScanOperation loadedActorScanOperation = {});
 
     void pump();
 
 private:
     void scheduleActorTarget(ActorTargetResolutionTicket ticket);
     void scheduleNearbyActorScan(NearbyActorScanTicket ticket);
+    void scheduleLoadedActorScan(LoadedActorScanTicket ticket);
     void scheduleQuery(SlotQueryTicket ticket);
     void scheduleApply(SlotApplyTicket ticket);
     void scheduleRemove(SlotRemoveTicket ticket);
@@ -116,6 +120,7 @@ private:
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
     NearbyActorScanOperation m_scanNearbyActors;
+    LoadedActorScanOperation m_scanLoadedActors;
     SlotQueryOperation m_query;
     SlotApplyOperation m_apply;
     SlotRemoveOperation m_remove;

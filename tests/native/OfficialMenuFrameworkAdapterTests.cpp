@@ -149,6 +149,11 @@ void actorTargetControlsRespectMutationAndCrosshairMode() {
     expect(formatNearbyActorSelectorLabel(nearby, 2) ==
                "Lydia [0x000A2C8E] - 42 units##NearbyActor2",
         "expected nearby selector labels to include identity, distance, and stable ID");
+    const LoadedActorCandidate explicitNpc{
+        ActorTarget{ActorTargetKind::explicitNpc, 0x1020304, "Serana"}, 128.6F};
+    expect(formatLoadedActorSelectorLabel(explicitNpc, 4) ==
+               "Serana [0x01020304] - 129 units##ExplicitNpc4",
+        "expected explicit NPC selector labels to include identity, distance, and stable ID");
     const auto nearbyControls = actorTargetControlPresentation(
         ActorTargetKind::nearby, false, false);
     expect(nearbyControls.playerEnabled && nearbyControls.crosshairEnabled &&

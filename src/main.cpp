@@ -146,7 +146,8 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     },
     [](const core::RetryTattooLoadoutSynchronizationRequest& request) {
         return g_applicationRuntime.service().retryLoadoutSynchronization(request);
-    });
+    },
+    [] { return native::scanLoadedActors(); });
 
 std::unique_ptr<native::NativeThumbnailRuntime> makeUnavailableNativeThumbnailRuntime(
     std::filesystem::path textureRoot = {}) {

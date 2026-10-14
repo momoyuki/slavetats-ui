@@ -194,6 +194,12 @@ std::string formatNearbyActorSelectorLabel(
         formatActorTargetIdentity(candidate.target), candidate.distance, index);
 }
 
+std::string formatLoadedActorSelectorLabel(
+    const LoadedActorCandidate& candidate, std::size_t index) {
+    return std::format("{} - {:.0f} units##ExplicitNpc{}",
+        formatActorTargetIdentity(candidate.target), candidate.distance, index);
+}
+
 std::string currentTattoosTitle(const ActorTarget* target) {
     if (!target) {
         return "Current Tattoos";
@@ -1271,6 +1277,60 @@ bool renderActorTargetHeader(
     }
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
+    bool nearbyChanged = false;
+    const bool chooseNpcEnabled = !workflow.explicitNpcPickerOpen() &&
+        !workflow.isActorTargetResolutionInFlight() && !workflow.isMutationInFlight();
+    ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
+    if (ImGuiMCP::Button("Choose NPC")) {
+        nearbyChanged = workflow.chooseExplicitNpcTarget();
+    }
+    ImGuiMCP::EndDisabled();
+
+    if (workflow.explicitNpcPickerOpen()) {
+        ImGuiMCP::Separator();
+        ImGuiMCP::TextUnformatted("Choose NPC");
+        ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
+        auto search = workflow.explicitNpcSearch();
+        if (inputTextString("Search##ExplicitNpc", search)) {
+            workflow.setExplicitNpcSearch(std::move(search));
+        }
+        ImGuiMCP::EndDisabled();
+        const auto& actors = workflow.explicitNpcActors();
+        const auto results = workflow.explicitNpcSearchResults();
+        ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
+        for (const auto index : results) {
+            const auto& candidate = actors[index];
+            const bool selected = workflow.actorTarget() &&
+                workflow.actorTarget()->formId == candidate.target.formId;
+            const auto label = formatLoadedActorSelectorLabel(candidate, index);
+            if (ImGuiMCP::Selectable(label.c_str(), selected)) {
+                (void)workflow.selectExplicitNpc(index);
+            }
+        }
+        ImGuiMCP::EndDisabled();
+        if (results.empty()) {
+            ImGuiMCP::TextUnformatted(
+                workflow.isActorTargetResolutionInFlight()
+                    ? "Scanning loaded Actors..."
+                    : "No loaded NPC matches the search.");
+        }
+        ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
+        if (ImGuiMCP::Button("Refresh NPC List")) {
+            (void)workflow.refreshExplicitNpcTargetList();
+        }
+        ImGuiMCP::EndDisabled();
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button("Close NPC Picker")) {
+            workflow.closeExplicitNpcPicker();
+        }
+        if (workflow.explicitNpcScanRetryAvailable()) {
+            if (ImGuiMCP::Button("Retry NPC Scan")) {
+                (void)workflow.retryExplicitNpcScan();
+            }
+        }
+        return true;
+    }
+
     const auto& nearbyActors = workflow.nearbyActors();
     std::string nearbyLabel = "Select nearby Actor";
     if (resolving) {
@@ -1278,7 +1338,6 @@ bool renderActorTargetHeader(
     } else if (kind == ActorTargetKind::nearby && workflow.actorTarget()) {
         nearbyLabel = formatActorTargetIdentity(*workflow.actorTarget());
     }
-    bool nearbyChanged = false;
     ImGuiMCP::BeginDisabled(!controls.crosshairEnabled || resolving);
     if (ImGuiMCP::BeginCombo("Nearby Actor", nearbyLabel.c_str())) {
         for (std::size_t index = 0; index < nearbyActors.size(); ++index) {

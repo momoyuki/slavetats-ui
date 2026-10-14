@@ -35,6 +35,9 @@ using stui::native::NearbyActorRuntimeTag;
 using stui::native::NearbyActorScanResult;
 using stui::native::NearbyActorList;
 using stui::native::NearbyActorCandidate;
+using stui::native::LoadedActorScanResult;
+using stui::native::LoadedActorList;
+using stui::native::LoadedActorCandidate;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotTask;
 using stui::native::NativeSlotWorkflowModel;
@@ -113,6 +116,70 @@ void nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery() {
     scheduled.back()();
     expect(model.slots() && model.slots()->actorFormId == 0x1234,
         "expected slots to belong to selected nearby Actor");
+}
+
+void explicitNpcScanRunsOnceAndQueriesSelectedActor() {
+    NativeCatalogBrowserModel catalog([] { return stui::repository::TattooCatalogSnapshot{}; });
+    NativeSlotWorkflowModel model(catalog);
+    std::vector<NativeSlotTask> scheduled;
+    std::size_t scanCount{};
+    NativeSlotWorkflowRuntime runtime(
+        model,
+        NearbyActorRuntimeTag{},
+        []() -> NearbyActorScanResult { return NearbyActorList{}; },
+        [](std::uint32_t actor, TattooArea area) {
+            auto result = bodySlots();
+            result.actorFormId = actor;
+            result.area = area;
+            return stui::core::TattooSlotsResult(std::move(result));
+        },
+        [](const ApplyTattooRequest& request) {
+            return stui::core::ApplyTattooResult(ApplyTattooSuccess{
+                .actorFormId = request.actorFormId, .area = request.area, .slot = request.slot,
+                .section = request.section, .name = request.name});
+        },
+        [](const RemoveTattooRequest& request) {
+            return stui::core::RemoveTattooResult(RemoveTattooSuccess{
+                .actorFormId = request.actorFormId, .area = request.area, .slot = request.slot});
+        },
+        [](const UpdateTattooAppearanceRequest& request) {
+            return UpdateTattooAppearanceResult(UpdateTattooAppearanceSuccess{
+                .actorFormId = request.actorFormId, .runtimeHandle = request.runtimeHandle});
+        },
+        [](const SetTattooLockedRequest& request) {
+            return stui::core::SetTattooLockedResult(SetTattooLockedSuccess{
+                .actorFormId = request.actorFormId, .runtimeHandle = request.runtimeHandle,
+                .locked = request.locked});
+        },
+        [&scheduled](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
+        [] { return std::chrono::steady_clock::now(); },
+        {}, {}, {}, {}, {}, {}, {}, {}, {},
+        [&scanCount]() -> LoadedActorScanResult {
+            ++scanCount;
+            return LoadedActorList{
+                LoadedActorCandidate{
+                    ActorTarget{ActorTargetKind::explicitNpc, 0x4321, "Serana"}, 32.0F},
+            };
+        });
+
+    model.start();
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected initial Player query");
+    scheduled.back()();
+    scheduled.clear();
+    expect(model.chooseExplicitNpcTarget(), "expected explicit NPC picker to open");
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected one scheduled explicit NPC scan");
+    scheduled.back()();
+    scheduled.clear();
+    expect(scanCount == 1 && model.explicitNpcActors().size() == 1,
+        "expected one loaded Actor snapshot");
+    expect(model.selectExplicitNpc(0), "expected explicit NPC selection");
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected selected NPC query to be scheduled");
+    scheduled.back()();
+    expect(model.slots() && model.slots()->actorFormId == 0x4321,
+        "expected query to remain scoped to selected NPC");
 }
 
 TattooSlots bodySlots() {
@@ -1195,6 +1262,8 @@ int main() {
     int failures = 0;
     failures += run("nearby scan runs once per open and precedes selected Actor query",
         nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery);
+    failures += run("explicit NPC scan runs once and queries selected Actor",
+        explicitNpcScanRunsOnceAndQueriesSelectedActor);
     failures += run("preview schedules once at exact debounce deadline", previewSchedulesOnceAtTheExactDebounceDeadline);
     failures += run("preview observes latest edits before in-flight guard", previewObservesLatestEditsBeforeTheInFlightGuard);
     failures += run("Save flushes pending preview without waiting for clock", saveFlushesPendingPreviewWithoutWaitingForClock);

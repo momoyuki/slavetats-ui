@@ -5,6 +5,7 @@
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NearbyActorProvider.h"
+#include "native/LoadedActorProvider.h"
 #include "runtime/AppearancePresetStore.h"
 #include "runtime/FavoriteStore.h"
 #include "runtime/RecentTattooStore.h"
@@ -38,6 +39,10 @@ struct ActorTargetResolutionTicket {
 };
 
 struct NearbyActorScanTicket {
+    std::uint64_t generation{};
+};
+
+struct LoadedActorScanTicket {
     std::uint64_t generation{};
 };
 
@@ -190,6 +195,20 @@ public:
     [[nodiscard]] bool nearbyActorScanRetryAvailable() const noexcept;
     [[nodiscard]] bool retryNearbyActorScan();
     [[nodiscard]] bool selectNearbyActor(std::size_t index);
+    [[nodiscard]] bool chooseExplicitNpcTarget();
+    [[nodiscard]] bool refreshExplicitNpcTargetList();
+    [[nodiscard]] std::optional<LoadedActorScanTicket> takeLoadedActorScanRequest();
+    void completeLoadedActorScan(std::uint64_t generation, LoadedActorList result);
+    void completeLoadedActorScan(std::uint64_t generation, LoadedActorScanResult result);
+    [[nodiscard]] const LoadedActorList& explicitNpcActors() const noexcept;
+    [[nodiscard]] bool explicitNpcPickerOpen() const noexcept;
+    void closeExplicitNpcPicker() noexcept;
+    void setExplicitNpcSearch(std::string value);
+    [[nodiscard]] const std::string& explicitNpcSearch() const noexcept;
+    [[nodiscard]] std::vector<std::size_t> explicitNpcSearchResults() const;
+    [[nodiscard]] bool explicitNpcScanRetryAvailable() const noexcept;
+    [[nodiscard]] bool retryExplicitNpcScan();
+    [[nodiscard]] bool selectExplicitNpc(std::size_t index);
     [[nodiscard]] std::optional<ActorTargetResolutionTicket> takeActorTargetRequest();
     void completeActorTargetResolution(std::uint64_t generation, ActorTargetResult result);
     [[nodiscard]] ActorTargetKind selectedTargetKind() const noexcept;
@@ -358,6 +377,7 @@ private:
     [[nodiscard]] const AreaState& selectedState() const noexcept;
     [[nodiscard]] std::uint64_t nextGeneration() noexcept;
     void requestNearbyActorScan();
+    void requestLoadedActorScan();
     void invalidateActorState();
     [[nodiscard]] bool hasActorSnapshot() const noexcept;
     void finishOutstandingMutation(std::uint64_t generation) noexcept;
@@ -391,6 +411,12 @@ private:
     NearbyActorList m_nearbyActors;
     std::optional<NearbyActorScanTicket> m_pendingNearbyActorScan;
     std::optional<std::uint64_t> m_activeNearbyActorScanGeneration;
+    LoadedActorList m_explicitNpcActors;
+    std::optional<LoadedActorScanTicket> m_pendingLoadedActorScan;
+    std::optional<std::uint64_t> m_activeLoadedActorScanGeneration;
+    std::optional<core::ServiceError> m_loadedActorScanError;
+    bool m_explicitNpcPickerOpen{};
+    std::string m_explicitNpcSearch;
     std::uint64_t m_targetGeneration{};
     // Runtime work outlives UI navigation that discards its presentation state.
     std::optional<std::uint64_t> m_outstandingMutationGeneration;

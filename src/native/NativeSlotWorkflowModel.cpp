@@ -43,6 +43,15 @@ bool equalsFoldedASCII(std::string_view left, std::string_view right) noexcept {
     return true;
 }
 
+bool containsFoldedASCII(std::string_view value, std::string_view query) noexcept {
+    if (query.empty()) return true;
+    if (query.size() > value.size()) return false;
+    for (std::size_t start = 0; start + query.size() <= value.size(); ++start) {
+        if (equalsFoldedASCII(value.substr(start, query.size()), query)) return true;
+    }
+    return false;
+}
+
 std::string trimASCII(std::string value) {
     const auto whitespace = [](const char character) {
         return character == ' ' || character == '\t' || character == '\r' ||
@@ -79,6 +88,7 @@ bool NativeSlotWorkflowModel::selectPlayerTarget() {
     if (isMutationInFlight()) {
         return false;
     }
+    closeExplicitNpcPicker();
     invalidateActorState();
     m_selectedTargetKind = ActorTargetKind::player;
     m_actorTarget = ActorTarget{};
@@ -92,6 +102,7 @@ bool NativeSlotWorkflowModel::selectCrosshairTarget() {
     if (isMutationInFlight()) {
         return false;
     }
+    closeExplicitNpcPicker();
     invalidateActorState();
     m_selectedTargetKind = ActorTargetKind::crosshair;
     m_pendingActorTarget = ActorTargetResolutionTicket{m_targetGeneration};
@@ -176,6 +187,119 @@ bool NativeSlotWorkflowModel::selectNearbyActor(std::size_t index) {
     return true;
 }
 
+bool NativeSlotWorkflowModel::chooseExplicitNpcTarget() {
+    if (isMutationInFlight()) return false;
+    m_explicitNpcPickerOpen = true;
+    m_explicitNpcSearch.clear();
+    m_loadedActorScanError.reset();
+    requestLoadedActorScan();
+    return true;
+}
+
+bool NativeSlotWorkflowModel::refreshExplicitNpcTargetList() {
+    if (!m_explicitNpcPickerOpen || isMutationInFlight() ||
+        m_activeLoadedActorScanGeneration) return false;
+    m_loadedActorScanError.reset();
+    requestLoadedActorScan();
+    return m_activeLoadedActorScanGeneration.has_value();
+}
+
+void NativeSlotWorkflowModel::requestLoadedActorScan() {
+    if (!m_explicitNpcPickerOpen || isMutationInFlight() ||
+        m_activeLoadedActorScanGeneration) return;
+    m_explicitNpcActors.clear();
+    const auto generation = nextGeneration();
+    m_pendingLoadedActorScan = LoadedActorScanTicket{generation};
+    m_activeLoadedActorScanGeneration = generation;
+}
+
+std::optional<LoadedActorScanTicket> NativeSlotWorkflowModel::takeLoadedActorScanRequest() {
+    auto ticket = std::move(m_pendingLoadedActorScan);
+    m_pendingLoadedActorScan.reset();
+    return ticket;
+}
+
+void NativeSlotWorkflowModel::completeLoadedActorScan(
+    std::uint64_t generation, LoadedActorList result) {
+    completeLoadedActorScan(generation, LoadedActorScanResult(std::move(result)));
+}
+
+void NativeSlotWorkflowModel::completeLoadedActorScan(
+    std::uint64_t generation, LoadedActorScanResult result) {
+    if (!m_activeLoadedActorScanGeneration ||
+        generation != *m_activeLoadedActorScanGeneration) return;
+    m_activeLoadedActorScanGeneration.reset();
+    m_pendingLoadedActorScan.reset();
+    if (!result) {
+        m_loadedActorScanError = std::move(result.error());
+        return;
+    }
+    m_explicitNpcActors = normalizeLoadedActorCandidates(std::move(*result));
+    m_loadedActorScanError.reset();
+    m_error.reset();
+}
+
+const LoadedActorList& NativeSlotWorkflowModel::explicitNpcActors() const noexcept {
+    return m_explicitNpcActors;
+}
+
+bool NativeSlotWorkflowModel::explicitNpcPickerOpen() const noexcept {
+    return m_explicitNpcPickerOpen;
+}
+
+void NativeSlotWorkflowModel::closeExplicitNpcPicker() noexcept {
+    m_explicitNpcPickerOpen = false;
+    m_explicitNpcSearch.clear();
+    m_pendingLoadedActorScan.reset();
+    m_activeLoadedActorScanGeneration.reset();
+    m_loadedActorScanError.reset();
+}
+
+void NativeSlotWorkflowModel::setExplicitNpcSearch(std::string value) {
+    m_explicitNpcSearch = std::move(value);
+}
+
+const std::string& NativeSlotWorkflowModel::explicitNpcSearch() const noexcept {
+    return m_explicitNpcSearch;
+}
+
+std::vector<std::size_t> NativeSlotWorkflowModel::explicitNpcSearchResults() const {
+    std::vector<std::size_t> result;
+    result.reserve(m_explicitNpcActors.size());
+    for (std::size_t index = 0; index < m_explicitNpcActors.size(); ++index) {
+        if (containsFoldedASCII(
+                m_explicitNpcActors[index].target.displayName, m_explicitNpcSearch)) {
+            result.push_back(index);
+        }
+    }
+    return result;
+}
+
+bool NativeSlotWorkflowModel::explicitNpcScanRetryAvailable() const noexcept {
+    return m_explicitNpcPickerOpen && m_loadedActorScanError.has_value() &&
+        !m_activeLoadedActorScanGeneration.has_value() && !isMutationInFlight();
+}
+
+bool NativeSlotWorkflowModel::retryExplicitNpcScan() {
+    if (!explicitNpcScanRetryAvailable()) return false;
+    m_loadedActorScanError.reset();
+    requestLoadedActorScan();
+    return m_activeLoadedActorScanGeneration.has_value();
+}
+
+bool NativeSlotWorkflowModel::selectExplicitNpc(std::size_t index) {
+    if (!m_explicitNpcPickerOpen || isMutationInFlight() ||
+        m_activeLoadedActorScanGeneration || index >= m_explicitNpcActors.size()) return false;
+    const auto target = m_explicitNpcActors[index].target;
+    if (target.kind != ActorTargetKind::explicitNpc || target.formId == 0) return false;
+    closeExplicitNpcPicker();
+    invalidateActorState();
+    m_selectedTargetKind = ActorTargetKind::explicitNpc;
+    m_actorTarget = target;
+    if (m_started) scheduleSlotQuery(m_selectedArea);
+    return true;
+}
+
 std::optional<ActorTargetResolutionTicket> NativeSlotWorkflowModel::takeActorTargetRequest() {
     auto ticket = std::move(m_pendingActorTarget);
     m_pendingActorTarget.reset();
@@ -220,7 +344,8 @@ const ActorTarget* NativeSlotWorkflowModel::actorTarget() const noexcept {
 
 bool NativeSlotWorkflowModel::isActorTargetResolutionInFlight() const noexcept {
     return m_activeActorTargetGeneration.has_value() ||
-        m_activeNearbyActorScanGeneration.has_value();
+        m_activeNearbyActorScanGeneration.has_value() ||
+        m_activeLoadedActorScanGeneration.has_value();
 }
 
 void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
@@ -1933,7 +2058,8 @@ const core::ServiceError* NativeSlotWorkflowModel::error() const noexcept {
     if (m_error) {
         return &*m_error;
     }
-    return m_nearbyScanError ? &*m_nearbyScanError : nullptr;
+    if (m_nearbyScanError) return &*m_nearbyScanError;
+    return m_loadedActorScanError ? &*m_loadedActorScanError : nullptr;
 }
 
 TattooLoadoutScreen NativeSlotWorkflowModel::tattooLoadoutScreen() const noexcept {
@@ -2015,6 +2141,11 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_pendingNearbyActorScan.reset();
     m_activeNearbyActorScanGeneration.reset();
     m_nearbyScanError.reset();
+    m_pendingLoadedActorScan.reset();
+    m_activeLoadedActorScanGeneration.reset();
+    m_loadedActorScanError.reset();
+    m_explicitNpcPickerOpen = false;
+    m_explicitNpcSearch.clear();
     m_areaStates = {};
     m_screen = SlotWorkflowScreen::currentSlots;
     m_targetSlot.reset();

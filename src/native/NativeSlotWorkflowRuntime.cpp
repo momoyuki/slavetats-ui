@@ -64,10 +64,12 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation,
     TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
     TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
-    TattooLoadoutRetryOperation tattooLoadoutRetryOperation)
+    TattooLoadoutRetryOperation tattooLoadoutRetryOperation,
+    LoadedActorScanOperation loadedActorScanOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_scanNearbyActors(),
+      m_scanLoadedActors(std::move(loadedActorScanOperation)),
       m_query(std::move(query)),
       m_apply(std::move(apply)),
       m_remove(std::move(remove)),
@@ -104,10 +106,12 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation,
     TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
     TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
-    TattooLoadoutRetryOperation tattooLoadoutRetryOperation)
+    TattooLoadoutRetryOperation tattooLoadoutRetryOperation,
+    LoadedActorScanOperation loadedActorScanOperation)
     : m_model(model),
       m_resolveActorTarget(),
       m_scanNearbyActors(std::move(scanNearbyActors)),
+      m_scanLoadedActors(std::move(loadedActorScanOperation)),
       m_query(std::move(query)),
       m_apply(std::move(apply)),
       m_remove(std::move(remove)),
@@ -139,6 +143,10 @@ void NativeSlotWorkflowRuntime::pump() {
 
     if (auto nearby = m_model.takeNearbyActorScanRequest()) {
         scheduleNearbyActorScan(*nearby);
+        return;
+    }
+    if (auto loaded = m_model.takeLoadedActorScanRequest()) {
+        scheduleLoadedActorScan(*loaded);
         return;
     }
     if (auto target = m_model.takeActorTargetRequest()) {
@@ -296,6 +304,31 @@ void NativeSlotWorkflowRuntime::scheduleNearbyActorScan(NearbyActorScanTicket ti
             NearbyActorScanResult(std::unexpected(operationError(
                 core::ServiceErrorCode::actorNotFound,
                 "Failed to scan nearby Actors."))));
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleLoadedActorScan(LoadedActorScanTicket ticket) {
+    NativeSlotTask task = [this, ticket] {
+        InFlightGuard guard(m_inFlight);
+        LoadedActorScanResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::actorNotFound,
+            "Failed to scan loaded Actors."));
+        try {
+            if (m_scanLoadedActors) result = m_scanLoadedActors();
+        } catch (...) {
+        }
+        m_model.completeLoadedActorScan(ticket.generation, std::move(result));
+    };
+
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        m_model.completeLoadedActorScan(
+            ticket.generation,
+            LoadedActorScanResult(std::unexpected(operationError(
+                core::ServiceErrorCode::actorNotFound,
+                "Failed to schedule loaded Actor scan."))));
         m_inFlight.store(false);
     }
 }
