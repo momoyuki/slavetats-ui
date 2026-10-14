@@ -74,13 +74,18 @@ presentation action and reuses the existing picker.
 
 - Implementation: `257a20f`; search/refresh/stale-scan coverage: `31d45ea`;
   scan retry and empty-result coverage: `eb90fd6`.
-- PR #18 is stacked on PR #17 and remains draft pending in-game acceptance.
+- PR #18 is stacked on PR #17 and remains draft pending base integration and
+  hosted verification.
 - Full Debug and Release builds succeeded; complete CTest suites passed 41/41
   in each configuration after the final test fixture correction.
 - MO2 deployment uses the clean Release build of `31d45ea`. The subsequent
   `eb90fd6` commit changes tests only; the feature implementation is identical.
 - Deployed DLL SHA-256:
   `C08E20CE2EBB3D25BB7DA9117F187C0B4003D647A44A9C527DBC637A4D9A7F92`.
+- On 2026-10-14, the user confirmed in-game follower-only discovery, Search,
+  Refresh, Close, exact follower selection, and switching back to Choose
+  NPC/Player. The deployed DLL predates the later NPC scan-error presentation
+  fix; that fix remains covered by adapter tests pending a hosted build.
 - Release readiness checks passed: CommonLibDependencyTests,
   ReleaseMetadataTests, PackageReleaseTests, ReleaseGuardsTests, and
   WorkflowPolicyTests. The guard tests use fixtures; they do not establish
@@ -90,7 +95,7 @@ presentation action and reuses the existing picker.
 
 ### Remaining gates
 
-- [ ] User confirms follower-only discovery, Search, Refresh, Close, exact
+- [x] User confirms follower-only discovery, Search, Refresh, Close, exact
   follower selection, and switching back to Choose NPC/Player in game.
 - [ ] Hosted CI passes for the accepted PR head.
 - [ ] Obtain merge approval, merge PR #17 first, and retarget PR #18 to main.

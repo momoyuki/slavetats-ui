@@ -204,6 +204,16 @@ std::string_view actorPickerTitle(ActorPickerMode mode) noexcept {
     return mode == ActorPickerMode::followers ? "Choose Follower" : "Choose NPC";
 }
 
+std::string_view loadedActorPickerStatusMessage(
+    ActorPickerMode mode, bool resolving, bool hasResults,
+    const core::ServiceError* error) noexcept {
+    if (resolving) return "Scanning loaded Actors...";
+    if (error) return error->message;
+    if (hasResults) return "";
+    return mode == ActorPickerMode::followers
+        ? "No loaded followers found." : "No loaded NPC matches the search.";
+}
+
 std::string currentTattoosTitle(const ActorTarget* target) {
     if (!target) {
         return "Current Tattoos";
@@ -1320,12 +1330,12 @@ bool renderActorTargetHeader(
             }
         }
         ImGuiMCP::EndDisabled();
-        if (results.empty()) {
-            ImGuiMCP::TextUnformatted(
-                workflow.isActorTargetResolutionInFlight()
-                    ? "Scanning loaded Actors..."
-                    : followerPicker ? "No loaded followers found."
-                                     : "No loaded NPC matches the search.");
+        const auto pickerStatus = loadedActorPickerStatusMessage(
+            workflow.actorPickerMode(), workflow.isActorTargetResolutionInFlight(),
+            !results.empty(), workflow.error());
+        if (!pickerStatus.empty()) {
+            ImGuiMCP::TextWrapped("%.*s", static_cast<int>(pickerStatus.size()),
+                pickerStatus.data());
         }
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
         if (ImGuiMCP::Button("Refresh NPC List")) {

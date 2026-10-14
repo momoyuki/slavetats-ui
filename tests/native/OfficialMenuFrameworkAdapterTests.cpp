@@ -128,6 +128,30 @@ void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
         "expected slot and mutation actions disabled without a resolved Actor");
 }
 
+void actorPickerShowsScanFailureInsteadOfEmptyState() {
+    using namespace stui;
+    const core::ServiceError failure{core::ServiceErrorCode::actorNotFound,
+        "Loaded Actor scan failed"};
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, false, &failure) ==
+            "Loaded Actor scan failed",
+        "expected picker to present the scan failure before an empty result");
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            true, false, nullptr) ==
+            "Scanning loaded Actors...",
+        "expected in-flight scan status");
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, false, nullptr) ==
+            "No loaded NPC matches the search.",
+        "expected empty result only when scanning succeeded");
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::followers,
+            false, false, nullptr) == "No loaded followers found.",
+        "expected follower empty state after a successful scan");
+    expect(native::loadedActorPickerStatusMessage(native::ActorPickerMode::all,
+            false, true, nullptr).empty(),
+        "expected no status when selectable Actors exist");
+}
+
 void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
     using namespace stui::native;
     const ActorTarget player;
@@ -1536,6 +1560,7 @@ int main() {
         actorPickerTitlesDistinguishNpcAndFollowerModes();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
+        actorPickerShowsScanFailureInsteadOfEmptyState();
         std::cout << "PASS actor target status and action availability\n";
         editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity();
         std::cout << "PASS Edit Appearance header appends Preview status\n";

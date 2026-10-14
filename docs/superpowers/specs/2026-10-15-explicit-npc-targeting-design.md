@@ -45,6 +45,9 @@ If an Actor unloads after selection, the existing runtime error path is shown
 and no operation queries or mutates the Player. The user must choose another
 Actor or explicitly select Player.
 
+If the loaded-Actor scan fails, the picker shows the failure reason and a Retry
+action while preserving the current target.
+
 ## Architecture
 
 ```text
