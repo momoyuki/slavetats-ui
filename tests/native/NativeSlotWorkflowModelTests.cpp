@@ -1793,6 +1793,36 @@ void followerSearchRefreshAndStaleCompletionStayScoped() {
         "expected non-follower selectable in all-NPC mode");
 }
 
+void followerScanFailureRetriesOnceAndEmptyResultPreservesTarget() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    const auto query = model.takeSlotQuery();
+    expect(query.has_value(), "expected Player slot query");
+    model.completeSlotQuery(query->generation, slots(TattooArea::body, 2));
+    expect(model.chooseFollowerTarget(), "expected follower picker");
+    const auto scan = model.takeLoadedActorScanRequest();
+    expect(scan.has_value(), "expected scan ticket");
+    model.completeLoadedActorScan(scan->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "scan unavailable"}));
+    expect(model.explicitNpcScanRetryAvailable() && !model.selectExplicitNpc(0),
+        "expected retry after failure without a selectable target");
+    expect(model.retryExplicitNpcScan(), "expected retry accepted");
+    const auto retry = model.takeLoadedActorScanRequest();
+    expect(retry.has_value() && retry->generation != scan->generation &&
+            !model.retryExplicitNpcScan() && !model.takeLoadedActorScanRequest(),
+        "expected one fresh retry ticket and no concurrent retry");
+    model.completeLoadedActorScan(retry->generation, LoadedActorList{});
+    expect(model.actorPickerMode() == ActorPickerMode::followers &&
+            model.explicitNpcSearchResults().empty() &&
+            !model.explicitNpcScanRetryAvailable() && !model.selectExplicitNpc(0),
+        "expected successful empty snapshot without retry or selection");
+    expect(model.actorTarget() && model.actorTarget()->formId == 0x14 &&
+            model.slots() && model.slots()->configuredCount == 2 && !model.takeSlotQuery(),
+        "expected failure and empty retry to preserve target and slots without querying");
+}
+
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
     resolveCrosshair(model);
     const auto query = model.takeSlotQuery();
@@ -3002,6 +3032,8 @@ int main() {
         followerPickerFiltersSnapshotAndPreservesClose);
     failures += run("follower search refresh and stale completion stay scoped",
         followerSearchRefreshAndStaleCompletionStayScoped);
+    failures += run("follower scan failure retries once and empty result preserves target",
+        followerScanFailureRetriesOnceAndEmptyResultPreservesTarget);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);
