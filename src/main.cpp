@@ -7,7 +7,7 @@
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
-#include "native/ActorTargetProvider.h"
+#include "native/NearbyActorProvider.h"
 #include "native/D3D11NativeThumbnailSource.h"
 #include "native/NativeThumbnailRuntime.h"
 #include "native/OfficialMenuFrameworkAdapter.h"
@@ -42,7 +42,8 @@ std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
 std::unique_ptr<runtime::TattooLoadoutStore> g_tattooLoadoutStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
-    [] { return native::resolveCrosshairActorTarget(); },
+    native::NearbyActorRuntimeTag{},
+    [] { return native::scanNearbyActors(); },
     [](std::uint32_t actorFormId, core::TattooArea area) {
         return g_applicationRuntime.service().querySlots(actorFormId, area);
     },

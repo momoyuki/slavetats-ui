@@ -142,7 +142,7 @@ Move the native workflow beyond the hard-coded Player target while preserving th
 ### Candidate targets
 
 - [x] Player
-- [x] Crosshair target
+- [x] Nearby Actor snapshot (nearest-first, capped at 10)
 - [ ] Selected/explicit NPC
 - [ ] Follower-oriented target convenience if it can be implemented without heuristic mutation
 

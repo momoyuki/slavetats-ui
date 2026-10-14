@@ -188,6 +188,12 @@ std::string formatActorTargetIdentity(const ActorTarget& target) {
         target.formId);
 }
 
+std::string formatNearbyActorSelectorLabel(
+    const NearbyActorCandidate& candidate, std::size_t index) {
+    return std::format("{} - {:.0f} units##NearbyActor{}",
+        formatActorTargetIdentity(candidate.target), candidate.distance, index);
+}
+
 std::string currentTattoosTitle(const ActorTarget* target) {
     if (!target) {
         return "Current Tattoos";
@@ -197,7 +203,7 @@ std::string currentTattoosTitle(const ActorTarget* target) {
 }
 
 std::string_view actorTargetStatusLabel(bool resolving, const ActorTarget* target) noexcept {
-    return resolving ? "Resolving target..." : target ? "" : "No valid crosshair Actor";
+    return resolving ? "Scanning nearby Actors..." : target ? "" : "No nearby Actor found";
 }
 
 bool actorTargetActionsEnabled(bool resolving, const ActorTarget* target) noexcept {
@@ -207,7 +213,9 @@ bool actorTargetActionsEnabled(bool resolving, const ActorTarget* target) noexce
 ActorTargetControlPresentation actorTargetControlPresentation(
     ActorTargetKind kind, bool resolving, bool mutationInFlight) noexcept {
     const bool crosshair = kind == ActorTargetKind::crosshair;
-    return {!mutationInFlight, !mutationInFlight, crosshair,
+    const bool playerSelectable = !mutationInFlight && (!resolving || crosshair);
+    const bool crosshairSelectable = !mutationInFlight && !resolving;
+    return {playerSelectable, crosshairSelectable, crosshair,
         crosshair && !resolving && !mutationInFlight};
 }
 
@@ -1263,9 +1271,30 @@ bool renderActorTargetHeader(
     }
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
-    ImGuiMCP::BeginDisabled(!controls.crosshairEnabled);
-    if (ImGuiMCP::RadioButton("Crosshair Target", kind == ActorTargetKind::crosshair)) {
-        intent = ActorTargetHeaderIntent::crosshair;
+    const auto& nearbyActors = workflow.nearbyActors();
+    std::string nearbyLabel = "Select nearby Actor";
+    if (resolving) {
+        nearbyLabel = "Scanning nearby Actors...";
+    } else if (kind == ActorTargetKind::nearby && workflow.actorTarget()) {
+        nearbyLabel = formatActorTargetIdentity(*workflow.actorTarget());
+    }
+    bool nearbyChanged = false;
+    ImGuiMCP::BeginDisabled(!controls.crosshairEnabled || resolving);
+    if (ImGuiMCP::BeginCombo("Nearby Actor", nearbyLabel.c_str())) {
+        for (std::size_t index = 0; index < nearbyActors.size(); ++index) {
+            const auto& candidate = nearbyActors[index];
+            const bool selected = workflow.actorTarget() &&
+                workflow.actorTarget()->formId == candidate.target.formId;
+            const auto label = formatNearbyActorSelectorLabel(candidate, index);
+            if (ImGuiMCP::Selectable(label.c_str(), selected)) {
+                nearbyChanged = workflow.selectNearbyActor(index);
+            }
+        }
+        if (nearbyActors.empty()) {
+            ImGuiMCP::TextUnformatted(
+                resolving ? "Scanning nearby Actors..." : "No nearby Actor found");
+        }
+        ImGuiMCP::EndCombo();
     }
     ImGuiMCP::EndDisabled();
     const auto* target = workflow.actorTarget();
@@ -1274,15 +1303,8 @@ bool renderActorTargetHeader(
     ImGuiMCP::TextUnformatted(identity.c_str());
     ImGuiMCP::TextWrapped("%s", workflowBreadcrumb(
         workflow.screen(), workflow.tattooLoadoutScreen()).data());
-    if (controls.refreshVisible) {
-        ImGuiMCP::BeginDisabled(!controls.refreshEnabled);
-        if (ImGuiMCP::Button("Refresh Target")) {
-            intent = ActorTargetHeaderIntent::refresh;
-        }
-        ImGuiMCP::EndDisabled();
-    }
     ImGuiMCP::Separator();
-    return applyActorTargetHeaderIntent(workflow, intent);
+    return nearbyChanged || applyActorTargetHeaderIntent(workflow, intent);
 }
 
 void renderLoadoutStoreStatus(NativeSlotWorkflowModel& workflow) {

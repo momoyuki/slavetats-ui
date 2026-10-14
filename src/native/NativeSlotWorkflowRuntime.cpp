@@ -67,6 +67,47 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     TattooLoadoutRetryOperation tattooLoadoutRetryOperation)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
+      m_scanNearbyActors(),
+      m_query(std::move(query)),
+      m_apply(std::move(apply)),
+      m_remove(std::move(remove)),
+      m_updateAppearance(std::move(updateAppearance)),
+      m_setLocked(std::move(setLocked)),
+      m_scheduler(std::move(scheduler)),
+      m_livePreviewClock(std::move(livePreviewClock)),
+      m_favoriteOperation(std::move(favoriteOperation)),
+      m_recentTattooLoadOperation(std::move(recentTattooLoadOperation)),
+      m_recentTattooRecordOperation(std::move(recentTattooRecordOperation)),
+      m_appearancePresetOperation(std::move(appearancePresetOperation)),
+      m_tattooLoadoutStoreOperation(std::move(tattooLoadoutStoreOperation)),
+      m_tattooLoadoutCaptureOperation(std::move(tattooLoadoutCaptureOperation)),
+      m_tattooLoadoutPreviewOperation(std::move(tattooLoadoutPreviewOperation)),
+      m_tattooLoadoutRestoreOperation(std::move(tattooLoadoutRestoreOperation)),
+      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)) {}
+
+NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
+    NativeSlotWorkflowModel& model,
+    NearbyActorRuntimeTag,
+    NearbyActorScanOperation scanNearbyActors,
+    SlotQueryOperation query,
+    SlotApplyOperation apply,
+    SlotRemoveOperation remove,
+    SlotAppearanceOperation updateAppearance,
+    SlotLockOperation setLocked,
+    NativeSlotScheduler scheduler,
+    LivePreviewClock livePreviewClock,
+    FavoriteOperation favoriteOperation,
+    RecentTattooLoadOperation recentTattooLoadOperation,
+    RecentTattooRecordOperation recentTattooRecordOperation,
+    AppearancePresetOperation appearancePresetOperation,
+    TattooLoadoutStoreOperation tattooLoadoutStoreOperation,
+    TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation,
+    TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
+    TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
+    TattooLoadoutRetryOperation tattooLoadoutRetryOperation)
+    : m_model(model),
+      m_resolveActorTarget(),
+      m_scanNearbyActors(std::move(scanNearbyActors)),
       m_query(std::move(query)),
       m_apply(std::move(apply)),
       m_remove(std::move(remove)),
@@ -96,6 +137,10 @@ void NativeSlotWorkflowRuntime::pump() {
         return;
     }
 
+    if (auto nearby = m_model.takeNearbyActorScanRequest()) {
+        scheduleNearbyActorScan(*nearby);
+        return;
+    }
     if (auto target = m_model.takeActorTargetRequest()) {
         scheduleActorTarget(*target);
         return;
@@ -224,6 +269,33 @@ void NativeSlotWorkflowRuntime::scheduleActorTarget(ActorTargetResolutionTicket 
             std::unexpected(operationError(
                 core::ServiceErrorCode::actorNotFound,
                 "Failed to resolve crosshair Actor.")));
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleNearbyActorScan(NearbyActorScanTicket ticket) {
+    NativeSlotTask task = [this, ticket] {
+        InFlightGuard guard(m_inFlight);
+        NearbyActorScanResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::actorNotFound,
+            "Failed to scan nearby Actors."));
+        try {
+            if (m_scanNearbyActors) {
+                result = m_scanNearbyActors();
+            }
+        } catch (...) {
+        }
+        m_model.completeNearbyActorScan(ticket.generation, std::move(result));
+    };
+
+    try {
+        m_scheduler(std::move(task));
+    } catch (...) {
+        m_model.completeNearbyActorScan(
+            ticket.generation,
+            NearbyActorScanResult(std::unexpected(operationError(
+                core::ServiceErrorCode::actorNotFound,
+                "Failed to scan nearby Actors."))));
         m_inFlight.store(false);
     }
 }

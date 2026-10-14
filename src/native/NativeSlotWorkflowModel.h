@@ -4,6 +4,7 @@
 #include "core/ITattooRuntime.h"
 #include "native/ActorTarget.h"
 #include "native/NativeCatalogBrowserModel.h"
+#include "native/NearbyActorProvider.h"
 #include "runtime/AppearancePresetStore.h"
 #include "runtime/FavoriteStore.h"
 #include "runtime/RecentTattooStore.h"
@@ -33,6 +34,10 @@ enum class SlotWorkflowScreen {
 };
 
 struct ActorTargetResolutionTicket {
+    std::uint64_t generation{};
+};
+
+struct NearbyActorScanTicket {
     std::uint64_t generation{};
 };
 
@@ -178,6 +183,11 @@ public:
     [[nodiscard]] bool selectPlayerTarget();
     [[nodiscard]] bool selectCrosshairTarget();
     [[nodiscard]] bool refreshCrosshairTarget();
+    [[nodiscard]] std::optional<NearbyActorScanTicket> takeNearbyActorScanRequest();
+    void completeNearbyActorScan(std::uint64_t generation, NearbyActorList result);
+    void completeNearbyActorScan(std::uint64_t generation, NearbyActorScanResult result);
+    [[nodiscard]] const NearbyActorList& nearbyActors() const noexcept;
+    [[nodiscard]] bool selectNearbyActor(std::size_t index);
     [[nodiscard]] std::optional<ActorTargetResolutionTicket> takeActorTargetRequest();
     void completeActorTargetResolution(std::uint64_t generation, ActorTargetResult result);
     [[nodiscard]] ActorTargetKind selectedTargetKind() const noexcept;
@@ -345,6 +355,7 @@ private:
     [[nodiscard]] AreaState& selectedState() noexcept;
     [[nodiscard]] const AreaState& selectedState() const noexcept;
     [[nodiscard]] std::uint64_t nextGeneration() noexcept;
+    void requestNearbyActorScan();
     void invalidateActorState();
     [[nodiscard]] bool hasActorSnapshot() const noexcept;
     void finishOutstandingMutation(std::uint64_t generation) noexcept;
@@ -375,6 +386,9 @@ private:
     std::optional<ActorTarget> m_actorTarget{ActorTarget{}};
     std::optional<ActorTargetResolutionTicket> m_pendingActorTarget;
     std::optional<std::uint64_t> m_activeActorTargetGeneration;
+    NearbyActorList m_nearbyActors;
+    std::optional<NearbyActorScanTicket> m_pendingNearbyActorScan;
+    std::optional<std::uint64_t> m_activeNearbyActorScanGeneration;
     std::uint64_t m_targetGeneration{};
     // Runtime work outlives UI navigation that discards its presentation state.
     std::optional<std::uint64_t> m_outstandingMutationGeneration;
@@ -385,6 +399,7 @@ private:
     std::optional<repository::TattooDefinition> m_previewTattoo;
     std::optional<PreviewTattooAppearance> m_previewAppearance;
     std::optional<core::ServiceError> m_error;
+    std::optional<core::ServiceError> m_nearbyScanError;
     std::optional<SlotQueryTicket> m_pendingSlotQuery;
     std::optional<SlotApplyTicket> m_pendingApply;
     std::optional<SlotRemoveTicket> m_pendingRemove;

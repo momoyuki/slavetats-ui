@@ -70,6 +70,8 @@ void NativeSlotWorkflowModel::start() {
 void NativeSlotWorkflowModel::resetSession() {
     if (!isMutationInFlight()) {
         (void)selectPlayerTarget();
+        m_nearbyActors.clear();
+        requestNearbyActorScan();
     }
 }
 
@@ -99,6 +101,65 @@ bool NativeSlotWorkflowModel::selectCrosshairTarget() {
 
 bool NativeSlotWorkflowModel::refreshCrosshairTarget() {
     return m_selectedTargetKind == ActorTargetKind::crosshair && selectCrosshairTarget();
+}
+
+void NativeSlotWorkflowModel::requestNearbyActorScan() {
+    if (!m_started || isMutationInFlight()) {
+        return;
+    }
+    m_pendingNearbyActorScan = NearbyActorScanTicket{m_targetGeneration};
+    m_activeNearbyActorScanGeneration = m_targetGeneration;
+}
+
+std::optional<NearbyActorScanTicket> NativeSlotWorkflowModel::takeNearbyActorScanRequest() {
+    auto ticket = std::move(m_pendingNearbyActorScan);
+    m_pendingNearbyActorScan.reset();
+    return ticket;
+}
+
+void NativeSlotWorkflowModel::completeNearbyActorScan(
+    std::uint64_t generation,
+    NearbyActorList result) {
+    completeNearbyActorScan(generation, NearbyActorScanResult(std::move(result)));
+}
+
+void NativeSlotWorkflowModel::completeNearbyActorScan(
+    std::uint64_t generation,
+    NearbyActorScanResult result) {
+    if (!m_activeNearbyActorScanGeneration ||
+        generation != *m_activeNearbyActorScanGeneration || generation != m_targetGeneration) {
+        return;
+    }
+    m_activeNearbyActorScanGeneration.reset();
+    m_pendingNearbyActorScan.reset();
+    if (!result) {
+        m_nearbyScanError = std::move(result.error());
+        return;
+    }
+    m_nearbyActors = normalizeNearbyActorCandidates(std::move(*result));
+    m_nearbyScanError.reset();
+    m_error.reset();
+}
+
+const NearbyActorList& NativeSlotWorkflowModel::nearbyActors() const noexcept {
+    return m_nearbyActors;
+}
+
+bool NativeSlotWorkflowModel::selectNearbyActor(std::size_t index) {
+    if (isMutationInFlight() || isActorTargetResolutionInFlight() || index >= m_nearbyActors.size()) {
+        return false;
+    }
+    const ActorTarget target = m_nearbyActors[index].target;
+    if (target.kind != ActorTargetKind::nearby || target.formId == 0) {
+        return false;
+    }
+    invalidateActorState();
+    m_selectedTargetKind = ActorTargetKind::nearby;
+    m_actorTarget = target;
+    if (m_started) {
+        scheduleSlotQuery(m_selectedArea);
+    }
+    return true;
 }
 
 std::optional<ActorTargetResolutionTicket> NativeSlotWorkflowModel::takeActorTargetRequest() {
@@ -144,7 +205,8 @@ const ActorTarget* NativeSlotWorkflowModel::actorTarget() const noexcept {
 }
 
 bool NativeSlotWorkflowModel::isActorTargetResolutionInFlight() const noexcept {
-    return m_activeActorTargetGeneration.has_value();
+    return m_activeActorTargetGeneration.has_value() ||
+        m_activeNearbyActorScanGeneration.has_value();
 }
 
 void NativeSlotWorkflowModel::selectArea(core::TattooArea area) {
@@ -1854,7 +1916,10 @@ std::vector<std::int32_t> NativeSlotWorkflowModel::inUseSlots(
 }
 
 const core::ServiceError* NativeSlotWorkflowModel::error() const noexcept {
-    return m_error ? &*m_error : nullptr;
+    if (m_error) {
+        return &*m_error;
+    }
+    return m_nearbyScanError ? &*m_nearbyScanError : nullptr;
 }
 
 TattooLoadoutScreen NativeSlotWorkflowModel::tattooLoadoutScreen() const noexcept {
@@ -1933,6 +1998,9 @@ void NativeSlotWorkflowModel::invalidateActorState() {
     m_actorTarget.reset();
     m_pendingActorTarget.reset();
     m_activeActorTargetGeneration.reset();
+    m_pendingNearbyActorScan.reset();
+    m_activeNearbyActorScanGeneration.reset();
+    m_nearbyScanError.reset();
     m_areaStates = {};
     m_screen = SlotWorkflowScreen::currentSlots;
     m_targetSlot.reset();

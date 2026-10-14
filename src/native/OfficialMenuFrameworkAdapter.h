@@ -2,6 +2,7 @@
 
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/ActorTarget.h"
+#include "native/NearbyActorProvider.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 #include "core/ITattooRuntime.h"
@@ -75,6 +76,8 @@ struct ActorTargetControlPresentation {
 enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
 
 [[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
+[[nodiscard]] std::string formatNearbyActorSelectorLabel(
+    const NearbyActorCandidate& candidate, std::size_t index);
 [[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;

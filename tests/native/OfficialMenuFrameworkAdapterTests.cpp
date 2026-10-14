@@ -106,10 +106,10 @@ void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
 void actorTargetStatusAndActionAvailabilityRequireResolvedIdentity() {
     using namespace stui::native;
     const ActorTarget actor;
-    expect(actorTargetStatusLabel(true, nullptr) == "Resolving target..." &&
-               actorTargetStatusLabel(true, &actor) == "Resolving target...",
+    expect(actorTargetStatusLabel(true, nullptr) == "Scanning nearby Actors..." &&
+               actorTargetStatusLabel(true, &actor) == "Scanning nearby Actors...",
         "expected resolution status to take precedence over an identity");
-    expect(actorTargetStatusLabel(false, nullptr) == "No valid crosshair Actor",
+    expect(actorTargetStatusLabel(false, nullptr) == "No nearby Actor found",
         "expected explicit missing-target status");
     expect(actorTargetStatusLabel(false, &actor).empty(),
         "expected no target error for a resolved Actor");
@@ -138,17 +138,28 @@ void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
         "expected clean preview state not to add redundant text");
     expect(formatActorTargetIdentityWithPreviewStatus(
                true, &player, LivePreviewStatus::pending) ==
-               "Resolving target... - Preview pending...",
+               "Scanning nearby Actors... - Preview pending...",
         "expected target resolution status to remain visible with preview status");
 }
 
 void actorTargetControlsRespectMutationAndCrosshairMode() {
     using namespace stui::native;
+    const NearbyActorCandidate nearby{
+        ActorTarget{ActorTargetKind::nearby, 0xA2C8E, "Lydia"}, 42.4F};
+    expect(formatNearbyActorSelectorLabel(nearby, 2) ==
+               "Lydia [0x000A2C8E] - 42 units##NearbyActor2",
+        "expected nearby selector labels to include identity, distance, and stable ID");
+    const auto nearbyControls = actorTargetControlPresentation(
+        ActorTargetKind::nearby, false, false);
+    expect(nearbyControls.playerEnabled && nearbyControls.crosshairEnabled &&
+               !nearbyControls.refreshVisible,
+        "expected nearby selection without a crosshair refresh action");
     for (const auto kind : {ActorTargetKind::player, ActorTargetKind::crosshair}) {
         for (const bool resolving : {false, true}) {
             const auto idle = actorTargetControlPresentation(kind, resolving, false);
-            expect(idle.playerEnabled && idle.crosshairEnabled,
-                "expected explicit target selection while no mutation is in flight");
+            expect(idle.playerEnabled == (!resolving || kind == ActorTargetKind::crosshair) &&
+                       idle.crosshairEnabled == !resolving,
+                "expected target selection to pause while nearby scanning is in flight");
             expect(idle.refreshVisible == (kind == ActorTargetKind::crosshair),
                 "expected Refresh only in Crosshair mode");
             expect(idle.refreshEnabled == (kind == ActorTargetKind::crosshair && !resolving),
