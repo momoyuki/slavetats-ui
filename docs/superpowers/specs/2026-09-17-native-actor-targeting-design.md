@@ -1,5 +1,12 @@
 # Native Actor Targeting Design
 
+> **Superseded presentation:** On 2026-10-14 the Crosshair Target selector was
+> replaced by the nearest-first Nearby Actor snapshot described in
+> `docs/superpowers/specs/2026-10-14-nearby-actor-targeting-design.md`. The
+> actor identity, stale-generation, loaded-3D, and no-Player-fallback safety
+> contracts below remain applicable; Crosshair-specific UI and discovery text
+> is historical.
+
 ## Context
 
 The native slot-first workflow currently manages only the Player. Core service
@@ -15,12 +22,12 @@ read-only behavior, or synchronization-only retry semantics.
 ## Goals
 
 - Preserve Player targeting as the default and existing behavior.
-- Add an explicit `Crosshair Target` mode for a loaded Actor.
+- Add an explicit nearby Actor snapshot for loaded Actors around the Player.
 - Display the active Actor name and form ID on every workflow screen.
 - Keep the selected Actor fixed for the session until the user deliberately
-  changes or refreshes it.
-- Route crosshair resolution through a typed runtime boundary rather than the
-  UI adapter or workflow model.
+  changes it.
+- Route nearby discovery through a typed runtime boundary rather than the UI
+  adapter or workflow model.
 - Scope every query and mutation to the active Actor form ID.
 - Clear actor-specific workflow state when the target changes.
 - Reject stale completions from a previous Actor generation.
@@ -28,9 +35,9 @@ read-only behavior, or synchronization-only retry semantics.
 
 ## Non-goals
 
-- No arbitrary NPC list, follower picker, or search UI.
+- No arbitrary NPC search UI or follower heuristics.
 - No target persistence across native-menu sessions.
-- No automatic retargeting as the crosshair moves.
+- No automatic retargeting as the Player or camera moves.
 - No mutation of unloaded Actors or references without loaded 3D.
 - No automatic Player fallback after crosshair resolution failure.
 - No change to external overlay ownership.

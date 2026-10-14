@@ -2,6 +2,7 @@
 
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/ActorTarget.h"
+#include "native/NearbyActorProvider.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 #include "core/ITattooRuntime.h"
@@ -60,6 +61,7 @@ class NativeSlotWorkflowModel;
 class NativeSlotWorkflowRuntime;
 struct AppearanceEditSession;
 enum class SlotWorkflowScreen;
+enum class TattooLoadoutScreen;
 enum class LivePreviewStatus;
 enum class NativeThumbnailStatus;
 struct NativeThumbnailView;
@@ -74,6 +76,8 @@ struct ActorTargetControlPresentation {
 enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
 
 [[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
+[[nodiscard]] std::string formatNearbyActorSelectorLabel(
+    const NearbyActorCandidate& candidate, std::size_t index);
 [[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;
@@ -146,6 +150,10 @@ struct SlotPageRange {
 
 [[nodiscard]] SlotCardTreatment slotCardTreatment(
     core::SlotOccupancy occupancy) noexcept;
+[[nodiscard]] std::string_view slotCardStatusLabel(
+    core::SlotOccupancy occupancy) noexcept;
+[[nodiscard]] std::string_view workflowBreadcrumb(
+    SlotWorkflowScreen screen, TattooLoadoutScreen loadoutScreen) noexcept;
 [[nodiscard]] SlotPageRange calculateSlotPage(
     std::size_t slotCount,
     std::size_t requestedPage,
@@ -344,7 +352,7 @@ enum class EditAppearanceIntent { none, save, cancel, close, retry };
 
 struct EditAppearanceFrameInteraction {
     bool appearanceChanged{};
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
     std::int32_t glow{};
     float glossiness{};

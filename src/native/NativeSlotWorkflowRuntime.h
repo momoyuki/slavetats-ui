@@ -17,6 +17,7 @@ using NativeSlotTask = std::function<void()>;
 using NativeSlotScheduler = std::function<void(NativeSlotTask)>;
 using LivePreviewClock = std::function<std::chrono::steady_clock::time_point()>;
 using ActorTargetOperation = std::function<ActorTargetResult()>;
+using NearbyActorScanOperation = std::function<NearbyActorScanResult()>;
 using SlotQueryOperation = std::function<core::TattooSlotsResult(
     std::uint32_t actorFormId,
     core::TattooArea area)>;
@@ -47,6 +48,8 @@ using TattooLoadoutRestoreOperation = std::function<core::RestoreTattooLoadoutRe
 using TattooLoadoutRetryOperation = std::function<core::RestoreTattooLoadoutResult(
     const core::RetryTattooLoadoutSynchronizationRequest& request)>;
 
+struct NearbyActorRuntimeTag {};
+
 class NativeSlotWorkflowRuntime {
 public:
     NativeSlotWorkflowRuntime(
@@ -69,10 +72,32 @@ public:
         TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
         TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {});
 
+    NativeSlotWorkflowRuntime(
+        NativeSlotWorkflowModel& model,
+        NearbyActorRuntimeTag,
+        NearbyActorScanOperation scanNearbyActors,
+        SlotQueryOperation query,
+        SlotApplyOperation apply,
+        SlotRemoveOperation remove,
+        SlotAppearanceOperation updateAppearance,
+        SlotLockOperation setLocked,
+        NativeSlotScheduler scheduler,
+        LivePreviewClock livePreviewClock,
+        FavoriteOperation favoriteOperation = {},
+        RecentTattooLoadOperation recentTattooLoadOperation = {},
+        RecentTattooRecordOperation recentTattooRecordOperation = {},
+        AppearancePresetOperation appearancePresetOperation = {},
+        TattooLoadoutStoreOperation tattooLoadoutStoreOperation = {},
+        TattooLoadoutCaptureOperation tattooLoadoutCaptureOperation = {},
+        TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
+        TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
+        TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {});
+
     void pump();
 
 private:
     void scheduleActorTarget(ActorTargetResolutionTicket ticket);
+    void scheduleNearbyActorScan(NearbyActorScanTicket ticket);
     void scheduleQuery(SlotQueryTicket ticket);
     void scheduleApply(SlotApplyTicket ticket);
     void scheduleRemove(SlotRemoveTicket ticket);
@@ -90,6 +115,7 @@ private:
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
+    NearbyActorScanOperation m_scanNearbyActors;
     SlotQueryOperation m_query;
     SlotApplyOperation m_apply;
     SlotRemoveOperation m_remove;

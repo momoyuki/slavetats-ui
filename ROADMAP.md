@@ -41,6 +41,23 @@ This baseline is the foundation. Future milestones should extend it instead of c
 
 # Milestones
 
+## Active UI integration — FLICK presentation host
+
+**Status:** In progress as a separate UI PR stacked on the current UI work.
+
+**Design:** `docs/superpowers/specs/2026-10-14-flick-ui-design.md`
+
+Add an optional FLICK entry point that opens the existing Menu Framework
+browser, and improve the left-side presentation of all workflow screens.
+Reuse the current model, scheduler, service, and SlaveTatsNG runtime. Camera control and
+hover-to-apply preview are separate future decisions because they affect game
+state outside the current UI boundary.
+
+The remaining vNext.4 controlled material texture selection stays pending;
+this UI work does not mark that candidate complete.
+
+---
+
 ## vNext.1 — Full SlaveTatsNG 0.8 Appearance
 
 **Status:** Complete
@@ -125,7 +142,7 @@ Move the native workflow beyond the hard-coded Player target while preserving th
 ### Candidate targets
 
 - [x] Player
-- [x] Crosshair target
+- [x] Nearby Actor snapshot (nearest-first, capped at 10)
 - [ ] Selected/explicit NPC
 - [ ] Follower-oriented target convenience if it can be implemented without heuristic mutation
 

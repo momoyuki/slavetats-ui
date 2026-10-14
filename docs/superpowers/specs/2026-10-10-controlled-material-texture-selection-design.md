@@ -213,8 +213,8 @@ writes neither strings nor numeric fields.
 6. Rapidly change options and confirm only the latest desired state remains.
 7. Exercise a synchronization failure and confirm Retry Sync performs no second
    appearance write.
-8. Switch from Player to Crosshair Target and confirm no selection or completion
-   crosses actor boundaries.
+8. Switch from Player to a selected nearby Actor and confirm no selection or
+   completion crosses actor boundaries.
 9. Confirm external overlays expose no editor.
 10. Replace/remove the test tattoo and confirm no stale glow or bump state remains
     in the reused slot.
@@ -239,5 +239,17 @@ pass.
   option arrays, rapid selection/latest-wins, and a naturally occurring
   synchronization failure followed by Retry Sync. The latter's no-repeat-write
   behavior is covered by automated tests.
-- The current game log was not available at its documented locations during
-  this review, so log inspection remains pending.
+- The latest game log was found through its Windows Recent shortcut at
+  `D:\Documents\My Games\Skyrim Special Edition\SKSE\SlaveTatsUI.log`; it
+  contains plugin-load and catalog messages but no appearance Save entries.
+
+## Acceptance Record (2026-10-14, partial)
+
+- The user confirmed that changing Diffuse to another color and saving now
+  preserves the selected color after reopening Edit Appearance.
+- The Release DLL with the explicit-black readback fix was deployed to the
+  dedicated MO2 mod with SHA-256
+  `BCB11383B7D3AFACF0B9EE6C29FC2A0025EEAB9FAE42EC48BD219A5BF434F080`.
+- Debug and Release CTest suites passed 40/40 after the fix, including a
+  regression test that distinguishes a stored black value from a missing color
+  key. The remaining texture-option acceptance checks are still pending.

@@ -19,7 +19,7 @@ struct TattooLoadoutEntry {
     std::string domain{"default"};
     std::string section;
     std::string name;
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
     std::int32_t glow{};
     float emissiveMult{1.0F};

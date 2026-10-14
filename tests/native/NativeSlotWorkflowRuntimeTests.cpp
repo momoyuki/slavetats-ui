@@ -31,6 +31,10 @@ using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
 using stui::native::ActorTargetResult;
 using stui::native::LivePreviewStatus;
+using stui::native::NearbyActorRuntimeTag;
+using stui::native::NearbyActorScanResult;
+using stui::native::NearbyActorList;
+using stui::native::NearbyActorCandidate;
 using stui::native::NativeCatalogBrowserModel;
 using stui::native::NativeSlotTask;
 using stui::native::NativeSlotWorkflowModel;
@@ -44,6 +48,71 @@ void expect(bool condition, std::string_view message) {
     if (!condition) {
         throw std::runtime_error(std::string(message));
     }
+}
+
+TattooSlots bodySlots();
+
+void nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery() {
+    NativeCatalogBrowserModel catalog([] { return stui::repository::TattooCatalogSnapshot{}; });
+    NativeSlotWorkflowModel model(catalog);
+    std::vector<NativeSlotTask> scheduled;
+    std::size_t scanCount{};
+    NativeSlotWorkflowRuntime runtime(
+        model,
+        NearbyActorRuntimeTag{},
+        [&scanCount]() -> NearbyActorScanResult {
+            ++scanCount;
+            return NearbyActorList{
+                NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x1234, "Lydia"}, 42.0F},
+            };
+        },
+        [](std::uint32_t actor, TattooArea area) {
+            auto result = bodySlots();
+            result.actorFormId = actor;
+            result.area = area;
+            return stui::core::TattooSlotsResult(std::move(result));
+        },
+        [](const ApplyTattooRequest& request) {
+            return stui::core::ApplyTattooResult(ApplyTattooSuccess{
+                .actorFormId = request.actorFormId, .area = request.area, .slot = request.slot,
+                .section = request.section, .name = request.name});
+        },
+        [](const RemoveTattooRequest& request) {
+            return stui::core::RemoveTattooResult(RemoveTattooSuccess{
+                .actorFormId = request.actorFormId, .area = request.area, .slot = request.slot});
+        },
+        [](const UpdateTattooAppearanceRequest& request) {
+            return UpdateTattooAppearanceResult(UpdateTattooAppearanceSuccess{
+                .actorFormId = request.actorFormId, .runtimeHandle = request.runtimeHandle});
+        },
+        [](const SetTattooLockedRequest& request) {
+            return stui::core::SetTattooLockedResult(SetTattooLockedSuccess{
+                .actorFormId = request.actorFormId, .runtimeHandle = request.runtimeHandle,
+                .locked = request.locked});
+        },
+        [&scheduled](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
+        [] { return std::chrono::steady_clock::now(); });
+
+    model.start();
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected initial Player query to be scheduled");
+    scheduled.back()();
+    scheduled.clear();
+
+    model.resetSession();
+    runtime.pump();
+    expect(scanCount == 0 && scheduled.size() == 1,
+        "expected nearby scan to wait behind the scheduler");
+    scheduled.back()();
+    scheduled.clear();
+    expect(scanCount == 1 && model.nearbyActors().size() == 1,
+        "expected one nearby scan result on UI open");
+    expect(model.selectNearbyActor(0), "expected nearby Actor selection");
+    runtime.pump();
+    expect(scheduled.size() == 1, "expected selected Actor query after scan completion");
+    scheduled.back()();
+    expect(model.slots() && model.slots()->actorFormId == 0x1234,
+        "expected slots to belong to selected nearby Actor");
 }
 
 TattooSlots bodySlots() {
@@ -1124,6 +1193,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("nearby scan runs once per open and precedes selected Actor query",
+        nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery);
     failures += run("preview schedules once at exact debounce deadline", previewSchedulesOnceAtTheExactDebounceDeadline);
     failures += run("preview observes latest edits before in-flight guard", previewObservesLatestEditsBeforeTheInFlightGuard);
     failures += run("Save flushes pending preview without waiting for clock", saveFlushesPendingPreviewWithoutWaitingForClock);

@@ -588,6 +588,52 @@ void runtimeQueriesReadMissingAdvancedKeysWithDocumentedDefaults() {
     expectAdvancedKeysReadWithDefaults(queryState, queryState.slotTattoo);
 }
 
+void blackDiffuseAndGlowDefaultsSurviveSnapshotRefresh() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState bindingState;
+    SlaveTatsRuntime runtime(bindingsFor(bindingState));
+    runtime.bindSlaveTats(&queryApi());
+
+    queryState.availableTattoo = 83;
+    queryState.slotTattoo = 84;
+    seedBaseTattoo(queryState, queryState.availableTattoo);
+    seedBaseTattoo(queryState, queryState.slotTattoo);
+    queryState.integers[{queryState.availableTattoo, "color"}] = 0x000000;
+    queryState.integers[{queryState.slotTattoo, "color"}] = 0x000000;
+    queryState.integers[{queryState.availableTattoo, "glow"}] = 0x000000;
+    queryState.integers[{queryState.slotTattoo, "glow"}] = 0x000000;
+
+    const auto availableBlack = runtime.queryAvailable("default");
+    const auto slotsBlack = runtime.querySlots(0x14, stui::core::TattooArea::body);
+    expect(availableBlack && availableBlack->size() == 1 &&
+            availableBlack->front().color == 0x000000,
+        "explicit black catalog color must not refresh as white");
+    expect(slotsBlack && !slotsBlack->slots.empty() &&
+            slotsBlack->slots.front().tattoo &&
+            slotsBlack->slots.front().tattoo->color == 0x000000,
+        "explicit black applied color must not refresh as white after Save");
+    expect(availableBlack->front().glow == 0x000000 &&
+            slotsBlack->slots.front().tattoo->glow == 0x000000,
+        "explicit black glow color must remain black");
+
+    queryState.integers.erase({queryState.availableTattoo, "color"});
+    queryState.integers.erase({queryState.slotTattoo, "color"});
+    queryState.integers.erase({queryState.availableTattoo, "glow"});
+    queryState.integers.erase({queryState.slotTattoo, "glow"});
+    const auto availableMissing = runtime.queryAvailable("default");
+    const auto slotsMissing = runtime.querySlots(0x14, stui::core::TattooArea::body);
+    expect(availableMissing && availableMissing->front().color == 0x000000,
+        "missing catalog diffuse color must default to black");
+    expect(slotsMissing && slotsMissing->slots.front().tattoo &&
+            slotsMissing->slots.front().tattoo->color == 0x000000,
+        "missing applied diffuse color must default to black");
+    expect(availableMissing->front().glow == 0 &&
+            slotsMissing->slots.front().tattoo->glow == 0,
+        "missing glow color must retain the no-color default");
+}
+
 void capturesManagedTattoosAcrossAllFourAreas() {
     CommonLibTestHostGuard hostGuard;
     QueryState queryState;
@@ -1285,6 +1331,8 @@ int main() {
         runtimeQueriesPreserveAdvancedSnapshotFields);
     failures += run("runtime queries read missing advanced keys with documented defaults",
         runtimeQueriesReadMissingAdvancedKeysWithDocumentedDefaults);
+    failures += run("black diffuse and no-color glow defaults survive refresh",
+        blackDiffuseAndGlowDefaultsSurviveSnapshotRefresh);
     failures += run("runtime captures managed tattoos across all four areas",
         capturesManagedTattoosAcrossAllFourAreas);
     failures += run("runtime previews loadout from fresh snapshots and catalog",

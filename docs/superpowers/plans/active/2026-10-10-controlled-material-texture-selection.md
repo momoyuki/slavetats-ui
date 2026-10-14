@@ -42,12 +42,12 @@
 - Produces: `repository::TattooTextureOption { std::string label; std::string path; }`.
 - Produces: `TattooDefinition::glowTextureOptions` and `TattooDefinition::bumpOptions` as ordered vectors.
 
-- [ ] **Step 1: Add failing parser tests** for valid ordered objects, trimmed labels, missing arrays, every malformed shape, forbidden label content, empty/NUL paths, and ASCII-case-insensitive duplicate paths.
-- [ ] **Step 2: Run `ctest --test-dir build/debug -R TattooSourceParserTests --output-on-failure`** and confirm the new cases fail because option fields are not parsed.
-- [ ] **Step 3: Define `TattooTextureOption` and the two vectors** in `TattooSourceParser.h`, including defaulted equality for deterministic assertions.
-- [ ] **Step 4: Implement `readTextureOptions(const Json&, std::string_view, std::vector<TattooTextureOption>&, std::string&) -> bool`** in `TattooSourceParser.cpp` with the exact validation and ordering from the spec.
-- [ ] **Step 5: Run the focused parser test** and confirm it passes.
-- [ ] **Step 6: Commit** with `feat: parse material texture options` after showing the scoped diff and receiving explicit approval.
+- [x] **Step 1: Add failing parser tests** for valid ordered objects, trimmed labels, missing arrays, every malformed shape, forbidden label content, empty/NUL paths, and ASCII-case-insensitive duplicate paths.
+- [x] **Step 2: Run `ctest --test-dir build/debug -R TattooSourceParserTests --output-on-failure`** and confirm the new cases fail because option fields are not parsed.
+- [x] **Step 3: Define `TattooTextureOption` and the two vectors** in `TattooSourceParser.h`, including defaulted equality for deterministic assertions.
+- [x] **Step 4: Implement `readTextureOptions(const Json&, std::string_view, std::vector<TattooTextureOption>&, std::string&) -> bool`** in `TattooSourceParser.cpp` with the exact validation and ordering from the spec.
+- [x] **Step 5: Run the focused parser test** and confirm it passes.
+- [x] **Step 6: Commit** with `feat: parse material texture options` after showing the scoped diff and receiving explicit approval.
 
 ### Task 2: Resolve Effective Options by Runtime Identity
 
@@ -61,12 +61,12 @@
 - Produces: `TattooMaterialTextureOptions { std::vector<TattooTextureOption> glow; std::vector<TattooTextureOption> bump; }`.
 - Produces: `TattooRepository::materialTextureOptions(std::string_view domain, std::string_view section, std::string_view name, std::string_view area) const -> std::optional<TattooMaterialTextureOptions>`.
 
-- [ ] **Step 1: Add failing repository tests** for a unique exact match, no match, case-different identity, ambiguous duplicates, prepended singular defaults, empty defaults, and declared default deduplication without reordering.
-- [ ] **Step 2: Run `ctest --test-dir build/debug -R TattooRepositoryTests --output-on-failure`** and confirm the lookup API is missing.
-- [ ] **Step 3: Add the result type and exact-identity lookup**; return `nullopt` unless exactly one definition matches all four identity fields.
-- [ ] **Step 4: Build effective lists** by prepending non-empty singular fields as `Pack default` and deduplicating paths with ASCII case-insensitive comparison.
-- [ ] **Step 5: Run the focused repository test** and confirm it passes.
-- [ ] **Step 6: Commit** with `feat: resolve tattoo texture options` after scoped approval.
+- [x] **Step 1: Add failing repository tests** for a unique exact match, no match, case-different identity, ambiguous duplicates, prepended singular defaults, empty defaults, and declared default deduplication without reordering.
+- [x] **Step 2: Run `ctest --test-dir build/debug -R TattooRepositoryTests --output-on-failure`** and confirm the lookup API is missing.
+- [x] **Step 3: Add the result type and exact-identity lookup**; return `nullopt` unless exactly one definition matches all four identity fields.
+- [x] **Step 4: Build effective lists** by prepending non-empty singular fields as `Pack default` and deduplicating paths with ASCII case-insensitive comparison.
+- [x] **Step 5: Run the focused repository test** and confirm it passes.
+- [x] **Step 6: Commit** with `feat: resolve tattoo texture options` after scoped approval.
 
 ### Task 3: Extend the Typed Appearance Mutation Boundary
 
@@ -82,14 +82,14 @@
 - Produces: `UpdateTattooAppearanceRequest::glowTexture` and `UpdateTattooAppearanceRequest::bump`.
 - Consumes: existing `SlaveTatsAppearanceBindings::setTattooString/getTattooString` and JContainers string accessors.
 
-- [ ] **Step 1: Add failing service tests** proving exact strings are forwarded in update mode and ignored by validation in synchronization-only mode.
-- [ ] **Step 2: Add failing runtime tests** for successful writes/readbacks, stale-handle zero writes, one-field readback failure, JContainers fallback, and sync-only zero writes.
-- [ ] **Step 3: Run the three focused test executables** and confirm the string expectations fail.
-- [ ] **Step 4: Add both strings to `UpdateTattooAppearanceRequest`** without changing existing defaults or mode semantics.
-- [ ] **Step 5: Extend `SlaveTatsAppearanceBackend::writeAppearance`** to write and verify `glowTexture` and `bump` after numeric fields through bindings and fallback paths.
-- [ ] **Step 6: Confirm orchestration reports `mayHaveOccurred` on string failure** and retains zero writes during sync-only retry.
-- [ ] **Step 7: Run focused Core and Runtime tests** and confirm they pass.
-- [ ] **Step 8: Commit** with `feat: update applied material textures` after scoped approval.
+- [x] **Step 1: Add failing service tests** proving exact strings are forwarded in update mode and ignored by validation in synchronization-only mode.
+- [x] **Step 2: Add failing runtime tests** for successful writes/readbacks, stale-handle zero writes, one-field readback failure, JContainers fallback, and sync-only zero writes.
+- [x] **Step 3: Run the three focused test executables** and confirm the string expectations fail.
+- [x] **Step 4: Add both strings to `UpdateTattooAppearanceRequest`** without changing existing defaults or mode semantics.
+- [x] **Step 5: Extend `SlaveTatsAppearanceBackend::writeAppearance`** to write and verify `glowTexture` and `bump` after numeric fields through bindings and fallback paths.
+- [x] **Step 6: Confirm orchestration reports `mayHaveOccurred` on string failure** and retains zero writes during sync-only retry.
+- [x] **Step 7: Run focused Core and Runtime tests** and confirm they pass.
+- [x] **Step 8: Commit** with `feat: update applied material textures` after scoped approval.
 
 ### Task 4: Integrate Texture Choices with Live Appearance State
 
@@ -104,14 +104,14 @@
 - Produces: `TattooAppearance::glowTexture` and `TattooAppearance::bump`.
 - Produces: immutable session option lists and `selectGlowTexture(std::size_t) -> bool` / `selectBumpTexture(std::size_t) -> bool` intents.
 
-- [ ] **Step 1: Add failing model tests** for unique/missing/ambiguous catalog matches, allowlist-only selection, unlisted original restoration, string dirty state, preset isolation, debounce, latest-wins, Save, Cancel/Close, and stale completion.
-- [ ] **Step 2: Add failing runtime-coordinator tests** proving tickets carry exact selected/restored paths and sync-only retry preserves them without a write.
-- [ ] **Step 3: Run focused workflow tests** and confirm the new state and intents are absent.
-- [ ] **Step 4: Move both paths into `TattooAppearance`** and capture effective option lists when `beginEditAppearance()` opens the session.
-- [ ] **Step 5: Implement the two index-based selection intents** so only captured options can change edited paths and every real change increments `editRevision`.
-- [ ] **Step 6: Include both strings in preview, commit, and restore tickets** while leaving appearance presets numeric-only.
-- [ ] **Step 7: Run focused workflow tests** and confirm they pass.
-- [ ] **Step 8: Commit** with `feat: select material textures in appearance state` after scoped approval.
+- [x] **Step 1: Add failing model tests** for unique/missing/ambiguous catalog matches, allowlist-only selection, unlisted original restoration, string dirty state, preset isolation, debounce, latest-wins, Save, Cancel/Close, and stale completion.
+- [x] **Step 2: Add failing runtime-coordinator tests** proving tickets carry exact selected/restored paths and sync-only retry preserves them without a write.
+- [x] **Step 3: Run focused workflow tests** and confirm the new state and intents are absent.
+- [x] **Step 4: Move both paths into `TattooAppearance`** and capture effective option lists when `beginEditAppearance()` opens the session.
+- [x] **Step 5: Implement the two index-based selection intents** so only captured options can change edited paths and every real change increments `editRevision`.
+- [x] **Step 6: Include both strings in preview, commit, and restore tickets** while leaving appearance presets numeric-only.
+- [x] **Step 7: Run focused workflow tests** and confirm they pass.
+- [x] **Step 8: Commit** with `feat: select material textures in appearance state` after scoped approval.
 
 ### Task 5: Render Controlled Selectors in Edit Appearance
 
@@ -124,12 +124,12 @@
 - Consumes: captured option lists and selection intents from Task 4.
 - Produces: pure presentation helpers for selector visibility, current labels, and stable widget IDs.
 
-- [ ] **Step 1: Add failing adapter-helper tests** for hidden empty selectors, declared labels, `Pack default`, unlisted current display, exact supporting paths, and stable IDs independent of pack labels.
-- [ ] **Step 2: Run `ctest --test-dir build/debug -R OfficialMenuFrameworkAdapterTests --output-on-failure`** and confirm the helpers are missing.
-- [ ] **Step 3: Implement pure selector presentation helpers**; never concatenate an untrusted label into the hidden ImGui identifier.
-- [ ] **Step 4: Render Glow Texture and Bump Texture combos** beside the existing read-only metadata and call only workflow selection intents.
-- [ ] **Step 5: Run the focused adapter test** and confirm it passes.
-- [ ] **Step 6: Commit** with `feat: add controlled material texture selectors` after scoped approval.
+- [x] **Step 1: Add failing adapter-helper tests** for hidden empty selectors, declared labels, `Pack default`, unlisted current display, exact supporting paths, and stable IDs independent of pack labels.
+- [x] **Step 2: Run `ctest --test-dir build/debug -R OfficialMenuFrameworkAdapterTests --output-on-failure`** and confirm the helpers are missing.
+- [x] **Step 3: Implement pure selector presentation helpers**; never concatenate an untrusted label into the hidden ImGui identifier.
+- [x] **Step 4: Render Glow Texture and Bump Texture combos** beside the existing read-only metadata and call only workflow selection intents.
+- [x] **Step 5: Run the focused adapter test** and confirm it passes.
+- [x] **Step 6: Commit** with `feat: add controlled material texture selectors` after scoped approval.
 
 ### Task 6: Document, Verify, Deploy, and Accept
 
@@ -143,11 +143,11 @@
 - Consumes: the completed feature from Tasks 1–5.
 - Produces: pack-author documentation and verified release evidence.
 
-- [ ] **Step 1: Add the extension JSON example and validation rules** to `README.md` without presenting the fields as upstream SlaveTatsNG schema.
-- [ ] **Step 2: Build Debug and run all CTest tests**; require 100% pass.
-- [ ] **Step 3: Build Release and run all CTest tests**; require 100% pass.
-- [ ] **Step 4: Run release policy scripts and `git diff --check`**, then review the scoped diff and scan it for secrets/unrelated changes.
-- [ ] **Step 5: Deploy only the verified Release DLL** to the dedicated MO2 mod, preserve the previous DLL, and compare SHA-256 hashes.
-- [ ] **Step 6: Execute all ten in-game acceptance checks from the spec** on Player and Crosshair Target and inspect `SlaveTatsUI.log` after exit.
+- [x] **Step 1: Add the extension JSON example and validation rules** to `README.md` without presenting the fields as upstream SlaveTatsNG schema.
+- [x] **Step 2: Build Debug and run all CTest tests**; require 100% pass.
+- [x] **Step 3: Build Release and run all CTest tests**; require 100% pass.
+- [x] **Step 4: Run release policy scripts and `git diff --check`**, then review the scoped diff and scan it for secrets/unrelated changes.
+- [x] **Step 5: Deploy only the verified Release DLL** to the dedicated MO2 mod, preserve the previous DLL, and compare SHA-256 hashes.
+- [ ] **Step 6: Execute all ten in-game acceptance checks from the spec** on Player and a selected nearby Actor and inspect `SlaveTatsUI.log` after exit.
 - [ ] **Step 7: Mark the roadmap item complete, record acceptance evidence, and archive this plan** only after the user confirms the in-game behavior.
 - [ ] **Step 8: Commit documentation completion** with `docs: complete material texture selection` after showing the final diff and receiving explicit approval.

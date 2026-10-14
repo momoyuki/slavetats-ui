@@ -2,10 +2,12 @@
 #include "SlaveTatsNG_Interface.h"
 #include "repository/TattooCatalogStore.h"
 #include "native/NativeMenu.h"
+#include "native/FlickLauncher.h"
+#include "native/OfficialFlickPort.h"
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/NativeSlotWorkflowModel.h"
 #include "native/NativeSlotWorkflowRuntime.h"
-#include "native/ActorTargetProvider.h"
+#include "native/NearbyActorProvider.h"
 #include "native/D3D11NativeThumbnailSource.h"
 #include "native/NativeThumbnailRuntime.h"
 #include "native/OfficialMenuFrameworkAdapter.h"
@@ -40,7 +42,8 @@ std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
 std::unique_ptr<runtime::TattooLoadoutStore> g_tattooLoadoutStore;
 native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     g_nativeSlotWorkflow,
-    [] { return native::resolveCrosshairActorTarget(); },
+    native::NearbyActorRuntimeTag{},
+    [] { return native::scanNearbyActors(); },
     [](std::uint32_t actorFormId, core::TattooArea area) {
         return g_applicationRuntime.service().querySlots(actorFormId, area);
     },
@@ -163,6 +166,7 @@ std::unique_ptr<native::NativeThumbnailRuntime> g_nativeThumbnailRuntime =
     makeUnavailableNativeThumbnailRuntime();
 bool g_nativeThumbnailRuntimeUnavailableLogged{};
 native::NativeMenu* g_nativeMenu{};
+native::FlickLauncher* g_flickLauncher{};
 std::unique_ptr<runtime::HotkeyBinding> g_hotkeyBinding;
 SKSEMenuFramework::Model::InputEvent* g_hotkeyInputEvent{};
 
@@ -197,6 +201,15 @@ bool __stdcall onMenuHotkeyInput(RE::InputEvent* event) {
 
 static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
     switch (msg->type) {
+    case SKSE::MessagingInterface::kPostLoad:
+        if (g_flickLauncher && g_nativeMenu && g_nativeMenu->isRegistered()) {
+            if (g_flickLauncher->registerTool()) {
+                logger::info("SlaveTatsUI: FLICK launcher registered");
+            } else {
+                logger::info("SlaveTatsUI: FLICK unavailable; Menu Framework remains available");
+            }
+        }
+        break;
     case SKSE::MessagingInterface::kDataLoaded:
         {
             std::array<wchar_t, 32768> executablePath{};
@@ -441,6 +454,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         return true;
     });
     g_nativeMenu = &nativeMenu;
+    static native::OfficialFlickPort flickPort;
+    static native::FlickLauncher flickLauncher(
+        flickPort,
+        [](native::FlickLauncher::Task task) {
+            auto* taskInterface = SKSE::GetTaskInterface();
+            if (!taskInterface) return false;
+            taskInterface->AddTask(std::move(task));
+            return true;
+        },
+        [] {
+            if (g_nativeMenu && g_nativeMenu->isRegistered() && !g_nativeMenu->isOpen()) {
+                g_nativeMenu->open();
+            }
+        });
+    g_flickLauncher = &flickLauncher;
     if (const auto result = nativeMenu.registerMenu(menuFrameworkAdapter); !result) {
         logger::warn(
             "SlaveTatsUI: native menu unavailable: {}",

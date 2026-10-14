@@ -30,6 +30,8 @@ using stui::core::UpdateTattooAppearanceMode;
 using stui::core::UpdateTattooAppearanceSuccess;
 using stui::native::ActorTarget;
 using stui::native::ActorTargetKind;
+using stui::native::NearbyActorCandidate;
+using stui::native::NearbyActorList;
 using stui::native::AppearanceOperationPurpose;
 using stui::native::AppearancePresetRequestKind;
 using stui::native::LivePreviewStatus;
@@ -338,9 +340,9 @@ void emptyAndOwnedTargetsInitializeExpectedAppearance() {
     model.backToSlots();
     expect(model.selectSlot(2), "expected empty slot Add flow");
     const auto* emptyAppearance = model.previewAppearance();
-    expect(emptyAppearance && emptyAppearance->color == 0xFFFFFF &&
+    expect(emptyAppearance && emptyAppearance->color == 0x000000 &&
             emptyAppearance->alpha == 1.0F,
-        "expected empty slot to start white and opaque");
+        "expected empty slot to start black and opaque");
 }
 
 void editedAppearanceFlowsIntoApplyRequest() {
@@ -731,8 +733,8 @@ void explicitConfirmationCreatesOneExactDomainPolicyRequest() {
     expect(ticket->request.domain == "custom" && ticket->request.section == "Marks" &&
             ticket->request.name == "Corruption",
         "expected selected tattoo identity with exact domain");
-    expect(ticket->request.color == 0xFFFFFF && ticket->request.alpha == 1.0F,
-        "expected fixed white opaque apply policy");
+    expect(ticket->request.color == 0x000000 && ticket->request.alpha == 1.0F,
+        "expected fixed black opaque apply policy");
     expect(model.screen() == SlotWorkflowScreen::applying,
         "expected Applying state after confirmation");
     expect(!model.takeApplyRequest(), "expected apply ticket consumed once");
@@ -1548,6 +1550,104 @@ void resolveCrosshair(NativeSlotWorkflowModel& model) {
     expect(target.has_value(), "expected one target-resolution ticket");
     model.completeActorTargetResolution(target->generation,
         ActorTarget{ActorTargetKind::crosshair, 0x1234, "Lydia"});
+}
+
+void nearbyActorScanPublishesSortedSnapshotAndSelection() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    model.resetSession();
+    const auto ticket = model.takeNearbyActorScanRequest();
+    expect(ticket && !model.takeNearbyActorScanRequest(),
+        "expected one nearby Actor scan ticket per session reset");
+    model.completeNearbyActorScan(ticket->generation, NearbyActorList{
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x20, "Far"}, 120.0F},
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x10, "Near"}, 12.0F},
+    });
+    expect(model.nearbyActors().size() == 2 && model.nearbyActors()[0].target.formId == 0x10,
+        "expected nearby Actor snapshot to preserve nearest-first order");
+    expect(model.selectNearbyActor(1), "expected explicit nearby Actor selection");
+    expect(model.selectedTargetKind() == ActorTargetKind::nearby && model.actorTarget() &&
+            model.actorTarget()->formId == 0x20,
+        "expected selected nearby Actor identity");
+    const auto query = model.takeSlotQuery();
+    expect(query && query->actorFormId == 0x20, "expected slot query for selected nearby Actor");
+}
+
+void staleNearbyActorScanCompletionCannotReplaceNewSession() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    model.resetSession();
+    const auto oldTicket = model.takeNearbyActorScanRequest();
+    model.resetSession();
+    const auto newTicket = model.takeNearbyActorScanRequest();
+    expect(oldTicket && newTicket && oldTicket->generation != newTicket->generation,
+        "expected a fresh generation for a repeated nearby scan");
+    model.completeNearbyActorScan(oldTicket->generation, NearbyActorList{
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x99, "Old"}, 1.0F},
+    });
+    expect(model.nearbyActors().empty(), "expected stale nearby scan to be ignored");
+    model.completeNearbyActorScan(newTicket->generation, NearbyActorList{
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x42, "Current"}, 2.0F},
+    });
+    expect(model.nearbyActors().size() == 1 && model.nearbyActors()[0].target.formId == 0x42,
+        "expected current nearby scan to publish its snapshot");
+}
+
+void nearbyActorScanFailureRemainsVisibleWhilePlayerSlotsLoad() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    model.resetSession();
+    const auto scan = model.takeNearbyActorScanRequest();
+    expect(scan.has_value(), "expected nearby scan request after opening the UI");
+    model.completeNearbyActorScan(scan->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "nearby scan failed"}));
+    expect(model.error() && model.error()->message == "nearby scan failed",
+        "expected nearby scan failure to be exposed immediately");
+
+    const auto playerQuery = model.takeSlotQuery();
+    expect(playerQuery.has_value(), "expected Player slot query alongside the scan");
+    model.completeSlotQuery(playerQuery->generation, TattooSlots{
+        .actorFormId = 0x14,
+        .area = TattooArea::body,
+    });
+    expect(model.error() && model.error()->message == "nearby scan failed",
+        "expected Player slot completion not to hide nearby scan failure");
+}
+
+void nearbyActorScanFailureCanBeRetried() {
+    auto snapshot = catalogWithEntries(1);
+    NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
+    NativeSlotWorkflowModel model(catalog);
+    model.start();
+    (void)model.takeSlotQuery();
+    model.resetSession();
+    const auto scan = model.takeNearbyActorScanRequest();
+    expect(scan.has_value(), "expected nearby scan request after opening the UI");
+    model.completeNearbyActorScan(scan->generation, std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "nearby scan failed"}));
+    expect(model.nearbyActorScanRetryAvailable(),
+        "expected failed nearby scan to expose a retry action");
+    expect(model.retryNearbyActorScan(), "expected nearby scan retry accepted");
+    expect(!model.nearbyActorScanRetryAvailable() && model.isActorTargetResolutionInFlight(),
+        "expected retry action to close while the new scan is active");
+    const auto retry = model.takeNearbyActorScanRequest();
+    expect(retry.has_value() && retry->generation == scan->generation,
+        "expected retry to schedule one scan for the current target generation");
+    model.completeNearbyActorScan(retry->generation, NearbyActorList{
+        NearbyActorCandidate{ActorTarget{ActorTargetKind::nearby, 0x1234, "Lydia"}, 12.0F},
+    });
+    expect(!model.error() && !model.nearbyActorScanRetryAvailable() &&
+            model.nearbyActors().size() == 1,
+        "expected successful retry to publish the nearby snapshot and clear the error");
 }
 
 void loadCrosshairSlots(NativeSlotWorkflowModel& model, bool locked = false) {
@@ -2743,6 +2843,14 @@ int main() {
     failures += run("loadout synchronization retry keeps opaque ID",
         loadoutSynchronizationRetryKeepsOpaqueIdAndDoesNotRepreview);
     failures += run("explicit Player and Crosshair resolution never fallback", explicitPlayerAndCrosshairResolutionNeverFallback);
+    failures += run("nearby Actor scan publishes sorted snapshot and selection",
+        nearbyActorScanPublishesSortedSnapshotAndSelection);
+    failures += run("stale nearby Actor scan completion cannot replace new session",
+        staleNearbyActorScanCompletionCannotReplaceNewSession);
+    failures += run("nearby Actor scan failure remains visible while Player slots load",
+        nearbyActorScanFailureRemainsVisibleWhilePlayerSlotsLoad);
+    failures += run("nearby Actor scan failure can be retried",
+        nearbyActorScanFailureCanBeRetried);
     failures += run("target change clears all caches pages and transient state", targetChangeClearsAllCachesPagesAndTransientState);
     failures += run("obsolete target and query completions cannot affect new target", obsoleteTargetAndQueryCompletionsCannotAffectNewTarget);
     failures += run("mismatched Actor snapshot is rejected", mismatchedActorSnapshotIsRejected);
