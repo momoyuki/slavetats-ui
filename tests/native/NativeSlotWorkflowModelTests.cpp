@@ -340,9 +340,9 @@ void emptyAndOwnedTargetsInitializeExpectedAppearance() {
     model.backToSlots();
     expect(model.selectSlot(2), "expected empty slot Add flow");
     const auto* emptyAppearance = model.previewAppearance();
-    expect(emptyAppearance && emptyAppearance->color == 0xFFFFFF &&
+    expect(emptyAppearance && emptyAppearance->color == 0x000000 &&
             emptyAppearance->alpha == 1.0F,
-        "expected empty slot to start white and opaque");
+        "expected empty slot to start black and opaque");
 }
 
 void editedAppearanceFlowsIntoApplyRequest() {
@@ -733,8 +733,8 @@ void explicitConfirmationCreatesOneExactDomainPolicyRequest() {
     expect(ticket->request.domain == "custom" && ticket->request.section == "Marks" &&
             ticket->request.name == "Corruption",
         "expected selected tattoo identity with exact domain");
-    expect(ticket->request.color == 0xFFFFFF && ticket->request.alpha == 1.0F,
-        "expected fixed white opaque apply policy");
+    expect(ticket->request.color == 0x000000 && ticket->request.alpha == 1.0F,
+        "expected fixed black opaque apply policy");
     expect(model.screen() == SlotWorkflowScreen::applying,
         "expected Applying state after confirmation");
     expect(!model.takeApplyRequest(), "expected apply ticket consumed once");

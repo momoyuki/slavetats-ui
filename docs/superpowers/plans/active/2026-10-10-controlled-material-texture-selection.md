@@ -144,10 +144,10 @@
 - Produces: pack-author documentation and verified release evidence.
 
 - [ ] **Step 1: Add the extension JSON example and validation rules** to `README.md` without presenting the fields as upstream SlaveTatsNG schema.
-- [ ] **Step 2: Build Debug and run all CTest tests**; require 100% pass.
-- [ ] **Step 3: Build Release and run all CTest tests**; require 100% pass.
-- [ ] **Step 4: Run release policy scripts and `git diff --check`**, then review the scoped diff and scan it for secrets/unrelated changes.
-- [ ] **Step 5: Deploy only the verified Release DLL** to the dedicated MO2 mod, preserve the previous DLL, and compare SHA-256 hashes.
-- [ ] **Step 6: Execute all ten in-game acceptance checks from the spec** on Player and Crosshair Target and inspect `SlaveTatsUI.log` after exit.
+- [x] **Step 2: Build Debug and run all CTest tests**; require 100% pass.
+- [x] **Step 3: Build Release and run all CTest tests**; require 100% pass.
+- [x] **Step 4: Run release policy scripts and `git diff --check`**, then review the scoped diff and scan it for secrets/unrelated changes.
+- [x] **Step 5: Deploy only the verified Release DLL** to the dedicated MO2 mod, preserve the previous DLL, and compare SHA-256 hashes.
+- [ ] **Step 6: Execute all ten in-game acceptance checks from the spec** on Player and a selected nearby Actor and inspect `SlaveTatsUI.log` after exit.
 - [ ] **Step 7: Mark the roadmap item complete, record acceptance evidence, and archive this plan** only after the user confirms the in-game behavior.
 - [ ] **Step 8: Commit documentation completion** with `docs: complete material texture selection` after showing the final diff and receiving explicit approval.

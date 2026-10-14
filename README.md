@@ -1,7 +1,7 @@
 # SlaveTats UI
 
 A native SKSE Menu Framework interface for SlaveTatsNG. Browse installed tattoo
-packs, inspect the Player or a deliberately selected Crosshair Target, and
+packs, inspect the Player or a deliberately selected nearby Actor, and
 apply, replace, edit, or remove tattoos without using MCM.
 
 > Building from source or contributing? See [DEVELOPMENT.md](DEVELOPMENT.md) and
@@ -57,7 +57,7 @@ sidebar and press **Open Tattoo Browser**. The configured hotkey toggles the
 native window. The browser opens as a left-side panel so the Actor Target stays
 visible beside it.
 
-Choose the Player or a loaded Crosshair Target, then manage that Actor Target's
+Choose the Player or one of the nearby loaded Actors, then manage that Actor Target's
 current slots:
 
 - choose an empty slot to browse and apply a tattoo;
@@ -127,9 +127,9 @@ Existing named or raw DIK scancode values remain supported.
 
 - Skyrim SE 1.5.97 and AE 1.6.x are supported when the DLL is built against a
   matching SKSE/CommonLibSSE-NG setup.
-- Actor Targets are the Player (FormID `0x14`) or a deliberately resolved,
-  loaded Crosshair Target. A failed Crosshair Target never falls back silently
-  to the Player.
+- Actor Targets are the Player (FormID `0x14`) or one of up to ten nearby,
+  loaded Actors discovered when the browser opens. Nearby Actors are ordered by
+  distance and a failed scan never falls back silently to another Actor.
 - Texture packs must follow
   `textures\actors\character\slavetats\<section>\*.dds`.
 

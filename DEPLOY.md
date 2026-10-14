@@ -41,8 +41,8 @@ recoverable.
 4. Press the configured hotkey and confirm it opens and closes the native menu.
 5. Verify current slots, catalog navigation, thumbnails, and one non-destructive
    catalog interaction on the Player.
-6. Select a loaded Crosshair Target, confirm its identity is shown, and verify
-   its slots load without changing the Player.
+6. Open the nearby Actor selector, choose a loaded Actor, confirm its identity
+   is shown, and verify its slots load without changing the Player.
 
 An old browser-view directory or legacy thumbnail cache may be removed manually
 from this mod after backing it up. The plugin neither reads nor deletes those

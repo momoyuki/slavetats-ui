@@ -2031,7 +2031,7 @@ void renderPreview(
     }
 
     TattooColorComponents colorComponents =
-        tattooColorComponents(appearance ? appearance->color : 0xFFFFFF);
+        tattooColorComponents(appearance ? appearance->color : 0x000000);
     float pickerColor[3]{
         colorComponents.red,
         colorComponents.green,
@@ -2080,7 +2080,7 @@ void renderPreview(
                 },
             };
             const auto tintColor = tattooColorComponents(
-                appearance ? appearance->color : 0xFFFFFF);
+                appearance ? appearance->color : 0x000000);
             renderSlotImage(
                 previewSlot,
                 thumbnailViews,
@@ -2228,7 +2228,7 @@ void renderEditAppearance(
     }
 
     TattooColorComponents colorComponents =
-        tattooColorComponents(session ? session->edited.color : 0xFFFFFF);
+        tattooColorComponents(session ? session->edited.color : 0x000000);
     float colorValues[3]{
         colorComponents.red,
         colorComponents.green,

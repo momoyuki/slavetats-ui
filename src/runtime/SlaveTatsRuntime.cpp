@@ -23,6 +23,7 @@ constexpr const char* kApplyAvailablePool = "SlaveTatsUI-applyAvailable";
 constexpr const char* kRemoveExternalPool = "SlaveTatsUI-removeExternal";
 constexpr const char* kUpdateAppearancePool = "SlaveTatsUI-updateAppearance";
 constexpr const char* kSetTattooLockedPool = "SlaveTatsUI-setTattooLocked";
+constexpr int kMissingRgbColor = -1;
 
 class JContainerPoolGuard {
 public:
@@ -345,7 +346,8 @@ core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain
 
     for (int index = 0; index < count; ++index) {
         const int handle = jcmini::JArray::getObj(matches, index);
-        const int rawColor = jcmini::JMap::getInt(handle, "color", 0);
+        const int rawColor =
+            jcmini::JMap::getInt(handle, "color", kMissingRgbColor);
         entries.push_back(core::TattooEntry{
             .runtimeHandle = handle,
             .domain = domainString,
@@ -354,7 +356,7 @@ core::TattooQueryResult SlaveTatsRuntime::queryAvailable(std::string_view domain
             .texturePath = jcmini::JMap::getStr(handle, "texture"),
             .area = jcmini::JMap::getStr(handle, "area"),
             .slot = jcmini::JMap::getInt(handle, "slot"),
-            .color = rawColor == 0 ? 0xFFFFFF : rawColor,
+            .color = rawColor == kMissingRgbColor ? 0x000000 : rawColor,
             .locked = jcmini::JMap::getInt(handle, "locked") != 0,
             .alpha = fromSlaveTatsInvertedAlpha(
                 jcmini::JMap::getFlt(handle, "invertedAlpha", 0.0F)),
@@ -423,7 +425,8 @@ core::TattooSlotsResult SlaveTatsRuntime::querySlotsForActor(
             RE::BSFixedString(areaString),
             slot);
         if (tattoo != 0) {
-            const int rawColor = jcmini::JMap::getInt(tattoo, "color", 0);
+            const int rawColor =
+                jcmini::JMap::getInt(tattoo, "color", kMissingRgbColor);
             result.slots.push_back(core::TattooSlot{
                 .index = slot,
                 .occupancy = core::SlotOccupancy::slaveTats,
@@ -435,7 +438,7 @@ core::TattooSlotsResult SlaveTatsRuntime::querySlotsForActor(
                     .texturePath = jcmini::JMap::getStr(tattoo, "texture"),
                     .area = areaString,
                     .slot = slot,
-                    .color = rawColor == 0 ? 0xFFFFFF : rawColor,
+                    .color = rawColor == kMissingRgbColor ? 0x000000 : rawColor,
                     .locked = jcmini::JMap::getInt(tattoo, "locked") != 0,
                     .alpha = fromSlaveTatsInvertedAlpha(
                         jcmini::JMap::getFlt(tattoo, "invertedAlpha", 0.0F)),

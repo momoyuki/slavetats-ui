@@ -59,14 +59,14 @@ struct SlotRemoveTicket {
 };
 
 struct PreviewTattooAppearance {
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
 
     bool operator==(const PreviewTattooAppearance&) const = default;
 };
 
 struct TattooAppearance {
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
     std::int32_t glow{};
     float glossiness{};

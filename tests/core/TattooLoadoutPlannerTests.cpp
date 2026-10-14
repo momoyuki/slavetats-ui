@@ -30,7 +30,7 @@ TattooEntry tattoo(
         .name = std::move(name),
         .area = std::move(areaName),
         .slot = slot,
-        .color = 0xFFFFFF,
+        .color = 0x000000,
         .alpha = 1.0F,
         .emissiveMult = 1.0F,
     };
@@ -85,7 +85,7 @@ void classifiesExactRestoreActionsAcrossAreas() {
         tattoo("Add", TattooArea::hands)};
     auto keep = tattoo("Keep", TattooArea::body, 0);
     auto recolor = tattoo("Recolor", TattooArea::body, 1);
-    recolor.color = 0;
+    recolor.color = 0x123456;
     auto oldFace = tattoo("Old", TattooArea::face, 0);
     auto removedFeet = tattoo("Remove", TattooArea::feet, 1);
     request.slots[0].slots[0] = {.index = 0, .occupancy = SlotOccupancy::slaveTats, .tattoo = keep};
@@ -156,6 +156,7 @@ void lockedMutationRejectsButUnchangedLockedSlotPasses() {
         .entries = {desired("Locked", TattooArea::body, 0)},
     });
     changed.available = {tattoo("Locked")};
+    changed.loadout.entries[0].color = 0x123456;
     auto current = tattoo("Locked", TattooArea::body, 0);
     current.locked = true;
     current.color = 0;

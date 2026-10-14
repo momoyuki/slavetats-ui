@@ -19,7 +19,7 @@ struct TattooEntry {
     std::string texturePath;
     std::string area;
     std::int32_t slot{-1};
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     bool locked{false};
     float alpha{1.0F};
     std::int32_t glow{0};
@@ -70,7 +70,7 @@ struct ApplyTattooRequest {
     std::string domain{"default"};
     std::string section;
     std::string name;
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
     ApplyTattooMode mode{ApplyTattooMode::applyAndSynchronize};
 };
@@ -109,7 +109,7 @@ enum class UpdateTattooAppearanceMode {
 struct UpdateTattooAppearanceRequest {
     std::uint32_t actorFormId{};
     std::int32_t runtimeHandle{};
-    std::int32_t color{0xFFFFFF};
+    std::int32_t color{0x000000};
     float alpha{1.0F};
     std::int32_t glow{0};
     float glossiness{0.0F};

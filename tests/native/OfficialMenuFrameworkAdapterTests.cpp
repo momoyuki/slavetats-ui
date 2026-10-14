@@ -959,7 +959,7 @@ void livePreviewFrameRoutesOneIntentAndDefersClose() {
             const auto operation = workflow.takeAppearanceRequest();
             expect(operation && operation->purpose == (intent == EditAppearanceIntent::retry
                     ? AppearanceOperationPurpose::preview : AppearanceOperationPurpose::restore), "exact intent purpose");
-            expect(operation->request.color == (intent == EditAppearanceIntent::retry ? 0x123456 : 0xFFFFFF), "exact edited or original value");
+            expect(operation->request.color == (intent == EditAppearanceIntent::retry ? 0x123456 : 0x000000), "exact edited or original value");
             expect(operation->request.mode == (intent == EditAppearanceIntent::retry
                     ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize), "retry preserves sync-only");
             expect(!dispatchMenuCloseRequest(workflow, [&] { ++closes; }), "no close before restore success");
@@ -1043,7 +1043,7 @@ void livePreviewRetryInputPreservesFailedPurposeAndMode() {
             expect(!applyEditAppearanceIntent(workflow, EditAppearanceIntent::retry), "retry input cannot duplicate pending work");
             const auto retry = workflow.takeAppearanceRequest();
             expect(retry && retry->purpose == operation->purpose && retry->request.actorFormId == 0x14 &&
-                retry->request.runtimeHandle == 73 && retry->request.color == (restore ? 0xFFFFFF : 0x123456),
+                retry->request.runtimeHandle == 73 && retry->request.color == (restore ? 0x000000 : 0x123456),
                 "retry retains purpose and exact appearance identity");
             expect(retry->request.mode == (error == ServiceErrorCode::synchronizeFailed
                     ? UpdateTattooAppearanceMode::synchronizeOnly : UpdateTattooAppearanceMode::updateAndSynchronize),

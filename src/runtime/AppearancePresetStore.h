@@ -16,7 +16,7 @@ inline constexpr std::size_t kAppearancePresetLimit = 20;
 
 struct AppearancePreset {
     std::string name;
-    std::uint32_t color{};
+    std::uint32_t color{0x000000};
     float alpha{1.0F};
     std::uint32_t glow{};
     float emissiveMult{1.0F};
