@@ -68,4 +68,35 @@ presentation action and reuses the existing picker.
 - [x] Run Debug and Release builds.
 - [x] Run complete Debug and Release CTest suites.
 - [x] Run `git diff --check`.
-- [ ] Show the scoped diff and proposed Conventional Commit before committing.
+- [x] Show the scoped diff and proposed Conventional Commit before committing.
+
+## Execution and Acceptance Record
+
+- Implementation: `257a20f`; search/refresh/stale-scan coverage: `31d45ea`;
+  scan retry and empty-result coverage: `eb90fd6`.
+- PR #18 is stacked on PR #17 and remains draft pending in-game acceptance.
+- Full Debug and Release builds succeeded; complete CTest suites passed 41/41
+  in each configuration after the final test fixture correction.
+- MO2 deployment uses the clean Release build of `31d45ea`. The subsequent
+  `eb90fd6` commit changes tests only; the feature implementation is identical.
+- Deployed DLL SHA-256:
+  `C08E20CE2EBB3D25BB7DA9117F187C0B4003D647A44A9C527DBC637A4D9A7F92`.
+- Release readiness checks passed: CommonLibDependencyTests,
+  ReleaseMetadataTests, PackageReleaseTests, ReleaseGuardsTests, and
+  WorkflowPolicyTests. The guard tests use fixtures; they do not establish
+  real repository ancestry or absence of a published release.
+- `Validate-ReleaseTag.ps1 -Tag v1.8.0-beta.1` accepted the source base version
+  `1.8.0`; this validation does not create or publish a tag.
+
+### Remaining gates
+
+- [ ] User confirms follower-only discovery, Search, Refresh, Close, exact
+  follower selection, and switching back to Choose NPC/Player in game.
+- [ ] Hosted CI passes for the accepted PR head.
+- [ ] Obtain merge approval, merge PR #17 first, and retarget PR #18 to main.
+- [ ] Obtain merge approval for PR #18 after acceptance and hosted verification.
+- [ ] Archive this plan after acceptance; keep roadmap candidates unchecked
+  until the capability is present on the target branch and validation passes.
+
+Release publication remains governed by the separate semantic-version release
+plan and `RELEASING.md`, including explicit tag/publication approval.
