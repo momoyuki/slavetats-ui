@@ -17,6 +17,18 @@
 - No new dependencies or copied reference-mod assets.
 - Do not commit without the user's explicit approval.
 
+## 2026-10-17 disk thumbnail cache follow-up
+
+The user requested persistent thumbnail files for repeated long gallery scrolls
+and a cache clear button in the SKSE launcher. The implementation creates
+reduced DDS files for large BC3 source textures and copies other DDS files up
+to 2 MiB, checks loose file or BSA
+metadata before reuse, and caps disk ownership at 256 MiB. GPU cache ownership
+is reduced to 16 entries / 16 MiB. Invalid cache data falls back to the source.
+Tests cover disk reuse after GPU eviction, explicit clear, loose source changes,
+and preserving unrelated files in the dedicated cache folder. Full in-game
+scroll and cache clear acceptance remains required after build/test verification.
+
 ## Review Focus
 
 - Thousands of matches: only near-viewport textures are requested.

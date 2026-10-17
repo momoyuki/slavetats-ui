@@ -30,6 +30,7 @@ public:
         textures::TextureCacheTimePoint now) = 0;
     virtual void pruneExpired(textures::TextureCacheTimePoint now) = 0;
     virtual void clear() = 0;
+    [[nodiscard]] virtual bool clearDiskCache() { return false; }
     virtual bool available() const noexcept = 0;
 };
 
@@ -49,6 +50,7 @@ public:
     void pump();
     [[nodiscard]] std::vector<NativeThumbnailView> views() const;
     void reset();
+    [[nodiscard]] bool clearDiskCache();
 
 private:
     std::unique_ptr<NativeThumbnailTextureSource> m_source;

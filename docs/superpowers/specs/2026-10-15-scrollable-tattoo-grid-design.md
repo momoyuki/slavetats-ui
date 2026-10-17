@@ -11,13 +11,41 @@ The Outfit Gallery video shared on 2026-10-15 is a visual reference for the over
 - The existing SKSE Menu Framework Browse screen presents all filtered catalog matches in a vertically scrolling grid. At the usual 1920-pixel viewport, six columns fit in the existing left panel; narrow panels use fewer columns so cards remain usable.
 - Search and contextual filters keep their current semantics. Changing a filter returns the grid to its top. Opening a tattoo retains the explicit target and existing confirmation flow.
 - Only the visible rows and a small margin around them request DDS thumbnails. Offscreen cards retain placeholders until scrolled into view. Missing or broken textures keep their existing status treatment.
+- Catalog gallery cards fit the visible alpha region of each DDS to the thumbnail
+  cell with padding and at most eightfold magnification. An empty or unreadable
+  alpha region uses the full texture. Cropping changes presentation UVs only;
+  the source DDS and tattoo applied to the Actor remain unchanged. Analysis is
+  bounded to 16 million pixels; larger textures use the full view. Other
+  Current Slot thumbnails use the same visible-alpha crop and cached texture
+  as Browse, so applied tattoos remain readable in their slots. Other
+  thumbnail surfaces keep their full-texture view.
+  BC3/DXT5 textures are scanned directly from compressed alpha blocks to avoid
+  allocating a full decompressed image; common fully transparent blocks are
+  skipped before per-pixel inspection.
+- BC3/DXT5 textures larger than 512 pixels in either dimension generate a
+  bounded RGBA thumbnail during that same alpha scan. The GPU cache keeps the
+  thumbnail rather than the source-resolution texture. Alpha-weighted color
+  and maximum source alpha preserve narrow marks in the gallery. Non-BC3 and
+  small textures retain the existing upload path. This changes only browser
+  thumbnail presentation; SlaveTatsNG still reads the original DDS for tattoos.
+  The GPU cache retains up to 16 recently used thumbnails within a 16 MiB
+  uploaded-image byte budget and a two-minute idle TTL. Oversized images can
+  still be displayed but are not retained by the cache. Visible references
+  may temporarily use additional VRAM. Large BC3 thumbnails are cached as
+  reduced DDS files; other DDS files up to 2 MiB are cached unchanged under
+  the SKSE log directory. The disk cache skips
+  source archive reads and resizing on subsequent visits, retains at most
+  256 MiB, and evicts least recently used files. Source path plus loose-file
+  or archive metadata stamps select the cache entry. Invalid cached images
+  fall back to the original DDS. The SKSE launcher has a Clear Thumbnail Cache
+  button that removes only files in this dedicated cache directory.
 - The footer keeps Cancel and Close while removing page-number navigation from this screen.
 - Current Slots retains pagination. A user-approved presentation refinement uses
   four columns and twelve slots per page, as described in the FLICK UI spec.
 
-## Hover preview follow-up within this UI effort
+## Click preview follow-up within this UI effort
 
-The requested hover behavior means showing an uncommitted tattoo on the Actor and restoring the exact prior visual state on pointer exit. It requires a separate transactional design before runtime writes: the current appearance preview changes fields of an already-owned tattoo, while catalog hover may replace a tattoo identity or occupy an empty slot. No direct RaceMenu or JContainers write may be added to the UI. The preview must be actor-scoped, coalesce rapid hovers, prevent saving a transient overlay, and provide a retryable restore path if the Actor unloads or synchronization fails. This work is planned after the gallery is verified.
+Clicking a catalog card shows an uncommitted tattoo on the Actor; Hover changes only the outline and tooltip. The preview requires a separate transactional design: the current appearance preview changes fields of an already-owned tattoo, while catalog selection may replace a tattoo identity or occupy an empty slot. No direct RaceMenu or JContainers write may be added to the UI. The preview must be actor-scoped, coalesce rapid selections, prevent saving a transient overlay, and provide a retryable restore path if the Actor unloads or synchronization fails.
 
 ## Safety and acceptance
 

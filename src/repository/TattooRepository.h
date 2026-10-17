@@ -71,6 +71,9 @@ public:
     explicit TattooRepository(std::vector<TattooDefinition> definitions);
 
     [[nodiscard]] TattooPage query(const TattooFilter& filter = {}) const;
+    [[nodiscard]] std::optional<TattooDefinition> findUniqueAppliedDefinition(
+        std::string_view domain, std::string_view section, std::string_view name,
+        std::string_view area, std::string_view texturePath) const;
     [[nodiscard]] const TattooFacets& facets() const noexcept;
     [[nodiscard]] TattooFacets contextualFacets(const TattooFilter& filter) const;
     [[nodiscard]] std::optional<TattooMaterialTextureOptions> materialTextureOptions(

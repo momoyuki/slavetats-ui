@@ -210,6 +210,30 @@ TattooRepository::TattooRepository(std::vector<TattooDefinition> definitions) {
     m_facets.areas = buildFacetValues(std::move(areas));
 }
 
+std::optional<TattooDefinition> TattooRepository::findUniqueAppliedDefinition(
+    const std::string_view domain, const std::string_view section,
+    const std::string_view name, const std::string_view area,
+    const std::string_view texturePath) const {
+    const auto foldedDomain = foldASCII(domain);
+    const auto foldedSection = foldASCII(section);
+    const auto foldedName = foldASCII(name);
+    const auto foldedArea = foldASCII(area);
+    const auto foldedTexture = foldASCII(texturePath);
+    const TattooDefinition* match = nullptr;
+    for (const auto& entry : m_entries) {
+        if (entry.foldedDomain != foldedDomain ||
+            entry.foldedSection != foldedSection || entry.foldedName != foldedName ||
+            entry.foldedArea != foldedArea || entry.foldedTexturePath != foldedTexture) {
+            continue;
+        }
+        if (match && favoriteIdentity(*match) != favoriteIdentity(entry.definition)) {
+            return std::nullopt;
+        }
+        match = &entry.definition;
+    }
+    return match ? std::optional<TattooDefinition>(*match) : std::nullopt;
+}
+
 TattooPage TattooRepository::query(const TattooFilter& filter) const {
     const std::string foldedSearch = foldASCII(filter.search);
     const std::string foldedDomain = foldASCII(filter.domain);

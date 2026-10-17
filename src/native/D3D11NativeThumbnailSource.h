@@ -3,6 +3,7 @@
 #include "native/NativeThumbnailRuntime.h"
 #include "textures/D3D11TextureManager.h"
 #include "textures/TextureResolver.h"
+#include "textures/ThumbnailDiskCache.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -28,7 +29,8 @@ public:
         std::size_t capacity,
         textures::TextureCacheDuration idleTtl,
         textures::TextureArchiveReader archiveReader,
-        NativeThumbnailFailureObserver failureObserver = {});
+        NativeThumbnailFailureObserver failureObserver = {},
+        std::filesystem::path diskCacheDirectory = {});
 
     [[nodiscard]] std::shared_ptr<textures::D3D11Texture> find(
         std::string_view texturePath,
@@ -39,12 +41,14 @@ public:
         textures::TextureCacheTimePoint now) override;
     void pruneExpired(textures::TextureCacheTimePoint now) override;
     void clear() override;
+    [[nodiscard]] bool clearDiskCache() override;
     [[nodiscard]] bool available() const noexcept override;
 
 private:
     bool m_available;
     textures::TextureResolver m_resolver;
     textures::D3D11TextureManager m_manager;
+    std::unique_ptr<textures::ThumbnailDiskCache> m_diskCache;
     textures::TextureArchiveReader m_archiveReader;
     NativeThumbnailFailureObserver m_failureObserver;
     mutable std::mutex m_mutex;

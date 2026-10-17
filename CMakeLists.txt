@@ -182,6 +182,7 @@ set(sources
     src/repository/TattooCatalogStore.cpp
     src/textures/D3D11TextureManager.cpp
     src/textures/D3D11TextureUploader.cpp
+    src/textures/ThumbnailDiskCache.cpp
     src/textures/DdsDecoder.cpp
     src/repository/TattooRepository.cpp
     src/repository/TattooSourceParser.cpp
@@ -327,6 +328,7 @@ if(BUILD_TESTING)
     add_executable(D3D11NativeThumbnailSourceTests
         src/native/D3D11NativeThumbnailSource.cpp
         src/textures/D3D11TextureManager.cpp
+        src/textures/ThumbnailDiskCache.cpp
         src/textures/D3D11TextureUploader.cpp
         src/textures/DdsDecoder.cpp
         src/textures/TextureResolver.cpp

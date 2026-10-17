@@ -25,10 +25,14 @@ D3D11NativeThumbnailSource::D3D11NativeThumbnailSource(
     std::size_t capacity,
     textures::TextureCacheDuration idleTtl,
     textures::TextureArchiveReader archiveReader,
-    NativeThumbnailFailureObserver failureObserver)
+    NativeThumbnailFailureObserver failureObserver,
+    std::filesystem::path diskCacheDirectory)
     : m_available(device != nullptr),
-      m_resolver(std::move(looseRoot)),
-      m_manager(device, capacity, idleTtl),
+      m_resolver(looseRoot),
+      m_manager(device, capacity, idleTtl, 16 * 1024 * 1024),
+      m_diskCache(diskCacheDirectory.empty() ? nullptr
+          : std::make_unique<textures::ThumbnailDiskCache>(
+                std::move(diskCacheDirectory), looseRoot)),
       m_archiveReader(std::move(archiveReader)),
       m_failureObserver(std::move(failureObserver)) {}
 
@@ -56,6 +60,15 @@ NativeThumbnailLoadResult D3D11NativeThumbnailSource::load(
     if (auto cached = find(texturePath, now)) {
         return cached;
     }
+    if (m_diskCache) {
+        if (auto bytes = m_diskCache->load(texturePath)) {
+            std::scoped_lock lock(m_mutex);
+            if (isCurrent && !isCurrent())
+                return std::unexpected(NativeThumbnailFailure::cancelled);
+            if (auto cached = m_manager.getOrLoad(texturePath, *bytes, now))
+                return std::move(*cached);
+        }
+    }
 
     textures::TextureResolveResult resolved = std::unexpected(textures::TextureResolveError::readFailed);
     try {
@@ -81,13 +94,20 @@ NativeThumbnailLoadResult D3D11NativeThumbnailSource::load(
         return std::unexpected(NativeThumbnailFailure::cancelled);
     }
     try {
-        auto loaded = m_manager.getOrLoad(resolved->normalizedPath, resolved->bytes, now);
+        auto diskThumbnail = m_diskCache
+            ? textures::makeCachedThumbnailDds(resolved->bytes) : std::nullopt;
+        const auto bytes = diskThumbnail
+            ? std::span<const std::uint8_t>(*diskThumbnail)
+            : std::span<const std::uint8_t>(resolved->bytes);
+        auto loaded = m_manager.getOrLoad(resolved->normalizedPath, bytes, now);
         if (!loaded) {
             if (m_failureObserver) {
                 m_failureObserver(texturePath, NativeThumbnailFailureStage::upload);
             }
             return std::unexpected(NativeThumbnailFailure::broken);
         }
+        if (diskThumbnail && m_diskCache)
+            m_diskCache->store(resolved->normalizedPath, *diskThumbnail);
         return std::move(*loaded);
     } catch (...) {
         if (m_failureObserver) {
@@ -105,6 +125,12 @@ void D3D11NativeThumbnailSource::pruneExpired(textures::TextureCacheTimePoint no
 void D3D11NativeThumbnailSource::clear() {
     std::scoped_lock lock(m_mutex);
     m_manager.clear();
+}
+
+bool D3D11NativeThumbnailSource::clearDiskCache() {
+    std::scoped_lock lock(m_mutex);
+    m_manager.clear();
+    return m_diskCache && m_diskCache->clear();
 }
 
 bool D3D11NativeThumbnailSource::available() const noexcept {

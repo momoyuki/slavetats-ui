@@ -102,4 +102,9 @@ void NativeThumbnailRuntime::reset() {
     m_lastPrune.reset();
 }
 
+bool NativeThumbnailRuntime::clearDiskCache() {
+    reset();
+    return m_source->clearDiskCache();
+}
+
 }  // namespace stui::native

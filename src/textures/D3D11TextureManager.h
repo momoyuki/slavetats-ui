@@ -20,7 +20,8 @@ public:
     D3D11TextureManager(
         ID3D11Device* device,
         std::size_t capacity,
-        TextureCacheDuration idleTtl = TextureCacheDuration::max());
+        TextureCacheDuration idleTtl = TextureCacheDuration::max(),
+        std::size_t maxBytes = 64 * 1024 * 1024);
 
     D3D11TextureManager(const D3D11TextureManager&) = delete;
     D3D11TextureManager& operator=(const D3D11TextureManager&) = delete;

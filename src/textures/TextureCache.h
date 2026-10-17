@@ -21,8 +21,11 @@ class TextureCache {
 public:
     explicit TextureCache(
         std::size_t capacity,
-        TextureCacheDuration idleTtl = TextureCacheDuration::max())
-        : m_capacity(capacity), m_idleTtl(idleTtl) {}
+        TextureCacheDuration idleTtl = TextureCacheDuration::max(),
+        std::size_t maxBytes = SIZE_MAX,
+        std::function<std::size_t(const Resource&)> resourceBytes = {})
+        : m_capacity(capacity), m_idleTtl(idleTtl), m_maxBytes(maxBytes),
+          m_resourceBytes(std::move(resourceBytes)) {}
 
     [[nodiscard]] std::shared_ptr<Resource> get(
         std::string_view path,
@@ -50,10 +53,14 @@ public:
         if (!resource) {
             return nullptr;
         }
+        const auto bytes = m_resourceBytes ? m_resourceBytes(*resource) : 0;
+        if (m_capacity == 0 || bytes > m_maxBytes) return resource;
         m_recency.emplace_front(path);
         m_entries.emplace(
-            m_recency.front(), Entry{resource, m_recency.begin(), now});
-        if (m_entries.size() > m_capacity) {
+            m_recency.front(), Entry{resource, m_recency.begin(), now, bytes});
+        m_bytes += bytes;
+        while (m_entries.size() > m_capacity || m_bytes > m_maxBytes) {
+            m_bytes -= m_entries.at(m_recency.back()).bytes;
             m_entries.erase(m_recency.back());
             m_recency.pop_back();
         }
@@ -67,6 +74,7 @@ public:
 
         for (auto entry = m_entries.begin(); entry != m_entries.end();) {
             if (now - entry->second.lastAccess >= m_idleTtl) {
+                m_bytes -= entry->second.bytes;
                 m_recency.erase(entry->second.recency);
                 entry = m_entries.erase(entry);
             } else {
@@ -78,19 +86,25 @@ public:
     void clear() noexcept {
         m_entries.clear();
         m_recency.clear();
+        m_bytes = 0;
     }
 
     [[nodiscard]] std::size_t size() const noexcept { return m_entries.size(); }
+    [[nodiscard]] std::size_t bytes() const noexcept { return m_bytes; }
 
 private:
     struct Entry {
         std::shared_ptr<Resource> resource;
         typename std::list<std::string>::iterator recency;
         TextureCacheTimePoint lastAccess;
+        std::size_t bytes;
     };
 
     std::size_t m_capacity;
     TextureCacheDuration m_idleTtl;
+    std::size_t m_maxBytes;
+    std::function<std::size_t(const Resource&)> m_resourceBytes;
+    std::size_t m_bytes{};
     std::list<std::string> m_recency;
     std::unordered_map<std::string, Entry> m_entries;
 };

@@ -21,8 +21,11 @@ std::shared_ptr<ID3D11Device> retainDevice(ID3D11Device* device) {
 D3D11TextureManager::D3D11TextureManager(
     ID3D11Device* device,
     std::size_t capacity,
-    TextureCacheDuration idleTtl)
-    : m_device(retainDevice(device)), m_textures(capacity, idleTtl) {}
+    TextureCacheDuration idleTtl,
+    std::size_t maxBytes)
+    : m_device(retainDevice(device)),
+      m_textures(capacity, idleTtl, maxBytes,
+          [](const D3D11Texture& texture) { return texture.byteSize; }) {}
 
 D3D11ManagedTextureResult D3D11TextureManager::getOrLoad(
     std::string_view texturePath,
