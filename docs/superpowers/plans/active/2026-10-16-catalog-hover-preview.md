@@ -1,8 +1,30 @@
 # Catalog Hover Preview Implementation Plan
 
+> 2026-10-17 interaction update: Hover now changes only the card outline and
+> tooltip. Clicking a card selects and starts visual preview. While a clicked
+> selection remains active, the runtime may reassert its visual paint every two
+> seconds because in-game testing showed the visual can revert after about five
+> seconds. The earlier hover-specific tasks below document the original design;
+> the current behavior is defined in the linked spec.
+
+> 2026-10-18 stability follow-up: The workflow model now stores only the clicked
+> selection. Its Hover/Pin paint API and transient hover state were removed.
+> Selection, quick appearance, rollback, stale completion, Save, and sync-only
+> retry tests cover the revised state machine. Debug and Release suites pass
+> 55/55, and the tested DLL was deployed with a backup. In-game acceptance is
+> pending.
+
+> 2026-10-18 authority guard: A failing runtime test showed that changing a
+> managed tattoo's texture while retaining its handle and name still allowed
+> preview paint. The runtime now compares the complete captured tattoo snapshot
+> before paint, restore, and first Save, and rejects inconsistent empty/managed
+> slot snapshots. Tests also cover external appearance changes and zero handles.
+> Debug and Release suites passed 55/55; the tested DLL was deployed with the
+> prior DLL backed up. In-game acceptance remains pending.
+
 > **For agentic workers:** Use executing-plans inline; a fresh reviewer checks the final change.
 
-**Goal:** Hover-to-preview catalog tattoos, pin exact quick appearance, Save once, and cancel without persistent preview writes.
+**Goal:** Click-to-preview catalog tattoos, retain exact quick appearance, Save once, and cancel without persistent preview writes.
 **Architecture:** Adapter intent -> deterministic model -> serialized runtime -> service -> SlaveTatsRuntime -> optional nonpersistent visual backend.
 **Tech Stack:** Existing C++23, CommonLibSSE-NG, CTest; no new package dependency.
 **Spec:** docs/superpowers/specs/2026-10-16-catalog-hover-preview-design.md
@@ -11,13 +33,13 @@
 
 SlaveTatsNG remains authoritative. External and locked slots remain read-only.
 Actor/session/slot validation precedes every paint and commit. No implicit Player fallback.
-No persistent AddNodeOverride calls for hovering. No commit/push without separate approval.
+No persistent AddNodeOverride calls for previewing. No commit/push without separate approval.
 Approval in chat covers implementation; execute inline in the existing worktree.
 The quick glossy fallback is 5 per zero component; untouched pack fields survive.
 
 ## Review focus
 
-- Save/co-save during hover must retain original records and durable overrides.
+- Save/co-save during unsaved selection must retain original records and durable overrides.
 - Missing nodes and unloaded Actors must preserve cleanup obligations.
 - Hover B cannot replace pinned A at Save.
 - A successful mutation plus failed sync must not be applied a second time.

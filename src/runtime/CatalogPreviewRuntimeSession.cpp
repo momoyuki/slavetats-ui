@@ -44,13 +44,22 @@ CatalogPreviewRuntimeSession::validateSlot(
         core::ServiceErrorCode::invalidSlot,"Catalog preview slot is unavailable"));
     if (found->occupancy==core::SlotOccupancy::external) return std::unexpected(previewError(
         core::ServiceErrorCode::externalSlot,"External slots cannot be previewed"));
+    if (found->occupancy!=core::SlotOccupancy::empty &&
+        found->occupancy!=core::SlotOccupancy::slaveTats) {
+        return std::unexpected(previewError(core::ServiceErrorCode::previewConflict,
+            "Catalog preview slot occupancy is unknown"));
+    }
+    if ((found->occupancy==core::SlotOccupancy::slaveTats &&
+            (!found->tattoo || !found->tattoo->runtimeHandle)) ||
+        (found->occupancy==core::SlotOccupancy::empty && found->tattoo)) {
+        return std::unexpected(previewError(core::ServiceErrorCode::previewConflict,
+            "Catalog preview slot snapshot is inconsistent"));
+    }
     if (found->tattoo && found->tattoo->locked) return std::unexpected(previewError(
         core::ServiceErrorCode::previewConflict,"Locked slots cannot be previewed"));
     return SlotFingerprint{
         .occupancy=found->occupancy,
-        .runtimeHandle=found->tattoo ? found->tattoo->runtimeHandle : 0,
-        .section=found->tattoo ? found->tattoo->section : std::string{},
-        .name=found->tattoo ? found->tattoo->name : std::string{},
+        .tattoo=found->tattoo,
     };
 }
 

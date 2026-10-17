@@ -196,13 +196,13 @@ selection spec.
 The 2026-10-16 UI refinement consolidates nearby NPCs and Followers into one
 Choose NPC picker beside Player, with an explicit 2048-unit discovery radius.
 
-The 2026-10-16 catalog preview request adds hover-to-preview, click-to-pin,
+The catalog preview now uses click-to-preview and selection, with
 Ink/Glow/Glossy draft controls and explicit Save/Undo semantics. The approved
 transaction and nonpersistent visual-backend contract is recorded in
 `docs/superpowers/specs/2026-10-16-catalog-hover-preview-design.md`; implementation
-is deployed for in-game testing. The user confirmed that the corrected hover
-preview no longer turns the Player's Body overlay purple. Save, Undo, NPC
-behavior, in-use card indicator, and save/co-save/reload isolation remain to be
+is deployed for in-game testing. Hover shows only the card tooltip and outline;
+it does not change the Actor. Save, Undo, NPC behavior, in-use card indicator,
+and save/co-save/reload isolation remain to be
 accepted in game. Active plan:
 `docs/superpowers/plans/active/2026-10-16-catalog-hover-preview.md`.
 
@@ -213,9 +213,11 @@ Improve the Browse screen for visual selection: a six-column gallery on a
 desktop-width panel, vertical scrolling, readable names, and bounded thumbnail
 work for visible rows. Narrow panels use fewer columns. This remains in the
 existing SKSE Menu Framework browser with the Actor visible beside it.
+The catalog gallery now fits each DDS's visible alpha region into its card,
+with padding and a zoom limit; source textures and applied tattoos are unchanged.
 
-Hovering a tattoo should eventually show an uncommitted preview on the exact
-Actor Target and restore the prior visual state on pointer exit. This requires
+Clicking a tattoo shows an uncommitted preview on the exact Actor Target;
+Undo or Close restores the prior visual state. This requires
 its own actor-scoped transaction and save/co-save safety design before runtime
 implementation. The browser position can be selected as Left or Right in the
 Menu Framework launcher. Camera compatibility is a separate slice: SmoothCam
@@ -228,18 +230,21 @@ distance. The user confirmed the Left and Right menu positions in-game.
 First-gesture continuity, close/restore, and the SmoothCam handoff still need
 separate acceptance.
 
-**Next camera follow-up (recorded 2026-10-17; not implemented):** On the first
-Player browser opening in a game session, use the configured initial Center
-composition (the current side-aware Whole body framing until a future setting
+**Next camera follow-up (implemented in worktree; in-game acceptance pending):**
+On the first Player browser opening in a game session, use the configured
+initial Center composition (the current side-aware Whole body framing until a future setting
 exists). On later openings, restore the last browser orbit, pan/focus, and zoom
 for that menu side so repeated tattoo comparisons do not require re-framing.
-Keep separate Left and Right in-memory views; reset them when a save is loaded
-or the game process exits. Closing the browser must still restore the captured
-game camera. Do not persist a raw camera pointer or world-space position, and
+Keep separate Left and Right in-memory views; reset them when a save is loaded,
+a new game starts, or the game process exits. Closing the browser must still
+restore the captured game camera. Do not persist a raw camera pointer or world-space position, and
 do not extend this behavior to NPC camera control in the Player-first slice.
-Define and test the capture point, invalidation, and SmoothCam handoff in the
-camera spec before implementation. This session recall needs no new setting;
-user-adjustable initial framing remains a future settings candidate.
+The camera spec defines the capture point and invalidation; SmoothCam handoff
+still needs in-game acceptance. This session recall needs no new setting;
+user-adjustable initial framing is now in scope after the user's 2026-10-17
+screenshot feedback. The launcher stores bounded horizontal offsets separately
+for Left and Right. They affect the first automatic composition for a side when
+no session view is remembered; later openings recall that side's last view.
 
 ---
 
@@ -249,12 +254,8 @@ These are candidates, not committed milestones. Revisit them after vNext.5
 in-game acceptance; the [SlavetatsUIPzx settings comparison](docs/superpowers/research/2026-10-17-slavetatsuipzx-settings.md)
 records the reference behavior and source links.
 
-- **Initial framing adjustment by menu side:** If automatic placement still
-  leaves the Player off-center, offer a small lateral adjustment for Left and
-  Right while preserving the captured camera angle and zoom. Decide the range
-  from in-game tests on both sides before adding a persistent setting.
-- **Hover preview toggle:** Consider an off switch if users need to browse
-  without temporary visual changes. Validate Save, Undo, and save/co-save/reload
+- **Click preview toggle:** Consider an off switch if users need to select catalog
+  cards without temporary visual changes. Validate Save, Undo, and save/co-save/reload
   isolation first; a toggle must not conceal an unsafe preview implementation.
 - **Additional camera controls:** Consider saved offset, zoom, FOV, or rotation
   defaults only if framing plus Center/Reset View proves insufficient. Avoid a

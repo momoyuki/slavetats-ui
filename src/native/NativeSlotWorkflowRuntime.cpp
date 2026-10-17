@@ -108,7 +108,7 @@ const core::ServiceError* NativeSlotWorkflowRuntime::catalogPreviewError() const
 }
 
 std::optional<core::TattooEntry> NativeSlotWorkflowRuntime::catalogPreviewSelection() const {
-    return m_catalogPreviewModel.pinnedCandidate();
+    return m_catalogPreviewModel.selectedCandidate();
 }
 
 std::optional<core::TattooEntry> NativeSlotWorkflowRuntime::catalogPreviewDisplay() const {
@@ -117,23 +117,15 @@ std::optional<core::TattooEntry> NativeSlotWorkflowRuntime::catalogPreviewDispla
 
 bool NativeSlotWorkflowRuntime::catalogPreviewIsPinned(
     const repository::TattooDefinition& tattoo) const {
-    return m_catalogPreviewPinnedIdentity && m_catalogPreviewModel.pinnedCandidate() &&
+    return m_catalogPreviewPinnedIdentity && m_catalogPreviewModel.selectedCandidate() &&
         *m_catalogPreviewPinnedIdentity ==
             repository::recentTattooIdentity(tattoo, m_model.selectedArea());
 }
 
-void NativeSlotWorkflowRuntime::hoverCatalogPreview(
-    std::optional<repository::TattooDefinition> tattoo) {
-    if (m_catalogPreviewModel.open()) {
-        m_catalogPreviewModel.hover(tattoo
-            ? std::optional(catalogPreviewCandidate(*tattoo)) : std::nullopt);
-    }
-}
-
-void NativeSlotWorkflowRuntime::pinCatalogPreview(
+void NativeSlotWorkflowRuntime::selectCatalogPreview(
     const repository::TattooDefinition& tattoo) {
     if (!m_catalogPreviewModel.open()) return;
-    if (m_catalogPreviewModel.pin()) {
+    if (m_catalogPreviewModel.select(catalogPreviewCandidate(tattoo))) {
         m_catalogPreviewPinnedIdentity =
             repository::recentTattooIdentity(tattoo, m_model.selectedArea());
     }
@@ -150,6 +142,7 @@ void NativeSlotWorkflowRuntime::setCatalogPreviewGlossy(bool enabled) {
 void NativeSlotWorkflowRuntime::undoCatalogPreview() {
     m_catalogPreviewModel.undo();
     m_catalogPreviewPinnedIdentity.reset();
+    m_catalogPreviewLastPaint.reset();
 }
 bool NativeSlotWorkflowRuntime::saveCatalogPreview() {
     return m_catalogPreviewModel.requestSave();
@@ -181,6 +174,7 @@ void NativeSlotWorkflowRuntime::invalidateCatalogPreview() noexcept {
     m_catalogPreviewSession.reset();
     m_catalogPreviewError.reset();
     m_catalogPreviewPinnedIdentity.reset();
+    m_catalogPreviewLastPaint.reset();
     m_catalogPreviewBeginPending = false;
     m_catalogPreviewCancelBegin = false;
     m_catalogPreviewCloseRequested = false;
@@ -243,7 +237,8 @@ void NativeSlotWorkflowRuntime::pump() {
     drainRecentTattooCompletions();
     drainAppearancePresetCompletions();
     drainTattooLoadoutCompletions();
-    m_model.advanceLivePreview(m_livePreviewClock());
+    const auto now = m_livePreviewClock();
+    m_model.advanceLivePreview(now);
 
     bool expected = false;
     if (!m_inFlight.compare_exchange_strong(expected, true)) {
@@ -304,6 +299,9 @@ void NativeSlotWorkflowRuntime::pump() {
     }
 
     if (m_catalogPreviewSession && m_catalogPreviewModel.open()) {
+        if (m_catalogPreviewModel.selectedCandidate() && m_catalogPreviewLastPaint &&
+            now - *m_catalogPreviewLastPaint >= std::chrono::seconds(2))
+            m_catalogPreviewModel.requestRepaint();
         if (auto paint = m_catalogPreviewModel.takePaint()) {
             scheduleCatalogPreviewPaint(std::move(*paint));
             return;
@@ -353,6 +351,7 @@ void NativeSlotWorkflowRuntime::scheduleCatalogPreviewBegin(
             return;
         }
         m_catalogPreviewSession = result->sessionId;
+        m_catalogPreviewLastPaint.reset();
         const bool cancel = m_catalogPreviewCancelBegin ||
             m_model.catalogPreviewContext() != context;
         m_catalogPreviewModel.begin({context.actorFormId, context.generation,
@@ -400,6 +399,10 @@ void NativeSlotWorkflowRuntime::scheduleCatalogPreviewPaint(CatalogPreviewPaint 
             }
         } catch (...) {}
         m_catalogPreviewModel.completePaint(paint, success);
+        if (success && paint.candidate && !closing)
+            m_catalogPreviewLastPaint = m_livePreviewClock();
+        else if (success && !paint.candidate)
+            m_catalogPreviewLastPaint.reset();
         if (!success) m_catalogPreviewError = error;
         else m_catalogPreviewError.reset();
         if (success && closing && !m_catalogPreviewModel.open()) {

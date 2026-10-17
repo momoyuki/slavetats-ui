@@ -683,6 +683,10 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .edited = appearance,
     };
     if (const auto snapshot = m_catalog.snapshot()) {
+        m_editAppearance->favoriteDefinition =
+            snapshot->repository.findUniqueAppliedDefinition(
+                found->tattoo->domain, found->tattoo->section, found->tattoo->name,
+                found->tattoo->area, found->tattoo->texturePath);
         const auto options = snapshot->repository.materialTextureOptions(
             found->tattoo->domain, found->tattoo->section, found->tattoo->name,
             found->tattoo->area);

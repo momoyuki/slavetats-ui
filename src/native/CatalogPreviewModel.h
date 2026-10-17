@@ -30,14 +30,14 @@ struct CatalogPreviewCommit {
 class CatalogPreviewModel {
 public:
     bool begin(CatalogPreviewContext context,bool capable);
-    void hover(std::optional<core::TattooEntry> candidate);
-    bool pin();
+    bool select(core::TattooEntry candidate);
     void setInk(std::int32_t color);
     void setGlow(std::int32_t color);
     void setGlossy(bool enabled);
     void undo();
     void close();
     void retry();
+    bool requestRepaint();
     std::optional<CatalogPreviewPaint> takePaint();
     void completePaint(const CatalogPreviewPaint& paint,bool success);
     bool requestSave();
@@ -47,7 +47,7 @@ public:
     [[nodiscard]] bool restorePending() const noexcept;
     [[nodiscard]] bool open() const noexcept {return m_open;}
     [[nodiscard]] bool closing() const noexcept {return m_closing;}
-    [[nodiscard]] std::optional<core::TattooEntry> pinnedCandidate() const;
+    [[nodiscard]] std::optional<core::TattooEntry> selectedCandidate() const;
     [[nodiscard]] std::optional<core::TattooEntry> displayCandidate() const;
     [[nodiscard]] bool failed() const noexcept {return m_failed || m_commitFailed;}
 private:
@@ -60,7 +60,7 @@ private:
     std::optional<CatalogPreviewPaint> m_inFlight;
     std::optional<CatalogPreviewCommit> m_commitInFlight;
     std::optional<core::TattooEntry> m_saveIntent;
-    std::optional<core::TattooEntry> m_hover,m_pin,m_desired;
+    std::optional<core::TattooEntry> m_selected,m_desired;
     std::optional<std::int32_t> m_ink,m_glow;
     std::optional<bool> m_glossy;
 };

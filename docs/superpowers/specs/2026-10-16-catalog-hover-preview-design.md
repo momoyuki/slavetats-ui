@@ -1,4 +1,4 @@
-# Catalog Hover Preview and Quick Appearance Design
+# Catalog Click Preview and Quick Appearance Design
 
 **Date:** 2026-10-16
 **Milestone:** vNext.5 — Visual Tattoo Browser
@@ -6,11 +6,12 @@
 
 ## Intent and user requirements
 
-Browse tattoo thumbnails while seeing a reversible preview on the exact Actor
-Target. The user supplied SlavetatsUIPzx as the interaction reference and clarified:
+Browse tattoo thumbnails and click to see a reversible preview on the exact Actor
+Target. The user supplied SlavetatsUIPzx as the interaction reference. After
+in-game feedback on 2026-10-17, the user chose click-only visual preview:
 
-- Pointer over a tattoo starts visual preview without clicking.
-- Clicking selects the effective preview and makes Save available.
+- Pointer over a tattoo shows its tooltip and card outline only.
+- Clicking previews and selects that tattoo and makes Save available after paint.
 - The selection stays previewed while moving into Ink / Glow / Glossy controls.
 - Save keeps the selected identity and quick appearance values; detailed Edit
   Appearance remains available afterward.
@@ -21,32 +22,31 @@ The six-column scrollable catalog and explicit slot-first workflow stay in place
 
 ## Interaction contract
 
-The model keeps hovered candidate, pinned selection, draft overrides and runtime
-visual state separately. A candidate key includes actor/generation, preview
+The model keeps one clicked selection, draft overrides and runtime
+visual state separately. It has no hover-paint state or hover selection API.
+A candidate key includes actor/generation, preview
 session, area/slot, catalog identity, effective appearance and request revision.
 
-1. Hover requests the candidate on the next available scheduled game-thread task.
-   No one-second appearance-editor debounce applies. Repeated identical requests
-   do nothing; only the newest pending candidate is kept while a paint runs.
-2. Pointer exit restores the pinned selection, or the original slot if unselected.
-   Tooltips and the footer must not create alternating paint/restore requests.
-3. Click pins the candidate identity AND effective appearance, even when its paint
-   is still pending. Pinning does not reset colors or materials to pack defaults.
-4. Hovering another tile temporarily previews it without replacing the pin. Save
-   always targets the pin. When moving to Save, the pinned preview is restored;
-   Save waits for its latest appearance to finish previewing successfully.
-5. Quick controls update the pinned draft when selected. Without a selection,
-   controls edit local overrides for the next hover; they do not enable Save.
-6. Undo clears hovered/pinned candidates and quick overrides, invalidates pending
+1. Hover changes only the tile outline and tooltip. It schedules no Actor paint.
+2. Click selects the candidate and requests its visual preview on the next
+   available scheduled game-thread task. Repeated clicks on the same effective
+   candidate do nothing; a newer click supersedes pending preview intent.
+3. Selection retains the candidate identity and effective appearance, even
+   while its paint is pending. It does not reset colors or materials to defaults.
+4. Moving the pointer over another tile does not change the selected preview.
+   Clicking another tile replaces the selection. Save waits for the latest
+   selected appearance to finish previewing successfully.
+5. Quick controls update the selected draft. Without a selection, controls edit
+   local overrides for the next click; they do not enable Save.
+6. Undo clears the selection and quick overrides, invalidates pending
    paint revisions and restores the original slot. Browse remains open.
 7. Close, Back, area/Actor changes and leaving Browse cancel the transaction.
    Navigation completes only after required restoration succeeds. These actions
    cannot silently drop a rollback obligation when an Actor unloads.
-8. Changing filters clears a hover that is no longer visible; the pin is retained
-   and named in the footer until Undo or another click, even when filtered out.
+8. Changing filters retains the selected tattoo and names it in the footer
+   until Undo or another click, even when filtered out.
 
-Builder call: the visible effective preview has priority hover > pinned > original.
-The pin, not transient hover, is the only Save candidate. User controls may be
+The selected tattoo is the only visual preview and Save candidate. User controls may be
 edited while runtime work is pending; pending work coalesces to the newest draft.
 
 ## Compact appearance controls
@@ -95,13 +95,17 @@ restore, commit and synchronization-only retry. Session tokens are runtime-owned
 workflow state contains copied identities/values, never engine pointers or raw
 JContainer handles. Revalidate loaded Actor, exact area/slot, authority and original
 membership before every operation. Revalidate the pinned candidate at commit.
+For an occupied slot, compare the full authoritative tattoo snapshot captured at
+session start, including material paths and appearance values; reject changes
+even when the runtime handle and section/name remain the same. Reject managed
+slots without a valid tattoo handle and empty slots that still carry a tattoo.
 Save must also confirm that the captured visual target still resolves to the
 same Actor root, geometry, and material; a rebuilt material is a preview
 conflict and cannot trigger an authoritative tattoo mutation.
 Runtime handles invalidated by mutation must be replaced by fresh readback.
 
 Only one preview/restore/commit operation may run at a time. Required restoration
-and Save are barriers, never superseded by hover. Stale completion rejection must
+and Save are barriers, never superseded by selection. Stale completion rejection must
 not discard physical cleanup for an old Actor. Actor switching waits for cleanup;
 there is no implicit Player fallback. Unexpected foreign/external slot changes
 stop further writes and expose an actionable conflict instead of overwriting them.
@@ -110,13 +114,22 @@ stop further writes and expose an actionable conflict instead of overwriting the
 
 The bundled SlaveTatsNG interface has no catalog visual-preview entrypoint. Its
 existing add/update calls modify authoritative records. Repeating real apply and
-remove operations on hover is not an acceptable preview implementation.
+remove operations during browsing is not an acceptable preview implementation.
+
+In-game trace on 2026-10-17 showed a successful nonpersistent BellyHeart2 paint
+while UI hover remained unchanged for more than seven seconds, although the
+Actor visual reverted to its original Body Cum tattoo after about five seconds.
+While a clicked selection remains active, the runtime may reassert the same
+visual-only SKEE properties no more often than every two seconds. The refresh
+uses the existing Actor/slot validation and paint scheduler, stops on Undo,
+Close, Save, failure, or world invalidation, and never repeats an authoritative
+SlaveTatsNG mutation.
 
 The reference paints without tattoo-record writes, but passes persist=true to
 NiOverride; this is not evidence that the preview is excluded from save/co-save.
 See the accompanying primary-source research note.
 
-Before enabling live catalog hover, establish a nonpersistent visual operation
+Before enabling live catalog preview, establish a nonpersistent visual operation
 through a supported runtime interface, behind the boundary above. Prove its
 storage/serialization behavior from upstream implementation and integration tests.
 The concrete candidate is RaceMenu's native SetNodeProperty/GetNodeProperty:
@@ -129,7 +142,7 @@ before enabling the adapter. The existing browser/apply workflow remains usable
 when this optional visual capability is unavailable, with explicit status.
 Do not infer safety from a parameter name or successful Undo alone. If the runtime
 cannot provide that capability, keep this feature unavailable and report the
-missing capability; do not silently substitute persistent hover writes.
+missing capability; do not silently substitute persistent preview writes.
 
 Required save/load proof covers normal saves, quicksave/autosave while Browse is
 open, plugin co-save serialization, and reload while an unsaved visual is active.
@@ -142,7 +155,7 @@ No recovery may write to a different Actor or suppress a real restore failure.
 ## Save and cancel contracts
 
 Save captures the pin and its full effective appearance by value, invalidates
-pending hover paints, and waits for in-flight work. Perform one authoritative
+pending selection paints, and waits for in-flight work. Perform one authoritative
 apply/replace with all quick values in the service/runtime operation, then
 synchronize and read back. Current ApplyTattooRequest transports only color/alpha;
 Glow/Glossy must be added to the typed commit path, not saved by an unrelated UI
@@ -156,8 +169,10 @@ readback confirm the requested identity/appearance. History updates once on succ
 Undo/Close restores the exact original visual, including an empty slot, texture,
 alpha, glow/emission, gloss/specular and bump state. Restore failure stays visible
 and retryable. Navigation cannot complete while a required restore is unresolved.
+SKEE scalar snapshots and paint values with NaN or infinity are rejected before
+the first write: they cannot pass exact restore readback comparison.
 A successful commit followed by sync failure cannot be treated as an unsaved
-preview and rolled back by a stale Close/hover ticket.
+preview and rolled back by a stale Close/selection ticket.
 
 After Save, return to Current Slots with fresh readback and the usual detailed
 Edit Appearance action available. Do not open the detailed editor automatically.
@@ -173,18 +188,18 @@ hover and selection.
 
 1. Prove nonpersistent preview/save/load behavior at the runtime boundary first.
 2. Add typed session lifecycle and exact-slot validation/rollback tests.
-3. Add workflow tests for hover/pin/draft/Save/Undo, revision and target barriers.
+3. Add workflow tests for selection/draft/Save/Undo, revision and target barriers.
 4. Add full-appearance commit transport/readback without duplicate mutations.
-5. Add footer/hover presentation with bounded visible-thumbnail work unchanged.
+5. Add footer/selection presentation with bounded visible-thumbnail work unchanged.
 6. Run full Debug/Release builds and CTest, diff checks, focused review, then
    obtain in-game feedback for Player and nearby NPC targets.
 
-Required cases: empty versus occupied slot; external/locked rejection; rapid A/B
-hover and exit; click while paint pending; hover B then Save pinned A; quick-control
+Required cases: empty versus occupied slot; external/locked rejection; hover without
+painting; click A then B while paint is pending; hover B then Save selected A; quick-control
 coalescing; click retaining preview values; filtering away a pin; Undo/Close during
 in-flight work; unloaded Actor; stale target/session; restore failure; foreign slot
 changes; glow-to-non-glow; custom glow/bump paths; zero/>1 emissive; successful commit
-plus sync-only retry; no history for unsaved hover; save/co-save/load isolation.
+plus sync-only retry; no history for unsaved selection; save/co-save/load isolation.
 
 ## Scope and decisions still requiring validation
 

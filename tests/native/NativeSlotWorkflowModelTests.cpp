@@ -948,7 +948,12 @@ void queryFailureRemainsRetryable() {
 }
 
 void editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot() {
-    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    auto matchingDefinition = tattoo("Existing", 0);
+    matchingDefinition.texturePath = "marks/existing.dds";
+    TattooCatalogSnapshot snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({matchingDefinition}),
+        .sourceCount = 1,
+    });
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
     NativeSlotWorkflowModel model(catalog);
@@ -973,6 +978,9 @@ void editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot() {
     const auto* session = model.editAppearance();
     expect(model.screen() == SlotWorkflowScreen::editAppearance && session,
         "expected Edit Appearance screen with a session");
+    expect(session->favoriteDefinition &&
+            session->favoriteDefinition->sourceId == matchingDefinition.sourceId,
+        "expected Edit Appearance to retain the resolved favorite catalog identity");
     expect(session->actorFormId == 0x14 && session->area == TattooArea::body &&
             session->slot == 1 && session->runtimeHandle == 73 &&
             session->texturePath == "marks/existing.dds" &&

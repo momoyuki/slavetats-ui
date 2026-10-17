@@ -29,6 +29,7 @@
 #include "SmoothCamAPI.h"
 #include "textures/ExactStreamReader.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <memory>
@@ -44,6 +45,7 @@ native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
     [] { return g_tattooCatalogStore.snapshot(); });
 native::NativeSlotWorkflowModel g_nativeSlotWorkflow(g_nativeCatalogBrowser);
 std::shared_ptr<runtime::PluginConfigFile> g_pluginConfig;
+std::filesystem::path g_thumbnailDiskCacheDirectory;
 std::unique_ptr<runtime::FavoriteStore> g_favoriteStore;
 std::unique_ptr<runtime::RecentTattooStore> g_recentTattooStore;
 std::unique_ptr<runtime::AppearancePresetStore> g_appearancePresetStore;
@@ -162,7 +164,12 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
         return g_applicationRuntime.service().beginCatalogPreview(request);
     },
     [](const core::CatalogPreviewPaintRequest& request) {
-        return g_applicationRuntime.service().paintCatalogPreview(request);
+        auto result = g_applicationRuntime.service().paintCatalogPreview(request);
+        logger::info("[CatalogPreviewTrace] paint actor={:08X} slot={} candidate='{}' result={}",
+            request.context.actorFormId, request.context.slot,
+            request.candidate ? request.candidate->name : std::string("<restore>"),
+            result ? "ok" : "failed");
+        return result;
     },
     [](const core::CatalogPreviewRestoreRequest& request) {
         return g_applicationRuntime.service().restoreCatalogPreview(request);
@@ -246,7 +253,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
     case SKSE::MessagingInterface::kPreLoadGame:
     case SKSE::MessagingInterface::kNewGame:
         if (g_nativeMenu) g_nativeMenu->close();
-        g_browserCameraCoordinator.setOpen(false);
+        g_browserCameraCoordinator.resetGameSession();
         g_applicationRuntime.runtime().invalidateCatalogPreview();
         g_nativeSlotWorkflowRuntime.invalidateCatalogPreview();
         break;
@@ -371,7 +378,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                 auto source = std::make_unique<native::D3D11NativeThumbnailSource>(
                     textureRoot,
                     device,
-                    12,
+                    16,
                     std::chrono::minutes(2),
                     [](std::string_view resourcePath) {
                         const std::string path(resourcePath);
@@ -398,7 +405,8 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                             "SlaveTatsUI: native thumbnail failed: path='{}', stage={}",
                             texturePath,
                             stageName);
-                    });
+                    },
+                    g_thumbnailDiskCacheDirectory);
                 g_nativeThumbnailRuntime = std::make_unique<native::NativeThumbnailRuntime>(
                     std::move(source),
                     [taskInterface](native::NativeThumbnailTask task) {
@@ -406,7 +414,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                     },
                     [] { return textures::TextureCacheClock::now(); });
                 logger::info(
-                    "SlaveTatsUI: native thumbnail runtime initialized (capacity=12, ttl=2m)");
+                    "SlaveTatsUI: native thumbnail runtime initialized (capacity=16, vramCacheBudget=16MiB, diskCacheBudget=256MiB, ttl=2m)");
             }
         }
         g_nativeSlotWorkflow.start();
@@ -474,6 +482,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
     try {
         auto logPath = setupLog();
         pluginDir = logPath.parent_path();
+        g_thumbnailDiskCacheDirectory = pluginDir / "SlaveTatsUI" / "ThumbnailCache";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
         auto log  = std::make_shared<spdlog::logger>("SlaveTatsUI", std::move(sink));
         log->set_level(spdlog::level::debug);
@@ -526,16 +535,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
             *g_nativeThumbnailRuntime,
             g_menuSideSetting->side(),
             [](std::uint32_t formId, native::BrowserCameraPointerInput input) {
+                const auto initialPan = g_menuSideSetting->initialCameraPan(g_menuSideSetting->side());
                 g_browserCameraCoordinator.setTarget(
                     formId, g_menuSideSetting->side() == runtime::MenuSide::right,
-                    input.frameCenterX);
+                    std::clamp(input.frameCenterX + g_menuSideSetting->initialCameraOffset(
+                        g_menuSideSetting->side()), 0.05F, 0.95F),
+                    {initialPan.x, initialPan.y});
                 if (!input.empty()) g_browserCameraCoordinator.control(input);
                 g_browserCameraCoordinator.refresh();
             },
-            [&menu] { menu.close(); });
+            [&menu] { menu.close(); },
+            g_menuSideSetting.get(),
+            [] { return g_browserCameraPort.currentPan(); });
     }, [] {
         return native::OfficialMenuFrameworkAdapter::renderLauncher(
-            *g_hotkeyBinding, *g_menuSideSetting);
+            *g_hotkeyBinding, *g_menuSideSetting, *g_nativeThumbnailRuntime);
     });
     nativeMenu.setOpenGuard([] {
         auto* ui = RE::UI::GetSingleton();

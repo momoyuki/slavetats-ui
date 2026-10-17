@@ -74,8 +74,7 @@ bool CatalogPreviewModel::begin(CatalogPreviewContext context, bool capable) {
     m_commitFailed = false;
     m_saveIntent.reset();
     m_commitInFlight.reset();
-    m_hover.reset();
-    m_pin.reset();
+    m_selected.reset();
     m_desired.reset();
     m_ink.reset();
     m_glow.reset();
@@ -99,8 +98,7 @@ core::TattooEntry CatalogPreviewModel::effective(core::TattooEntry value) const 
 }
 
 void CatalogPreviewModel::updateDesired(bool force) {
-    const auto& base = m_hover ? m_hover : m_pin;
-    auto desired = base ? std::optional(effective(*base)) : std::nullopt;
+    auto desired = m_selected ? std::optional(effective(*m_selected)) : std::nullopt;
     if (!force && desired == m_desired) return;
     m_desired = std::move(desired);
     ++m_revision;
@@ -108,15 +106,9 @@ void CatalogPreviewModel::updateDesired(bool force) {
     m_pending = m_desired.has_value() || m_dirty || m_inFlight.has_value();
 }
 
-void CatalogPreviewModel::hover(std::optional<core::TattooEntry> candidate) {
-    if (!m_open || m_closing || m_saveIntent) return;
-    m_hover = std::move(candidate);
-    updateDesired();
-}
-
-bool CatalogPreviewModel::pin() {
-    if (!m_open || m_closing || m_saveIntent || !m_hover) return false;
-    m_pin = m_hover;
+bool CatalogPreviewModel::select(core::TattooEntry candidate) {
+    if (!m_open || m_closing || m_saveIntent) return false;
+    m_selected = std::move(candidate);
     updateDesired();
     return true;
 }
@@ -143,8 +135,7 @@ void CatalogPreviewModel::undo() {
     if (!m_open || m_closing || m_commitInFlight || m_written) return;
     m_saveIntent.reset();
     m_commitFailed = false;
-    m_hover.reset();
-    m_pin.reset();
+    m_selected.reset();
     m_ink.reset();
     m_glow.reset();
     m_glossy.reset();
@@ -155,8 +146,7 @@ void CatalogPreviewModel::close() {
     if (!m_open || m_commitInFlight || m_written) return;
     m_saveIntent.reset();
     m_commitFailed = false;
-    m_hover.reset();
-    m_pin.reset();
+    m_selected.reset();
     m_desired.reset();
     m_closing = true;
     ++m_revision;
@@ -174,6 +164,13 @@ void CatalogPreviewModel::retry() {
     if (!m_open || !m_failed) return;
     m_failed = false;
     m_pending = true;
+}
+
+bool CatalogPreviewModel::requestRepaint() {
+    if (!m_open || m_closing || m_pending || m_inFlight || m_failed ||
+        m_saveIntent || m_commitInFlight || m_written || !m_desired) return false;
+    m_pending = true;
+    return true;
 }
 
 std::optional<CatalogPreviewPaint> CatalogPreviewModel::takePaint() {
@@ -206,20 +203,19 @@ void CatalogPreviewModel::completePaint(const CatalogPreviewPaint& paint, bool s
 }
 
 std::optional<core::TattooEntry> CatalogPreviewModel::saveCandidate() const {
-    if (!m_open || m_closing || !m_pin || m_inFlight || m_pending || m_failed ||
+    if (!m_open || m_closing || !m_selected || m_inFlight || m_pending || m_failed ||
         m_commitInFlight || m_commitFailed || m_written || m_acknowledged != m_revision)
         return std::nullopt;
-    auto selected = effective(*m_pin);
+    auto selected = effective(*m_selected);
     return m_desired && *m_desired == selected ? std::optional(std::move(selected)) : std::nullopt;
 }
 
-std::optional<core::TattooEntry> CatalogPreviewModel::pinnedCandidate() const {
-    return m_pin ? std::optional(effective(*m_pin)) : std::nullopt;
+std::optional<core::TattooEntry> CatalogPreviewModel::selectedCandidate() const {
+    return m_selected ? std::optional(effective(*m_selected)) : std::nullopt;
 }
 
 std::optional<core::TattooEntry> CatalogPreviewModel::displayCandidate() const {
-    if (m_hover) return effective(*m_hover);
-    return pinnedCandidate();
+    return selectedCandidate();
 }
 
 bool CatalogPreviewModel::restorePending() const noexcept {
@@ -227,10 +223,8 @@ bool CatalogPreviewModel::restorePending() const noexcept {
 }
 
 bool CatalogPreviewModel::requestSave() {
-    if (!m_open || m_closing || !m_pin || m_saveIntent || m_commitInFlight) return false;
-    m_saveIntent = effective(*m_pin);
-    m_hover.reset();
-    updateDesired();
+    if (!m_open || m_closing || !m_selected || m_saveIntent || m_commitInFlight) return false;
+    m_saveIntent = effective(*m_selected);
     return true;
 }
 
@@ -254,14 +248,13 @@ void CatalogPreviewModel::completeCommit(
         m_commitFailed = true;
         return;
     }
-    // Persistent state is now authoritative; no stale hover/Close may restore it.
+    // Persistent state is now authoritative; no stale selection/Close may restore it.
     m_dirty = false;
     m_open = false;
     m_pending = false;
     m_written = false;
     m_saveIntent.reset();
-    m_hover.reset();
-    m_pin.reset();
+    m_selected.reset();
     m_desired.reset();
 }
 

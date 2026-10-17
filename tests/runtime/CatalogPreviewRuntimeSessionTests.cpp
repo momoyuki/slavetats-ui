@@ -96,6 +96,16 @@ void rejectsLockedAndExternalSlotsBeforeCapture() {
         .tattoo = core::TattooEntry{.runtimeHandle = 9, .section = "Pack", .name = "Old",
             .locked = true}};
     expect(!session.begin(context), "locked slot should be rejected");
+    fixture.slots.slots[0] = {.index = 0, .occupancy = core::SlotOccupancy::slaveTats};
+    expect(!session.begin(context), "managed slot without a tattoo must be rejected");
+    fixture.slots.slots[0].tattoo = core::TattooEntry{
+        .runtimeHandle = 0, .section = "Pack", .name = "Old"};
+    expect(!session.begin(context), "managed slot without a live handle must be rejected");
+    fixture.slots.slots[0].occupancy = core::SlotOccupancy::empty;
+    expect(!session.begin(context), "empty slot carrying a tattoo must be rejected");
+    fixture.slots.slots[0] = {.index = 0,
+        .occupancy = static_cast<core::SlotOccupancy>(99)};
+    expect(!session.begin(context), "unknown slot occupancy must be rejected");
     expect(fixture.writes == 0, "rejected begin must not write visual state");
 }
 
@@ -130,6 +140,44 @@ void rejectsSaveAfterVisualTargetIsRebuilt() {
     expect(!result && result.error().code == core::ServiceErrorCode::previewConflict,
         "Save must reject a rebuilt visual target");
     expect(fixture.applies == 0, "rejected Save must not mutate SlaveTats records");
+}
+
+void rejectsAuthoritativeTattooChangesWithSameHandleAndName() {
+    Fixture fixture;
+    fixture.slots.slots[0] = {
+        .index = 0,
+        .occupancy = core::SlotOccupancy::slaveTats,
+        .tattoo = core::TattooEntry{
+            .runtimeHandle = 9,
+            .domain = "default",
+            .section = "Pack",
+            .name = "Old",
+            .texturePath = "old.dds",
+            .area = "Body",
+            .slot = 0,
+            .color = 0x112233,
+        },
+    };
+    auto session = fixture.makeSession();
+    const core::CatalogPreviewBeginRequest context{0x14, 9, core::TattooArea::body, 0};
+    const auto begun = session.begin(context);
+    expect(begun.has_value(), "managed tattoo should start preview");
+    fixture.slots.slots[0].tattoo->texturePath = "replaced.dds";
+    expect(!session.paint({begun->sessionId, context, candidate()}),
+        "changed authoritative texture must block preview paint");
+    const core::CatalogPreviewCommitRequest commit{begun->sessionId, context,
+        core::ApplyTattooRequest{.actorFormId = 0x14, .area = core::TattooArea::body,
+            .slot = 0, .section = "Pack", .name = "Mark"}};
+    expect(!session.commit(commit) && fixture.writes == 0 && fixture.applies == 0,
+        "changed authoritative texture must block visual and storage writes");
+    fixture.slots.slots[0].tattoo->texturePath = "old.dds";
+    fixture.slots.slots[0].tattoo->color = 0x445566;
+    expect(!session.paint({begun->sessionId, context, candidate()}) &&
+            !session.commit(commit) && fixture.writes == 0 && fixture.applies == 0,
+        "changed authoritative appearance must also block preview and Save");
+    fixture.slots.slots[0].tattoo->color = 0x112233;
+    expect(session.restore({begun->sessionId, context}).has_value(),
+        "unchanged authoritative state permits ending the session");
 }
 
 void hoverExitKeepsSessionForNextTattoo() {
@@ -203,6 +251,7 @@ int main() {
     rejectsLockedAndExternalSlotsBeforeCapture();
     rejectsStaleSessionWithoutPlayerFallback();
     rejectsSaveAfterVisualTargetIsRebuilt();
+    rejectsAuthoritativeTattooChangesWithSameHandleAndName();
     hoverExitKeepsSessionForNextTattoo();
     saveChecksSlotAndRetriesSynchronizationOnly();
     std::cout << "CatalogPreviewRuntimeSessionTests passed\n";

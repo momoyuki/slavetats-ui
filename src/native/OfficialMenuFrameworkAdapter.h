@@ -519,6 +519,11 @@ void orchestrateEditAppearanceFrame(
     float maximumWidth,
     float maximumHeight) noexcept;
 
+[[nodiscard]] CatalogThumbnailFit fitVisibleThumbnail(
+    std::size_t textureWidth, std::size_t textureHeight,
+    float left, float top, float right, float bottom,
+    float maximumWidth, float maximumHeight) noexcept;
+
 [[nodiscard]] std::string_view catalogThumbnailStatusLabel(
     NativeThumbnailStatus status) noexcept;
 
@@ -591,7 +596,8 @@ public:
         MenuPosition viewportPosition, MenuSize viewportSize,
         runtime::MenuSide side = runtime::MenuSide::left) noexcept;
     [[nodiscard]] static bool renderLauncher(
-        runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide);
+        runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
+        NativeThumbnailRuntime& thumbnails);
     static void renderFoundation(
         NativeSlotWorkflowModel& workflow,
         NativeSlotWorkflowRuntime& slotRuntime,
@@ -599,7 +605,9 @@ public:
         NativeThumbnailRuntime& thumbnails,
         runtime::MenuSide side,
         const std::function<void(std::uint32_t, BrowserCameraPointerInput)>& cameraIntent,
-        const std::function<void()>& close);
+        const std::function<void()>& close,
+        runtime::MenuSideSetting* panSettings = nullptr,
+        const std::function<std::optional<BrowserCameraPan>()>& currentPan = {});
 
 private:
     MenuFrameworkBindings bindings_;

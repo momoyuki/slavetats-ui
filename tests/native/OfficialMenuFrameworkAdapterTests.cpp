@@ -471,6 +471,11 @@ void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
     expect(tall.width == 35.0F && tall.height == 140.0F,
            "expected tall texture fitted without stretching");
 
+    const auto visible = stui::native::fitVisibleThumbnail(
+        1024, 1024, 0.25F, 0.375F, 0.75F, 0.625F, 180.0F, 140.0F);
+    expect(visible.width == 180.0F && visible.height == 90.0F,
+           "Slot and Browser should fit the visible tattoo rather than transparent margins");
+
     expect(stui::native::catalogThumbnailStatusLabel(
                stui::native::NativeThumbnailStatus::loading) == "Loading",
            "expected explicit loading label");
@@ -1695,7 +1700,9 @@ void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
         stui::native::NativeThumbnailRuntime&,
         stui::runtime::MenuSide,
         const std::function<void(std::uint32_t, stui::native::BrowserCameraPointerInput)>&,
-        const std::function<void()>&) =
+        const std::function<void()>&,
+        stui::runtime::MenuSideSetting*,
+        const std::function<std::optional<stui::native::BrowserCameraPan>()>&) =
         &stui::native::OfficialMenuFrameworkAdapter::renderFoundation;
     (void)render;
 }

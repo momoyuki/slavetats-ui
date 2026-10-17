@@ -148,6 +148,33 @@ void failedReadbackLeavesRestoreObligation() {
         "successful restore should clear cleanup obligation");
 }
 
+void partialWriteFailureKeepsRestoreRetryable() {
+    FakeVisual fake;
+    const auto original = fake.values;
+    auto bindings = fake.bindings();
+    bindings.write = [&fake](const CatalogPreviewVisualTarget&,
+                         const CatalogPreviewVisualSnapshot& value) {
+        ++fake.writes;
+        if (fake.writes <= 2) {
+            fake.values.diffuse = value.diffuse;
+            return false;
+        }
+        fake.values = value;
+        return true;
+    };
+    CatalogPreviewVisualSession session(std::move(bindings));
+    const CatalogPreviewVisualContext context{0x14, 14, TattooArea::body, 0};
+    expect(session.begin(context), "begin should capture the original material");
+    expect(!session.paint(context, candidate()), "partial write should fail paint");
+    expect(fake.values != original && session.restorePending(),
+        "partial write must retain a restore obligation");
+    expect(!session.restore(context) && session.restorePending(),
+        "failed restore must remain retryable");
+    expect(session.restore(context), "retry should restore the original material");
+    expect(fake.values == original && !session.restorePending(),
+        "successful retry should clear the restore obligation");
+}
+
 void clearRestoresWithoutEndingSession() {
     FakeVisual fake;
     const auto original = fake.values;
@@ -174,6 +201,7 @@ int main() {
     rejectsRebuiltMaterialBeforeWriting();
     rejectsStaleActorGenerationAndSlot();
     failedReadbackLeavesRestoreObligation();
+    partialWriteFailureKeepsRestoreRetryable();
     clearRestoresWithoutEndingSession();
     std::cout << "CatalogPreviewVisualSessionTests passed\n";
 }

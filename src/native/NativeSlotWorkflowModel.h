@@ -94,6 +94,7 @@ enum class LivePreviewStatus {
 enum class AppearanceExitIntent { none, save, cancel, close };
 
 struct AppearanceEditSession {
+    std::optional<repository::TattooDefinition> favoriteDefinition;
     std::uint32_t actorFormId{};
     std::uint64_t targetGeneration{};
     core::TattooArea area{core::TattooArea::body};

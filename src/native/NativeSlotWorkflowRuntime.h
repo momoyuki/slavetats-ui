@@ -121,8 +121,7 @@ public:
     [[nodiscard]] std::optional<core::TattooEntry> catalogPreviewDisplay() const;
     [[nodiscard]] bool catalogPreviewIsPinned(
         const repository::TattooDefinition& tattoo) const;
-    void hoverCatalogPreview(std::optional<repository::TattooDefinition> tattoo);
-    void pinCatalogPreview(const repository::TattooDefinition& tattoo);
+    void selectCatalogPreview(const repository::TattooDefinition& tattoo);
     void setCatalogPreviewInk(std::int32_t color);
     void setCatalogPreviewGlow(std::int32_t color);
     void setCatalogPreviewGlossy(bool enabled);
@@ -188,6 +187,7 @@ private:
     bool m_catalogPreviewCloseRequested{};
     bool m_catalogPreviewCloseMenu{};
     std::uint64_t m_catalogPreviewEpoch{};
+    std::optional<std::chrono::steady_clock::time_point> m_catalogPreviewLastPaint;
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::mutex m_recentTattooCompletionMutex;

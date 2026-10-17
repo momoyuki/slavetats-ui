@@ -1,5 +1,6 @@
 #include "runtime/SkeeNodePropertyAccess.h"
 
+#include <cmath>
 #include <utility>
 
 namespace stui::runtime {
@@ -41,6 +42,10 @@ std::optional<CatalogPreviewVisualSnapshot> SkeeNodePropertyAccess::capture(
         !emissiveMult || !glossiness || !specularStrength) {
         return std::nullopt;
     }
+    if (!std::isfinite(*alpha) || !std::isfinite(*emissiveMult) ||
+        !std::isfinite(*glossiness) || !std::isfinite(*specularStrength)) {
+        return std::nullopt;
+    }
 
     return CatalogPreviewVisualSnapshot{
         .diffuse = *diffuse,
@@ -59,6 +64,10 @@ bool SkeeNodePropertyAccess::write(
     const CatalogPreviewVisualTarget& target,
     const CatalogPreviewVisualSnapshot& value) const {
     if (!m_bindings.setInt || !m_bindings.setFloat || !m_bindings.setString) {
+        return false;
+    }
+    if (!std::isfinite(value.alpha) || !std::isfinite(value.emissiveMult) ||
+        !std::isfinite(value.glossiness) || !std::isfinite(value.specularStrength)) {
         return false;
     }
     return m_bindings.setString(target, kTexture, kDiffuseTexture, value.diffuse) &&

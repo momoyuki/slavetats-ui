@@ -55,11 +55,12 @@ void expect(bool condition, std::string_view message) {
 
 TattooSlots bodySlots();
 
-void catalogPreviewSerializesHoverCloseAndSave() {
+void catalogPreviewSerializesSelectionCloseAndSave() {
     NativeCatalogBrowserModel catalog([] { return stui::repository::TattooCatalogSnapshot{}; });
     NativeSlotWorkflowModel model(catalog);
     std::vector<NativeSlotTask> scheduled;
     int begins{}, paints{}, restores{}, commits{};
+    auto now = std::chrono::steady_clock::time_point{};
     std::optional<stui::core::CatalogPreviewCommitRequest> saved;
     NativeSlotWorkflowRuntime runtime(
         model,
@@ -85,7 +86,7 @@ void catalogPreviewSerializesHoverCloseAndSave() {
                 "unused"});
         },
         [&scheduled](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
-        [] { return std::chrono::steady_clock::now(); },
+        [&now] { return now; },
         {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
         [&begins](const stui::core::CatalogPreviewBeginRequest& request)
             -> stui::core::CatalogPreviewBeginResult {
@@ -97,7 +98,7 @@ void catalogPreviewSerializesHoverCloseAndSave() {
             -> stui::core::CatalogPreviewPaintResult {
             ++paints;
             expect(request.candidate && request.candidate->name == "Mark",
-                "hover must paint the copied catalog candidate");
+                "click must paint the copied catalog candidate");
             return stui::core::CatalogPreviewPaintSuccess{};
         },
         [&restores, &begins](const stui::core::CatalogPreviewRestoreRequest& request)
@@ -127,20 +128,27 @@ void catalogPreviewSerializesHoverCloseAndSave() {
     TattooDefinition mark;
     mark.section = "Pack"; mark.name = "Mark"; mark.area = "Body";
     mark.texturePath = "mark.dds"; mark.glow = 0x123456;
-    runtime.hoverCatalogPreview(mark); runtime.pinCatalogPreview(mark);
+    runtime.pump();
+    expect(scheduled.empty() && paints == 0,
+        "open browser without a click must not paint an Actor tattoo");
+    now += 6s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 0,
+        "leaving the browser open without a click must never schedule a repaint");
+    runtime.selectCatalogPreview(mark);
     expect(runtime.catalogPreviewIsPinned(mark), "clicked card should have a selected border");
-    runtime.pump(); expect(paints == 0, "hover must wait for game-thread task");
+    runtime.pump(); expect(paints == 0, "selection must wait for game-thread task");
     expect(!model.selectPlayerTarget(), "Actor switch must wait for preview cleanup");
     expect(runtime.closeCatalogPreview(false), "Cancel should request restoration");
-    runNext(); expect(paints == 1, "in-flight hover should finish first");
-    expect(!scheduled.empty(), "in-flight hover must schedule restoration after menu close");
+    runNext(); expect(paints == 1, "in-flight selection should finish first");
+    expect(!scheduled.empty(), "in-flight selection must schedule restoration after menu close");
     runNext();
     expect(restores == 1 && !runtime.catalogPreviewActive() &&
         model.screen() == SlotWorkflowScreen::currentSlots,
         "Cancel should restore before navigating away");
     expect(!runtime.catalogPreviewIsPinned(mark), "Cancel should clear the selected border");
     expect(!model.takeRecentTattooRequest(),
-        "hover and Cancel must not enter Recently Used history");
+        "unsaved selection and Cancel must not enter Recently Used history");
     expect(model.selectSlot(0), "slot should reopen for pending-begin cancellation");
     runtime.pump();
     expect(runtime.catalogPreviewStarting(), "second begin should be queued");
@@ -151,12 +159,19 @@ void catalogPreviewSerializesHoverCloseAndSave() {
     expect(restores == 2 && !runtime.catalogPreviewActive() &&
         model.screen() == SlotWorkflowScreen::currentSlots &&
         !model.takeRecentTattooRequest(),
-        "queued begin must restore without a hover or history write");
+        "queued begin must restore without a selection or history write");
     expect(model.selectSlot(0), "slot should reopen after cancellation");
     runtime.pump(); runNext();
-    runtime.hoverCatalogPreview(mark); runtime.pinCatalogPreview(mark);
+    runtime.selectCatalogPreview(mark);
     runtime.pump(); runNext();
-    runtime.hoverCatalogPreview(std::nullopt);
+    now += 1999ms;
+    runtime.pump();
+    expect(scheduled.empty(), "selected preview should not repaint before refresh interval");
+    now += 1ms;
+    runtime.pump();
+    expect(scheduled.size() == 1, "selected preview should schedule a bounded repaint");
+    runNext();
+    expect(paints == 3, "refresh should reassert the same preview after two seconds");
     expect(runtime.saveCatalogPreview(), "pinned tattoo should queue Save");
     runtime.pump(); runNext();
     runtime.pump(); runNext();
@@ -169,6 +184,10 @@ void catalogPreviewSerializesHoverCloseAndSave() {
         history->identity && history->identity->name == "Mark" &&
         history->identity->area == TattooArea::body,
         "successful Save should record exactly the selected tattoo");
+    now += 2s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 3,
+        "completed Save must stop periodic preview paint");
 }
 
 void nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery() {
@@ -1376,8 +1395,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
-    failures += run("catalog preview serializes hover, Cancel and Save",
-        catalogPreviewSerializesHoverCloseAndSave);
+    failures += run("catalog preview serializes selection, Cancel and Save",
+        catalogPreviewSerializesSelectionCloseAndSave);
     failures += run("nearby scan runs once per open and precedes selected Actor query",
         nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery);
     failures += run("explicit NPC scan runs once and queries selected Actor",

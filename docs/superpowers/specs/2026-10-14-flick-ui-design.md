@@ -37,7 +37,10 @@ SlavetatsUIPzx and Fitting Room, without copying their runtime or assets.
   Slot snapshots and thumbnails are read after the selected area changes.
 - Current Slots uses four columns and three rows, up to twelve slots per page.
   Lock and Favorite icon buttons are temporarily hidden pending a control-layout
-  redesign. Existing lock enforcement and saved favorites remain intact.
+  redesign. Edit Appearance now offers a text-only Favorite/Favorited button when
+  its applied tattoo resolves to one unambiguous catalog identity. It writes the
+  existing global favorite setting independently of appearance Save and Undo.
+  Existing lock enforcement and saved favorites remain intact.
 
 ## Architecture and safety
 

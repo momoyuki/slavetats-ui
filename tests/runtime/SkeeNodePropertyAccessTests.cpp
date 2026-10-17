@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <tuple>
 #include <variant>
@@ -104,6 +105,28 @@ void rejectsIncompleteTypedSnapshot() {
     expect(!access.capture(target), "missing glow texture must reject capture");
 }
 
+void rejectsNonFiniteMaterialScalars() {
+    FakeProperties fake;
+    SkeeNodePropertyAccess access(fake.bindings());
+    const CatalogPreviewVisualTarget target{1, 2, 3, 4};
+    expect(access.write(target, expectedSnapshot()), "setup write should succeed");
+    for (const Key key : {Key{8, 0xFF}, Key{1, 0xFF}, Key{2, 0xFF}, Key{3, 0xFF}}) {
+        fake.values[key] = std::numeric_limits<float>::quiet_NaN();
+        expect(!access.capture(target), "NaN material scalar must reject capture");
+        fake.values[key] = std::numeric_limits<float>::infinity();
+        expect(!access.capture(target), "infinite material scalar must reject capture");
+        fake.values[key] = -std::numeric_limits<float>::infinity();
+        expect(!access.capture(target), "negative infinity must reject capture");
+        expect(access.write(target, expectedSnapshot()), "restore finite fixture values");
+    }
+
+    auto invalid = expectedSnapshot();
+    invalid.emissiveMult = std::numeric_limits<float>::quiet_NaN();
+    expect(!access.write(target, invalid), "non-finite paint must be rejected before any setter");
+    expect(access.capture(target) == expectedSnapshot(),
+        "rejected paint must preserve the original material");
+}
+
 void stopsWritingAfterFirstFailure() {
     FakeProperties fake;
     auto bindings = fake.bindings();
@@ -125,6 +148,7 @@ void stopsWritingAfterFirstFailure() {
 int main() {
     writesThenCapturesAllTypedProperties();
     rejectsIncompleteTypedSnapshot();
+    rejectsNonFiniteMaterialScalars();
     stopsWritingAfterFirstFailure();
     std::cout << "SkeeNodePropertyAccessTests passed\n";
 }

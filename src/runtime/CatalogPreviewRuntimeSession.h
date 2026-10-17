@@ -30,9 +30,7 @@ public:
 private:
     struct SlotFingerprint {
         core::SlotOccupancy occupancy{core::SlotOccupancy::empty};
-        std::int32_t runtimeHandle{};
-        std::string section;
-        std::string name;
+        std::optional<core::TattooEntry> tattoo;
 
         bool operator==(const SlotFingerprint&) const = default;
     };
