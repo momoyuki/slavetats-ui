@@ -11,7 +11,7 @@ heuristics.
 ## Goals
 
 - Add an explicit `Choose NPC` flow backed by one immutable loaded-Actor snapshot.
-- Keep Player and the existing nearest-first nearby selector unchanged.
+- Keep Player as an explicit target; NPC selection uses the searchable picker.
 - Search and filter the copied snapshot without rescanning during rendering or typing.
 - Preserve form-ID identity, target generations, stale-completion rejection, and
   no-Player-fallback behavior.
@@ -29,9 +29,16 @@ heuristics.
 
 ## User Behavior
 
-The target selector keeps `Player` and `Nearby Actors` as the fast paths and
-adds `Choose NPC`. Choosing it performs one game-thread scan and opens a picker
-over the copied snapshot. The picker provides a local name search and stable
+The target header shows `Player` and `Choose NPC` as buttons, with
+one `Target: <name> [Form ID]` identity line. The Nearby Actor combo was removed
+in the 2026-10-16 UI refinement because Choose NPC already covers those Actors.
+Choosing `Choose NPC` performs one game-thread scan and opens a picker
+over the copied snapshot. The unified list includes ordinary NPCs and Followers
+with loaded 3D within 2048 world units of the Player at scan time, retaining the
+64-candidate cap. Followers do not require a separate entry point. Clicking
+Choose NPC again closes the picker without changing the selected Actor or
+requesting another scan; input is blocked during scanning or mutation.
+The picker provides a local name search and stable
 ordering by normalized display name, then form ID. Search changes only filter
 the captured values; they never trigger a new runtime scan.
 

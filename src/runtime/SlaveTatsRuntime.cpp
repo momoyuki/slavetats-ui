@@ -2,6 +2,7 @@
 
 #include "jcontainers_mini.h"
 #include "runtime/SlaveTatsAlpha.h"
+#include "runtime/PrepareTattooApply.h"
 #include "runtime/UpdateTattooAppearanceOrchestration.h"
 #include "SKSE/SKSE.h"
 
@@ -296,6 +297,49 @@ bool SlaveTatsRuntime::bindJContainers(const jc::root_interface* root) {
     return m_jContainersReady;
 }
 
+void SlaveTatsRuntime::bindCatalogPreview(CatalogPreviewVisualBindings bindings) {
+    m_catalogPreview = std::make_unique<CatalogPreviewRuntimeSession>(
+        [this](std::uint32_t actorFormId, core::TattooArea area) {
+            return querySlots(actorFormId, area);
+        },
+        std::move(bindings),
+        [this](const core::ApplyTattooRequest& request) {
+            return applyToSlot(request);
+        });
+}
+
+void SlaveTatsRuntime::invalidateCatalogPreview() noexcept {
+    if (m_catalogPreview) m_catalogPreview->invalidate();
+}
+
+core::CatalogPreviewBeginResult SlaveTatsRuntime::beginCatalogPreview(
+    const core::CatalogPreviewBeginRequest& request) {
+    if (!m_catalogPreview) return std::unexpected(core::ServiceError{
+        core::ServiceErrorCode::previewUnavailable,"Catalog preview is unavailable"});
+    return m_catalogPreview->begin(request);
+}
+
+core::CatalogPreviewPaintResult SlaveTatsRuntime::paintCatalogPreview(
+    const core::CatalogPreviewPaintRequest& request) {
+    if (!m_catalogPreview) return std::unexpected(core::ServiceError{
+        core::ServiceErrorCode::previewUnavailable,"Catalog preview is unavailable"});
+    return m_catalogPreview->paint(request);
+}
+
+core::CatalogPreviewRestoreResult SlaveTatsRuntime::restoreCatalogPreview(
+    const core::CatalogPreviewRestoreRequest& request) {
+    if (!m_catalogPreview) return std::unexpected(core::ServiceError{
+        core::ServiceErrorCode::previewUnavailable,"Catalog preview is unavailable"});
+    return m_catalogPreview->restore(request);
+}
+
+core::CatalogPreviewCommitResult SlaveTatsRuntime::commitCatalogPreview(
+    const core::CatalogPreviewCommitRequest& request) {
+    if (!m_catalogPreview) return std::unexpected(core::ServiceError{
+        core::ServiceErrorCode::previewUnavailable,"Catalog preview is unavailable"});
+    return m_catalogPreview->commit(request);
+}
+
 bool SlaveTatsRuntime::apiAvailable() const noexcept {
     return m_api != nullptr;
 }
@@ -535,7 +579,24 @@ core::ApplyTattooResult SlaveTatsRuntime::applyToSlot(const core::ApplyTattooReq
         }
 
         int applied = 0;
-        {
+        if (request.appearance) {
+            const auto prepared = prepareTattooApplyTemplate(tattooHandle, request, {
+                .copy = [](int source) {
+                    const int copy = jcmini::JValue::shallowCopy(source);
+                    return copy ? jcmini::JValue::addToPool(copy, kApplyAvailablePool) : 0;
+                },
+                .setInt = jcmini::JMap::setIntAndVerify,
+                .setFloat = jcmini::JMap::setFltAndVerify,
+                .setString = [](int handle, const char* key, const std::string& value) {
+                    if (!jcmini::fn_jmap_setStr || !jcmini::fn_jmap_getStr) return false;
+                    jcmini::JMap::setStr(handle, key, value.c_str());
+                    return jcmini::JMap::getStr(handle,key,"\x01") == value;
+                },
+            });
+            if (!prepared) return std::unexpected(prepared.error());
+            applied = m_api->add_and_get_tattoo(
+                actor, *prepared, request.slot, false, false, true);
+        } else {
             const TattooTemplateAppearanceGuard appearance(
                 tattooHandle,
                 request.color,

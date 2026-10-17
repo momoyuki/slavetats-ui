@@ -7,7 +7,8 @@
 namespace stui::native {
 namespace {
 
-constexpr std::size_t kMaximumVisiblePaths = 6;
+constexpr std::size_t kMaximumVisiblePaths = 96;
+constexpr std::size_t kMaximumLegacyPagePaths = 6;
 
 bool sameRequest(
     const NativeThumbnailRequest& left,
@@ -36,9 +37,9 @@ void NativeThumbnailController::synchronize(
     std::span<const repository::TattooDefinition> entries,
     const NativeThumbnailCacheLookup& lookup) {
     std::vector<std::string> texturePaths;
-    texturePaths.reserve(kMaximumVisiblePaths);
+    texturePaths.reserve(kMaximumLegacyPagePaths);
     for (const auto& entry : entries) {
-        if (texturePaths.size() == kMaximumVisiblePaths) {
+        if (texturePaths.size() == kMaximumLegacyPagePaths) {
             break;
         }
         const auto texturePath = canonicalizeTexturePath(entry.texturePath);

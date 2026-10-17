@@ -88,6 +88,26 @@ public:
         const UpdateTattooAppearanceRequest& request) = 0;
     virtual SetTattooLockedResult setTattooLocked(
         const SetTattooLockedRequest& request) = 0;
+    virtual CatalogPreviewBeginResult beginCatalogPreview(
+        const CatalogPreviewBeginRequest&) {
+        return std::unexpected(ServiceError{ServiceErrorCode::previewUnavailable,
+            "Catalog preview is unavailable"});
+    }
+    virtual CatalogPreviewPaintResult paintCatalogPreview(
+        const CatalogPreviewPaintRequest&) {
+        return std::unexpected(ServiceError{ServiceErrorCode::previewUnavailable,
+            "Catalog preview is unavailable"});
+    }
+    virtual CatalogPreviewRestoreResult restoreCatalogPreview(
+        const CatalogPreviewRestoreRequest&) {
+        return std::unexpected(ServiceError{ServiceErrorCode::previewUnavailable,
+            "Catalog preview is unavailable"});
+    }
+    virtual CatalogPreviewCommitResult commitCatalogPreview(
+        const CatalogPreviewCommitRequest&) {
+        return std::unexpected(ServiceError{ServiceErrorCode::previewUnavailable,
+            "Catalog preview is unavailable"});
+    }
     virtual CaptureTattooLoadoutResult captureLoadout(
         const CaptureTattooLoadoutRequest&) {
         return std::unexpected(ServiceError{

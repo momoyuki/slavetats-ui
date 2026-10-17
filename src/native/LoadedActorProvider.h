@@ -17,6 +17,7 @@
 namespace stui::native {
 
 inline constexpr std::size_t kMaxExplicitNpcCandidates = 64;
+inline constexpr float kNpcPickerScanRadius = 2048.0F;
 
 struct LoadedActorCandidate {
     ActorTarget target;
@@ -37,7 +38,7 @@ struct LoadedActorProviderBindings {
     const LoadedActorCandidate& candidate) noexcept {
     return candidate.target.kind == ActorTargetKind::explicitNpc &&
         candidate.target.formId != 0 && std::isfinite(candidate.distance) &&
-        candidate.distance >= 0.0F;
+        candidate.distance >= 0.0F && candidate.distance <= kNpcPickerScanRadius;
 }
 
 [[nodiscard]] inline bool loadedActorNameLess(

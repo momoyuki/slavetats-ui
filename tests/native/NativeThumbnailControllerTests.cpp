@@ -86,6 +86,25 @@ void acceptsPresentationNeutralVisiblePaths() {
         "expected slot texture paths accepted without repository entries");
 }
 
+void acceptsMultipleVisibleGalleryRows() {
+    NativeThumbnailController controller;
+    const NativeThumbnailEpoch epoch = std::make_shared<int>(1);
+    std::vector<std::string> paths;
+    for (std::size_t index = 0; index < 18; ++index) {
+        paths.push_back("gallery/" + std::to_string(index) + ".dds");
+    }
+    controller.synchronize(epoch, paths, noCacheHit);
+    expect(controller.views().size() == 18,
+        "expected gallery thumbnail window to include multiple rows");
+
+    for (std::size_t index = 18; index < 100; ++index) {
+        paths.push_back("gallery/" + std::to_string(index) + ".dds");
+    }
+    controller.synchronize(epoch, paths, noCacheHit);
+    expect(controller.views().size() == 96,
+        "expected gallery thumbnail work to remain bounded");
+}
+
 void hidesStaleCompletionAfterPageTransition() {
     auto firstPage = page("first-");
     auto secondPage = page("second-");
@@ -447,6 +466,7 @@ int run(std::string_view name, Test&& test) {
 int main() {
     int failures = 0;
     failures += run("accepts presentation-neutral visible paths", acceptsPresentationNeutralVisiblePaths);
+    failures += run("accepts multiple visible gallery rows", acceptsMultipleVisibleGalleryRows);
     failures += run("hides stale completion after page transition", hidesStaleCompletionAfterPageTransition);
     failures += run("limits views to six unique paths in source order", limitsViewsToSixUniquePathsInSourceOrder);
     failures += run("keeps in-flight request current for same page", keepsInFlightRequestCurrentForSamePage);

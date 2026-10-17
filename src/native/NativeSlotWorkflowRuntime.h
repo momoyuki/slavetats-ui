@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native/NativeSlotWorkflowModel.h"
+#include "native/CatalogPreviewModel.h"
 
 #include <atomic>
 #include <chrono>
@@ -24,6 +25,14 @@ using SlotQueryOperation = std::function<core::TattooSlotsResult(
     core::TattooArea area)>;
 using SlotApplyOperation = std::function<core::ApplyTattooResult(
     const core::ApplyTattooRequest& request)>;
+using CatalogPreviewBeginOperation = std::function<core::CatalogPreviewBeginResult(
+    const core::CatalogPreviewBeginRequest&)>;
+using CatalogPreviewPaintOperation = std::function<core::CatalogPreviewPaintResult(
+    const core::CatalogPreviewPaintRequest&)>;
+using CatalogPreviewRestoreOperation = std::function<core::CatalogPreviewRestoreResult(
+    const core::CatalogPreviewRestoreRequest&)>;
+using CatalogPreviewCommitOperation = std::function<core::CatalogPreviewCommitResult(
+    const core::CatalogPreviewCommitRequest&)>;
 using SlotRemoveOperation = std::function<core::RemoveTattooResult(
     const core::RemoveTattooRequest& request)>;
 using SlotAppearanceOperation = std::function<core::UpdateTattooAppearanceResult(
@@ -72,7 +81,11 @@ public:
         TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
         TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
         TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {},
-        LoadedActorScanOperation loadedActorScanOperation = {});
+        LoadedActorScanOperation loadedActorScanOperation = {},
+        CatalogPreviewBeginOperation catalogPreviewBegin = {},
+        CatalogPreviewPaintOperation catalogPreviewPaint = {},
+        CatalogPreviewRestoreOperation catalogPreviewRestore = {},
+        CatalogPreviewCommitOperation catalogPreviewCommit = {});
 
     NativeSlotWorkflowRuntime(
         NativeSlotWorkflowModel& model,
@@ -94,9 +107,30 @@ public:
         TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation = {},
         TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation = {},
         TattooLoadoutRetryOperation tattooLoadoutRetryOperation = {},
-        LoadedActorScanOperation loadedActorScanOperation = {});
+        LoadedActorScanOperation loadedActorScanOperation = {},
+        CatalogPreviewBeginOperation catalogPreviewBegin = {},
+        CatalogPreviewPaintOperation catalogPreviewPaint = {},
+        CatalogPreviewRestoreOperation catalogPreviewRestore = {},
+        CatalogPreviewCommitOperation catalogPreviewCommit = {});
 
     void pump();
+    [[nodiscard]] bool catalogPreviewActive() const noexcept;
+    [[nodiscard]] bool catalogPreviewStarting() const noexcept;
+    [[nodiscard]] const core::ServiceError* catalogPreviewError() const noexcept;
+    [[nodiscard]] std::optional<core::TattooEntry> catalogPreviewSelection() const;
+    [[nodiscard]] std::optional<core::TattooEntry> catalogPreviewDisplay() const;
+    [[nodiscard]] bool catalogPreviewIsPinned(
+        const repository::TattooDefinition& tattoo) const;
+    void hoverCatalogPreview(std::optional<repository::TattooDefinition> tattoo);
+    void pinCatalogPreview(const repository::TattooDefinition& tattoo);
+    void setCatalogPreviewInk(std::int32_t color);
+    void setCatalogPreviewGlow(std::int32_t color);
+    void setCatalogPreviewGlossy(bool enabled);
+    void undoCatalogPreview();
+    [[nodiscard]] bool saveCatalogPreview();
+    [[nodiscard]] bool closeCatalogPreview(bool closeMenu);
+    void retryCatalogPreview();
+    void invalidateCatalogPreview() noexcept;
 
 private:
     void scheduleActorTarget(ActorTargetResolutionTicket ticket);
@@ -116,6 +150,9 @@ private:
     void drainRecentTattooCompletions();
     void drainAppearancePresetCompletions();
     void drainTattooLoadoutCompletions();
+    void scheduleCatalogPreviewBegin(core::CatalogPreviewContext context);
+    void scheduleCatalogPreviewPaint(CatalogPreviewPaint paint);
+    void scheduleCatalogPreviewCommit(CatalogPreviewCommit commit);
 
     NativeSlotWorkflowModel& m_model;
     ActorTargetOperation m_resolveActorTarget;
@@ -137,6 +174,20 @@ private:
     TattooLoadoutPreviewOperation m_tattooLoadoutPreviewOperation;
     TattooLoadoutRestoreOperation m_tattooLoadoutRestoreOperation;
     TattooLoadoutRetryOperation m_tattooLoadoutRetryOperation;
+    CatalogPreviewBeginOperation m_catalogPreviewBegin;
+    CatalogPreviewPaintOperation m_catalogPreviewPaint;
+    CatalogPreviewRestoreOperation m_catalogPreviewRestore;
+    CatalogPreviewCommitOperation m_catalogPreviewCommit;
+    CatalogPreviewModel m_catalogPreviewModel;
+    std::optional<core::CatalogPreviewContext> m_catalogPreviewAttempt;
+    std::optional<core::CatalogPreviewSessionId> m_catalogPreviewSession;
+    std::optional<core::ServiceError> m_catalogPreviewError;
+    std::optional<repository::RecentTattooIdentity> m_catalogPreviewPinnedIdentity;
+    bool m_catalogPreviewBeginPending{};
+    bool m_catalogPreviewCancelBegin{};
+    bool m_catalogPreviewCloseRequested{};
+    bool m_catalogPreviewCloseMenu{};
+    std::uint64_t m_catalogPreviewEpoch{};
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::mutex m_recentTattooCompletionMutex;

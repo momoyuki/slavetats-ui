@@ -2,11 +2,13 @@
 
 #include "native/NativeCatalogBrowserModel.h"
 #include "native/ActorTarget.h"
+#include "native/BrowserCameraPose.h"
 #include "native/NearbyActorProvider.h"
 #include "native/LoadedActorProvider.h"
 #include "native/MenuFrameworkPort.h"
 #include "core/TattooModels.h"
 #include "core/ITattooRuntime.h"
+#include "runtime/MenuSideSetting.h"
 
 #include <array>
 #include <cstddef>
@@ -75,7 +77,7 @@ struct ActorTargetControlPresentation {
     bool refreshEnabled{};
 };
 
-enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
+enum class ActorTargetHeaderIntent { none, player, crosshair, refresh, npcPicker };
 
 [[nodiscard]] std::string formatActorTargetIdentity(const ActorTarget& target);
 [[nodiscard]] std::string formatNearbyActorSelectorLabel(
@@ -86,7 +88,7 @@ enum class ActorTargetHeaderIntent { none, player, crosshair, refresh };
 [[nodiscard]] std::string_view loadedActorPickerStatusMessage(
     ActorPickerMode mode, bool resolving, bool hasResults,
     const core::ServiceError* error) noexcept;
-[[nodiscard]] std::string currentTattoosTitle(const ActorTarget* target);
+[[nodiscard]] std::string actorTargetTitle(const ActorTarget* target);
 [[nodiscard]] std::string_view actorTargetStatusLabel(
     bool resolving, const ActorTarget* target) noexcept;
 [[nodiscard]] bool actorTargetActionsEnabled(
@@ -128,6 +130,26 @@ struct FoundationLayout {
     MenuSize size;
 };
 
+[[nodiscard]] FoundationLayout calculateBrowserCameraControlFrame(
+    MenuPosition viewportPosition, MenuSize viewportSize, runtime::MenuSide side) noexcept;
+[[nodiscard]] bool browserCameraFrameContains(
+    const FoundationLayout& frame, MenuPosition pointer) noexcept;
+
+using BrowserCameraPointerInput = BrowserCameraMotion;
+
+struct BrowserCameraGestureState {
+    bool wasLeftDown{};
+    bool dragStartedOutside{};
+    bool panDrag{};
+};
+
+[[nodiscard]] std::uint32_t browserCameraTargetFormId(const ActorTarget* target) noexcept;
+
+[[nodiscard]] BrowserCameraPointerInput browserCameraPointerInput(
+    BrowserCameraGestureState& state, bool overUi, bool leftDown,
+    bool dragging, float deltaX, float deltaY, float wheel, bool alt = false,
+    float keyboardOrbit = 0, float keyboardPan = 0, float deltaTime = 0) noexcept;
+
 struct CatalogThumbnailFit {
     float width{};
     float height{};
@@ -155,6 +177,25 @@ struct SlotPageRange {
     std::size_t begin{};
     std::size_t end{};
 };
+
+class SlotAreaTabSelectionState {
+public:
+    [[nodiscard]] std::optional<core::TattooArea> synchronize(
+        core::TattooArea selectedArea) noexcept;
+
+private:
+    std::optional<core::TattooArea> m_selectedArea;
+};
+
+struct SlotReadOnlyIndicator {
+    float x{};
+    float y{};
+    float radius{};
+    std::uint32_t color{};
+};
+
+[[nodiscard]] std::optional<SlotReadOnlyIndicator> calculateSlotReadOnlyIndicator(
+    core::SlotOccupancy occupancy, float width, float headerHeight) noexcept;
 
 [[nodiscard]] SlotCardTreatment slotCardTreatment(
     core::SlotOccupancy occupancy) noexcept;
@@ -221,6 +262,10 @@ struct SlotLockActionPresentation {
     const std::vector<std::string>& domains);
 [[nodiscard]] std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page);
+[[nodiscard]] std::vector<std::string> collectPickerTexturePaths(
+    const repository::TattooPage& page,
+    std::size_t begin,
+    std::size_t end);
 [[nodiscard]] std::size_t pickerVisibleCardCount(
     const repository::TattooPage& page) noexcept;
 
@@ -232,6 +277,20 @@ struct CatalogCardGridPosition {
 [[nodiscard]] CatalogCardGridPosition catalogCardGridPosition(
     std::size_t index,
     std::size_t columnCount) noexcept;
+
+[[nodiscard]] std::size_t catalogColumnCount(float availableWidth) noexcept;
+
+struct CatalogVisibleCardRange {
+    std::size_t begin{};
+    std::size_t end{};
+};
+
+[[nodiscard]] CatalogVisibleCardRange catalogVisibleCardRange(
+    float scrollY,
+    float viewportHeight,
+    float rowHeight,
+    std::size_t columnCount,
+    std::size_t entryCount) noexcept;
 
 [[nodiscard]] std::string catalogCardWidgetId(
     std::string_view role,
@@ -529,13 +588,17 @@ public:
     [[nodiscard]] bool isWindowOpen(MenuWindow window) const noexcept override;
 
     [[nodiscard]] static FoundationLayout calculateFoundationLayout(
-        MenuPosition viewportPosition, MenuSize viewportSize) noexcept;
-    [[nodiscard]] static bool renderLauncher(runtime::HotkeyBinding& hotkey);
+        MenuPosition viewportPosition, MenuSize viewportSize,
+        runtime::MenuSide side = runtime::MenuSide::left) noexcept;
+    [[nodiscard]] static bool renderLauncher(
+        runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide);
     static void renderFoundation(
         NativeSlotWorkflowModel& workflow,
         NativeSlotWorkflowRuntime& slotRuntime,
         NativeCatalogBrowserModel& catalog,
         NativeThumbnailRuntime& thumbnails,
+        runtime::MenuSide side,
+        const std::function<void(std::uint32_t, BrowserCameraPointerInput)>& cameraIntent,
         const std::function<void()>& close);
 
 private:

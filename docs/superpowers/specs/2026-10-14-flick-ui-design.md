@@ -17,12 +17,27 @@ SlavetatsUIPzx and Fitting Room, without copying their runtime or assets.
 - The existing Menu Framework entry and hotkey remain available when FLICK is
   absent or incompatible. Repeated FLICK clicks cannot queue duplicate opens.
 - The current UI uses a consistent left-side panel, actor/area header,
-  wrapped workflow breadcrumb on every screen (including confirmation states),
+  wrapped workflow breadcrumb on navigation screens (including confirmation states),
   Tattoos/Loadouts tabs on Current Slots, slot-to-Browse navigation, contextual actions, and clear
   Back/Cancel/Save controls. All current features remain reachable.
-- Current Slot cards show their slot number and Add, Edit, or external read-only
-  status without requiring hover. Status text wraps in narrow cards. The
-  existing tooltips retain tattoo details.
+- Current Slot cards show their slot number and thumbnail without Add/Edit action
+  text. External slots show a red dot in the top-right of the card header; their
+  tooltip explains Read Only status and external ownership. Existing tooltips
+  retain tattoo details and empty-slot click guidance.
+- The Current Slots landing screen omits its redundant breadcrumb because the
+  Target title includes the Actor name and Form ID on one line across Tattoos,
+  Loadouts, and other workflow screens. The target header contains two buttons:
+  Player and Choose NPC; Followers are included in the nearby NPC picker. The
+  redundant Nearby Actor combo is hidden. Choose NPC toggles the picker open/closed.
+  Under the Tattoos tab, Body, Face, Hands,
+  and Feet form a compact second tab row; Refresh is an action button after
+  Feet on that row. Loadouts stays in the primary tab row.
+- Area tabs synchronize with the workflow only on initial presentation or an
+  external area change. Idle frames must not force selection over a user click.
+  Slot snapshots and thumbnails are read after the selected area changes.
+- Current Slots uses four columns and three rows, up to twelve slots per page.
+  Lock and Favorite icon buttons are temporarily hidden pending a control-layout
+  redesign. Existing lock enforcement and saved favorites remain intact.
 
 ## Architecture and safety
 

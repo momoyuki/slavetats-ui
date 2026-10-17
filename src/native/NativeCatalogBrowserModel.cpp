@@ -1,6 +1,7 @@
 #include "native/NativeCatalogBrowserModel.h"
 
 #include <algorithm>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -219,6 +220,14 @@ const repository::TattooPage& NativeCatalogBrowserModel::page() const noexcept {
     return m_page;
 }
 
+const repository::TattooPage& NativeCatalogBrowserModel::scrollPage() const noexcept {
+    return m_scrollPage;
+}
+
+std::size_t NativeCatalogBrowserModel::scrollRevision() const noexcept {
+    return m_scrollRevision;
+}
+
 repository::TattooFacets NativeCatalogBrowserModel::contextualFacets() const {
     return m_snapshot
         ? m_snapshot->repository.contextualFacets(m_filter)
@@ -312,12 +321,18 @@ void NativeCatalogBrowserModel::reconcileContextualFilters() {
 }
 
 void NativeCatalogBrowserModel::query() {
+    ++m_scrollRevision;
     if (!m_snapshot) {
         m_page = repository::TattooPage{.pageSize = kPageSize};
+        m_scrollPage = repository::TattooPage{};
         return;
     }
 
     m_page = m_snapshot->repository.query(m_filter);
+    auto scrollFilter = m_filter;
+    scrollFilter.pageIndex = 0;
+    scrollFilter.pageSize = std::numeric_limits<std::size_t>::max();
+    m_scrollPage = m_snapshot->repository.query(scrollFilter);
     m_filter.pageIndex = m_page.pageIndex;
     m_filter.pageSize = kPageSize;
 }

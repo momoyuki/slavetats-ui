@@ -39,6 +39,7 @@ inline void              (*fn_jfdb_setInt)(void*, RE::TESForm*, RE::BSFixedStrin
 // JValue
 inline int32_t (*fn_jval_addToPool)(void*, int32_t, RE::BSFixedString) = nullptr;
 inline void    (*fn_jval_cleanPool)(void*, RE::BSFixedString) = nullptr;
+inline int32_t (*fn_jval_shallowCopy)(void*, int32_t) = nullptr;
 
 template <typename F>
 static void bindFunc(const jc::reflection_interface* refl, const char* fn, const char* cls, F& out) {
@@ -73,6 +74,7 @@ inline bool Init(const jc::root_interface* root) {
 
     bindFunc(refl, "addToPool",  "JValue", fn_jval_addToPool);
     bindFunc(refl, "cleanPool",  "JValue", fn_jval_cleanPool);
+    bindFunc(refl, "shallowCopy", "JValue", fn_jval_shallowCopy);
 
     return true;
 }
@@ -159,6 +161,11 @@ struct JFormDB {
 };
 
 struct JValue {
+    static int shallowCopy(int obj) {
+        if (obj == 0 || !fn_jval_shallowCopy) return 0;
+        const int copy = fn_jval_shallowCopy(g_domain, obj);
+        return copy != obj ? copy : 0;
+    }
     static int addToPool(int obj, const char* pool) {
         return fn_jval_addToPool ? fn_jval_addToPool(g_domain, obj, RE::BSFixedString(pool)) : obj;
     }

@@ -384,6 +384,33 @@ void unhandledCloseRequestPreservesImmediateHotkeyClose() {
         "non-editor owner permits immediate close");
 }
 
+void closingMenuNotifiesCameraOwnerOnce() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    int closed = 0;
+    menu.setCloseCallback([&] { ++closed; });
+    menu.open();
+    port.open = false;
+    menu.syncWindowState();
+    menu.close();
+    expect(closed == 1,
+        "camera restore callback should run once even after framework closes window");
+}
+
+void reopeningAfterFrameworkCloseRestoresPreviousCameraSession() {
+    FakeMenuFrameworkPort port;
+    stui::native::NativeMenu menu;
+    expect(menu.registerMenu(port).has_value(), "expected registration");
+    int closed = 0;
+    menu.setCloseCallback([&] { ++closed; });
+    menu.open();
+    port.open = false;
+    menu.open();
+    expect(closed == 1 && menu.isOpen(),
+        "reopen must finish the framework-closed session before opening a new one");
+}
+
 void throwingCloseRequestKeepsTheWindowOpen() {
     FakeMenuFrameworkPort port;
     stui::native::NativeMenu menu;
@@ -454,6 +481,10 @@ int main() {
         std::cout << "PASS hotkey close defers until owner completion\n";
         unhandledCloseRequestPreservesImmediateHotkeyClose();
         std::cout << "PASS unhandled close request closes immediately\n";
+        closingMenuNotifiesCameraOwnerOnce();
+        std::cout << "PASS closing menu notifies camera owner once\n";
+        reopeningAfterFrameworkCloseRestoresPreviousCameraSession();
+        std::cout << "PASS reopening restores framework-closed camera session\n";
         throwingCloseRequestKeepsTheWindowOpen();
         std::cout << "PASS throwing close request keeps window open\n";
         unavailableRegistrationCanBeRetriedAndClearsError();

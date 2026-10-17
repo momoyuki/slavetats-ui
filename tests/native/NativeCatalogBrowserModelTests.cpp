@@ -80,6 +80,24 @@ void displaysSixEntriesPerPage() {
         "expected remaining entry on final page");
 }
 
+void galleryContainsAllFilteredMatchesWithoutChangingPagedView() {
+    TattooCatalogSnapshot current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+
+    expect(model.scrollPage().entries.size() == 13,
+        "expected gallery to contain every catalog match");
+    expect(model.page().entries.size() == 6,
+        "expected the existing paged view to remain available");
+    const auto firstRevision = model.scrollRevision();
+    model.setSearch("Entry 1");
+    expect(model.scrollRevision() > firstRevision,
+        "expected changed search to reset the gallery scroll position");
+    expect(model.scrollPage().entries.size() == 4 &&
+            model.scrollPage().entries.front().name == "Entry 1",
+        "expected gallery to follow the active search");
+}
+
 void combinesFiltersAndResetsToFirstPage() {
     TattooCatalogSnapshot current = snapshot({
         tattoo("source-a.json", "Marks", "Body", "Alpha", 0),
@@ -372,6 +390,7 @@ int run(std::string_view name, Test&& test) {
 int main() {
     int failures = 0;
     failures += run("displays six entries per page", displaysSixEntriesPerPage);
+    failures += run("gallery contains all filtered matches", galleryContainsAllFilteredMatchesWithoutChangingPagedView);
     failures += run("combines filters and resets to first page", combinesFiltersAndResetsToFirstPage);
     failures += run("clamps previous, next, and one-based input", clampsPreviousNextAndOneBasedPageInput);
     failures += run("handles null and no-match snapshots", handlesNullAndNoMatchSnapshots);

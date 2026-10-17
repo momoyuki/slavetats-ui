@@ -40,6 +40,8 @@ public:
 
     [[nodiscard]] const repository::TattooFilter& filter() const noexcept;
     [[nodiscard]] const repository::TattooPage& page() const noexcept;
+    [[nodiscard]] const repository::TattooPage& scrollPage() const noexcept;
+    [[nodiscard]] std::size_t scrollRevision() const noexcept;
     [[nodiscard]] repository::TattooFacets contextualFacets() const;
     [[nodiscard]] repository::TattooCatalogSnapshot snapshot() const noexcept;
     [[nodiscard]] bool appliedOnly() const noexcept;
@@ -59,6 +61,8 @@ private:
     repository::TattooCatalogSnapshot m_snapshot;
     repository::TattooFilter m_filter{.pageSize = kPageSize};
     repository::TattooPage m_page{.pageSize = kPageSize};
+    repository::TattooPage m_scrollPage;
+    std::size_t m_scrollRevision{};
     std::vector<repository::TattooIdentity> m_appliedTattooIdentities;
     std::vector<repository::FavoriteIdentity> m_favoriteIdentities;
     std::vector<repository::RecentTattooIdentity> m_recentTattooIdentities;

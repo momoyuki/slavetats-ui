@@ -189,6 +189,81 @@ selection spec.
 
 ---
 
+## vNext.5 — Visual Tattoo Browser
+
+**Status:** In progress on `codex/ui-improvements`
+
+The 2026-10-16 UI refinement consolidates nearby NPCs and Followers into one
+Choose NPC picker beside Player, with an explicit 2048-unit discovery radius.
+
+The 2026-10-16 catalog preview request adds hover-to-preview, click-to-pin,
+Ink/Glow/Glossy draft controls and explicit Save/Undo semantics. The approved
+transaction and nonpersistent visual-backend contract is recorded in
+`docs/superpowers/specs/2026-10-16-catalog-hover-preview-design.md`; implementation
+is deployed for in-game testing. The user confirmed that the corrected hover
+preview no longer turns the Player's Body overlay purple. Save, Undo, NPC
+behavior, in-use card indicator, and save/co-save/reload isolation remain to be
+accepted in game. Active plan:
+`docs/superpowers/plans/active/2026-10-16-catalog-hover-preview.md`.
+
+**Design:** `docs/superpowers/specs/2026-10-15-scrollable-tattoo-grid-design.md`,
+`docs/superpowers/specs/2026-10-15-browser-position-and-camera-design.md`
+
+Improve the Browse screen for visual selection: a six-column gallery on a
+desktop-width panel, vertical scrolling, readable names, and bounded thumbnail
+work for visible rows. Narrow panels use fewer columns. This remains in the
+existing SKSE Menu Framework browser with the Actor visible beside it.
+
+Hovering a tattoo should eventually show an uncommitted preview on the exact
+Actor Target and restore the prior visual state on pointer exit. This requires
+its own actor-scoped transaction and save/co-save safety design before runtime
+implementation. The browser position can be selected as Left or Right in the
+Menu Framework launcher. Camera compatibility is a separate slice: SmoothCam
+ownership and a game-thread turntable must be implemented and validated together.
+The first camera QA pass is limited to Player; selecting an NPC restores normal
+camera control while the NPC tattoo workflow remains available.
+The Player camera now has one initial framing request aimed at the open control
+area opposite the configured browser side, retaining the captured angle and
+distance. The user confirmed the Left and Right menu positions in-game.
+First-gesture continuity, close/restore, and the SmoothCam handoff still need
+separate acceptance.
+
+**Next camera follow-up (recorded 2026-10-17; not implemented):** On the first
+Player browser opening in a game session, use the configured initial Center
+composition (the current side-aware Whole body framing until a future setting
+exists). On later openings, restore the last browser orbit, pan/focus, and zoom
+for that menu side so repeated tattoo comparisons do not require re-framing.
+Keep separate Left and Right in-memory views; reset them when a save is loaded
+or the game process exits. Closing the browser must still restore the captured
+game camera. Do not persist a raw camera pointer or world-space position, and
+do not extend this behavior to NPC camera control in the Player-first slice.
+Define and test the capture point, invalidation, and SmoothCam handoff in the
+camera spec before implementation. This session recall needs no new setting;
+user-adjustable initial framing remains a future settings candidate.
+
+---
+
+## Future UI settings to evaluate
+
+These are candidates, not committed milestones. Revisit them after vNext.5
+in-game acceptance; the [SlavetatsUIPzx settings comparison](docs/superpowers/research/2026-10-17-slavetatsuipzx-settings.md)
+records the reference behavior and source links.
+
+- **Initial framing adjustment by menu side:** If automatic placement still
+  leaves the Player off-center, offer a small lateral adjustment for Left and
+  Right while preserving the captured camera angle and zoom. Decide the range
+  from in-game tests on both sides before adding a persistent setting.
+- **Hover preview toggle:** Consider an off switch if users need to browse
+  without temporary visual changes. Validate Save, Undo, and save/co-save/reload
+  isolation first; a toggle must not conceal an unsafe preview implementation.
+- **Additional camera controls:** Consider saved offset, zoom, FOV, or rotation
+  defaults only if framing plus Center/Reset View proves insufficient. Avoid a
+  large settings panel without a demonstrated need.
+- **Pause-world toggle:** Evaluate separately because it changes menu and input
+  ownership, not just presentation.
+
+---
+
 # Known upstream/runtime concerns
 
 These are not necessarily SlaveTats UI features, but they can affect acceptance testing and debugging:

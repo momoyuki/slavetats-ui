@@ -65,7 +65,11 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
     TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
     TattooLoadoutRetryOperation tattooLoadoutRetryOperation,
-    LoadedActorScanOperation loadedActorScanOperation)
+    LoadedActorScanOperation loadedActorScanOperation,
+    CatalogPreviewBeginOperation catalogPreviewBegin,
+    CatalogPreviewPaintOperation catalogPreviewPaint,
+    CatalogPreviewRestoreOperation catalogPreviewRestore,
+    CatalogPreviewCommitOperation catalogPreviewCommit)
     : m_model(model),
       m_resolveActorTarget(std::move(resolveActorTarget)),
       m_scanNearbyActors(),
@@ -85,7 +89,104 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_tattooLoadoutCaptureOperation(std::move(tattooLoadoutCaptureOperation)),
       m_tattooLoadoutPreviewOperation(std::move(tattooLoadoutPreviewOperation)),
       m_tattooLoadoutRestoreOperation(std::move(tattooLoadoutRestoreOperation)),
-      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)) {}
+      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)),
+      m_catalogPreviewBegin(std::move(catalogPreviewBegin)),
+      m_catalogPreviewPaint(std::move(catalogPreviewPaint)),
+      m_catalogPreviewRestore(std::move(catalogPreviewRestore)),
+      m_catalogPreviewCommit(std::move(catalogPreviewCommit)) {}
+
+bool NativeSlotWorkflowRuntime::catalogPreviewActive() const noexcept {
+    return m_catalogPreviewModel.open();
+}
+
+bool NativeSlotWorkflowRuntime::catalogPreviewStarting() const noexcept {
+    return m_catalogPreviewBeginPending;
+}
+
+const core::ServiceError* NativeSlotWorkflowRuntime::catalogPreviewError() const noexcept {
+    return m_catalogPreviewError ? &*m_catalogPreviewError : nullptr;
+}
+
+std::optional<core::TattooEntry> NativeSlotWorkflowRuntime::catalogPreviewSelection() const {
+    return m_catalogPreviewModel.pinnedCandidate();
+}
+
+std::optional<core::TattooEntry> NativeSlotWorkflowRuntime::catalogPreviewDisplay() const {
+    return m_catalogPreviewModel.displayCandidate();
+}
+
+bool NativeSlotWorkflowRuntime::catalogPreviewIsPinned(
+    const repository::TattooDefinition& tattoo) const {
+    return m_catalogPreviewPinnedIdentity && m_catalogPreviewModel.pinnedCandidate() &&
+        *m_catalogPreviewPinnedIdentity ==
+            repository::recentTattooIdentity(tattoo, m_model.selectedArea());
+}
+
+void NativeSlotWorkflowRuntime::hoverCatalogPreview(
+    std::optional<repository::TattooDefinition> tattoo) {
+    if (m_catalogPreviewModel.open()) {
+        m_catalogPreviewModel.hover(tattoo
+            ? std::optional(catalogPreviewCandidate(*tattoo)) : std::nullopt);
+    }
+}
+
+void NativeSlotWorkflowRuntime::pinCatalogPreview(
+    const repository::TattooDefinition& tattoo) {
+    if (!m_catalogPreviewModel.open()) return;
+    if (m_catalogPreviewModel.pin()) {
+        m_catalogPreviewPinnedIdentity =
+            repository::recentTattooIdentity(tattoo, m_model.selectedArea());
+    }
+}
+void NativeSlotWorkflowRuntime::setCatalogPreviewInk(std::int32_t color) {
+    m_catalogPreviewModel.setInk(color);
+}
+void NativeSlotWorkflowRuntime::setCatalogPreviewGlow(std::int32_t color) {
+    m_catalogPreviewModel.setGlow(color);
+}
+void NativeSlotWorkflowRuntime::setCatalogPreviewGlossy(bool enabled) {
+    m_catalogPreviewModel.setGlossy(enabled);
+}
+void NativeSlotWorkflowRuntime::undoCatalogPreview() {
+    m_catalogPreviewModel.undo();
+    m_catalogPreviewPinnedIdentity.reset();
+}
+bool NativeSlotWorkflowRuntime::saveCatalogPreview() {
+    return m_catalogPreviewModel.requestSave();
+}
+
+bool NativeSlotWorkflowRuntime::closeCatalogPreview(bool closeMenu) {
+    if (m_catalogPreviewBeginPending) {
+        m_catalogPreviewCancelBegin = true;
+        m_catalogPreviewCloseMenu = m_catalogPreviewCloseMenu || closeMenu;
+        return true;
+    }
+    if (!m_catalogPreviewModel.open()) return false;
+    m_catalogPreviewCloseRequested = true;
+    m_catalogPreviewCloseMenu = m_catalogPreviewCloseMenu || closeMenu;
+    m_catalogPreviewModel.close();
+    return true;
+}
+
+void NativeSlotWorkflowRuntime::retryCatalogPreview() {
+    m_catalogPreviewError.reset();
+    if (!m_catalogPreviewSession) m_catalogPreviewAttempt.reset();
+    m_catalogPreviewModel.retry();
+}
+
+void NativeSlotWorkflowRuntime::invalidateCatalogPreview() noexcept {
+    ++m_catalogPreviewEpoch;
+    m_catalogPreviewModel = CatalogPreviewModel{};
+    m_catalogPreviewAttempt.reset();
+    m_catalogPreviewSession.reset();
+    m_catalogPreviewError.reset();
+    m_catalogPreviewPinnedIdentity.reset();
+    m_catalogPreviewBeginPending = false;
+    m_catalogPreviewCancelBegin = false;
+    m_catalogPreviewCloseRequested = false;
+    m_catalogPreviewCloseMenu = false;
+    m_model.setCatalogPreviewActive(false);
+}
 
 NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     NativeSlotWorkflowModel& model,
@@ -107,7 +208,11 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
     TattooLoadoutPreviewOperation tattooLoadoutPreviewOperation,
     TattooLoadoutRestoreOperation tattooLoadoutRestoreOperation,
     TattooLoadoutRetryOperation tattooLoadoutRetryOperation,
-    LoadedActorScanOperation loadedActorScanOperation)
+    LoadedActorScanOperation loadedActorScanOperation,
+    CatalogPreviewBeginOperation catalogPreviewBegin,
+    CatalogPreviewPaintOperation catalogPreviewPaint,
+    CatalogPreviewRestoreOperation catalogPreviewRestore,
+    CatalogPreviewCommitOperation catalogPreviewCommit)
     : m_model(model),
       m_resolveActorTarget(),
       m_scanNearbyActors(std::move(scanNearbyActors)),
@@ -127,7 +232,11 @@ NativeSlotWorkflowRuntime::NativeSlotWorkflowRuntime(
       m_tattooLoadoutCaptureOperation(std::move(tattooLoadoutCaptureOperation)),
       m_tattooLoadoutPreviewOperation(std::move(tattooLoadoutPreviewOperation)),
       m_tattooLoadoutRestoreOperation(std::move(tattooLoadoutRestoreOperation)),
-      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)) {}
+      m_tattooLoadoutRetryOperation(std::move(tattooLoadoutRetryOperation)),
+      m_catalogPreviewBegin(std::move(catalogPreviewBegin)),
+      m_catalogPreviewPaint(std::move(catalogPreviewPaint)),
+      m_catalogPreviewRestore(std::move(catalogPreviewRestore)),
+      m_catalogPreviewCommit(std::move(catalogPreviewCommit)) {}
 
 void NativeSlotWorkflowRuntime::pump() {
     drainFavoriteCompletions();
@@ -194,7 +303,166 @@ void NativeSlotWorkflowRuntime::pump() {
         return;
     }
 
+    if (m_catalogPreviewSession && m_catalogPreviewModel.open()) {
+        if (auto paint = m_catalogPreviewModel.takePaint()) {
+            scheduleCatalogPreviewPaint(std::move(*paint));
+            return;
+        }
+        if (auto commit = m_catalogPreviewModel.takeCommit()) {
+            scheduleCatalogPreviewCommit(std::move(*commit));
+            return;
+        }
+    }
+    if (m_catalogPreviewBegin && !m_catalogPreviewBeginPending &&
+        !m_catalogPreviewSession && !m_catalogPreviewModel.open()) {
+        const auto context = m_model.catalogPreviewContext();
+        if (context && m_catalogPreviewAttempt != context) {
+            scheduleCatalogPreviewBegin(*context);
+            return;
+        }
+        if (!context) m_catalogPreviewAttempt.reset();
+    }
+
     m_inFlight.store(false);
+}
+
+void NativeSlotWorkflowRuntime::scheduleCatalogPreviewBegin(
+    core::CatalogPreviewContext context) {
+    m_catalogPreviewAttempt = context;
+    m_catalogPreviewBeginPending = true;
+    m_model.setCatalogPreviewActive(true);
+    const auto epoch = m_catalogPreviewEpoch;
+    NativeSlotTask task = [this, context, epoch] {
+        {
+        InFlightGuard guard(m_inFlight);
+        if (epoch != m_catalogPreviewEpoch) return;
+        core::CatalogPreviewBeginResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::previewUnavailable,
+            "Catalog preview is unavailable."));
+        try { result = m_catalogPreviewBegin(context); } catch (...) {}
+        m_catalogPreviewBeginPending = false;
+        if (!result) {
+            m_catalogPreviewError = result.error();
+            m_model.setCatalogPreviewActive(false);
+            if (m_catalogPreviewCancelBegin) {
+                m_model.finishCatalogPreviewClose(m_catalogPreviewCloseMenu);
+                m_catalogPreviewAttempt.reset();
+            }
+            m_catalogPreviewCancelBegin = false;
+            m_catalogPreviewCloseMenu = false;
+            return;
+        }
+        m_catalogPreviewSession = result->sessionId;
+        const bool cancel = m_catalogPreviewCancelBegin ||
+            m_model.catalogPreviewContext() != context;
+        m_catalogPreviewModel.begin({context.actorFormId, context.generation,
+            context.area, context.slot}, true);
+        m_catalogPreviewError.reset();
+        m_catalogPreviewCancelBegin = false;
+        if (cancel) m_catalogPreviewModel.close();
+        }
+        if (m_catalogPreviewModel.closing()) pump();
+    };
+    try { m_scheduler(std::move(task)); }
+    catch (...) {
+        m_catalogPreviewBeginPending = false;
+        m_model.setCatalogPreviewActive(false);
+        m_catalogPreviewError = operationError(core::ServiceErrorCode::previewUnavailable,
+            "Failed to schedule catalog preview.");
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleCatalogPreviewPaint(CatalogPreviewPaint paint) {
+    const auto session = *m_catalogPreviewSession;
+    const bool closing = m_catalogPreviewModel.closing();
+    const auto epoch = m_catalogPreviewEpoch;
+    NativeSlotTask task = [this, paint = std::move(paint), session, closing, epoch] {
+        {
+        InFlightGuard guard(m_inFlight);
+        if (epoch != m_catalogPreviewEpoch) return;
+        const core::CatalogPreviewContext context{paint.context.actorFormId,
+            paint.context.generation, paint.context.area, paint.context.slot};
+        core::ServiceError error = operationError(core::ServiceErrorCode::previewFailed,
+            "Catalog preview update failed.");
+        bool success = false;
+        try {
+            if (closing) {
+                if (m_catalogPreviewRestore) {
+                    const auto result = m_catalogPreviewRestore({session, context});
+                    success = result.has_value();
+                    if (!result) error = result.error();
+                }
+            } else if (m_catalogPreviewPaint) {
+                const auto result = m_catalogPreviewPaint({session, context, paint.candidate});
+                success = result.has_value();
+                if (!result) error = result.error();
+            }
+        } catch (...) {}
+        m_catalogPreviewModel.completePaint(paint, success);
+        if (!success) m_catalogPreviewError = error;
+        else m_catalogPreviewError.reset();
+        if (success && closing && !m_catalogPreviewModel.open()) {
+            m_catalogPreviewSession.reset();
+            m_catalogPreviewAttempt.reset();
+            m_catalogPreviewPinnedIdentity.reset();
+            m_model.finishCatalogPreviewClose(m_catalogPreviewCloseMenu);
+            m_catalogPreviewCloseMenu = false;
+            m_catalogPreviewCloseRequested = false;
+        }
+        }
+        if (m_catalogPreviewCloseRequested && m_catalogPreviewModel.closing()) pump();
+    };
+    try { m_scheduler(std::move(task)); }
+    catch (...) {
+        m_catalogPreviewModel.completePaint(paint, false);
+        m_catalogPreviewError = operationError(core::ServiceErrorCode::previewFailed,
+            "Failed to schedule catalog preview update.");
+        m_inFlight.store(false);
+    }
+}
+
+void NativeSlotWorkflowRuntime::scheduleCatalogPreviewCommit(CatalogPreviewCommit commit) {
+    const auto request = catalogPreviewCommitRequest(commit, *m_catalogPreviewSession);
+    const auto epoch = m_catalogPreviewEpoch;
+    NativeSlotTask task = [this, commit = std::move(commit), request, epoch] {
+        {
+        InFlightGuard guard(m_inFlight);
+        if (epoch != m_catalogPreviewEpoch) return;
+        core::CatalogPreviewCommitResult result = std::unexpected(operationError(
+            core::ServiceErrorCode::applyFailed, "Catalog preview Save failed."));
+        try {
+            if (m_catalogPreviewCommit) result = m_catalogPreviewCommit(request);
+        } catch (...) {}
+        const bool written = result ||
+            result.error().mutationSideEffect != core::MutationSideEffect::none;
+        m_catalogPreviewModel.completeCommit(commit, result.has_value(), written);
+        if (!result) {
+            m_catalogPreviewError = result.error();
+            if (m_catalogPreviewCloseRequested && !written) m_catalogPreviewModel.close();
+        } else {
+            m_catalogPreviewError.reset();
+            if (m_catalogPreviewPinnedIdentity) {
+                m_model.recordCatalogPreviewSaved(*m_catalogPreviewPinnedIdentity);
+            }
+            m_catalogPreviewPinnedIdentity.reset();
+            m_catalogPreviewSession.reset();
+            m_catalogPreviewAttempt.reset();
+            m_model.finishCatalogPreviewClose(m_catalogPreviewCloseMenu);
+            m_catalogPreviewCloseMenu = false;
+            m_catalogPreviewCloseRequested = false;
+            m_model.refreshSelectedArea();
+        }
+        }
+        if (m_catalogPreviewCloseRequested && m_catalogPreviewModel.closing()) pump();
+    };
+    try { m_scheduler(std::move(task)); }
+    catch (...) {
+        m_catalogPreviewModel.completeCommit(commit, false, false);
+        m_catalogPreviewError = operationError(core::ServiceErrorCode::applyFailed,
+            "Failed to schedule catalog preview Save.");
+        m_inFlight.store(false);
+    }
 }
 
 void NativeSlotWorkflowRuntime::drainTattooLoadoutCompletions() {

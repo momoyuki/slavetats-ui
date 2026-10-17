@@ -293,6 +293,17 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("JValue copy rejects missing callback and source alias", [] {
+        const auto saved = jcmini::fn_jval_shallowCopy;
+        jcmini::fn_jval_shallowCopy = nullptr;
+        expect(jcmini::JValue::shallowCopy(12) == 0, "missing copy must fail closed");
+        jcmini::fn_jval_shallowCopy = [](void*, std::int32_t source) { return source; };
+        expect(jcmini::JValue::shallowCopy(12) == 0, "shared source must never be returned as a copy");
+        jcmini::fn_jval_shallowCopy = [](void*, std::int32_t source) { return source + 1; };
+        expect(jcmini::JValue::shallowCopy(12) == 13, "independent copy must be returned");
+        expect(jcmini::JValue::shallowCopy(0) == 0, "null source must not be copied");
+        jcmini::fn_jval_shallowCopy = saved;
+    });
     failures += run("JMap integer verify rejects missing callbacks and zero object",
         mapSetIntAndVerifyRejectsMissingCallbacksAndZeroObject);
     failures += run("JMap integer verify forwards sentinel and requires exact readback",

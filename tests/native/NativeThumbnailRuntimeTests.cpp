@@ -162,10 +162,10 @@ void synchronizesPresentationNeutralVisiblePaths() {
     fixture.runtime->synchronize(epoch, paths);
 
     const auto views = fixture.runtime->views();
-    expect(views.size() == 6 && views.front().texturePath == "slot/a.dds" &&
-            views.back().texturePath == "slot/f.dds",
-        "expected generic runtime synchronization limited to six visible paths");
-    expect(fixture.source->findPaths.size() == 6,
+    expect(views.size() == paths.size() && views.front().texturePath == "slot/a.dds" &&
+            views.back().texturePath == "slot/ignored.dds",
+        "expected generic runtime synchronization to cover multiple visible gallery rows");
+    expect(fixture.source->findPaths.size() == paths.size(),
         "expected generic runtime to share the existing texture source");
 }
 
