@@ -41,6 +41,10 @@ void BrowserCameraSession::close() {
     m_targetFormId = 0;
 }
 
+void BrowserCameraSession::clearRememberedViews() {
+    m_port.clearRememberedViews();
+}
+
 bool BrowserCameraSession::active() const noexcept { return m_active; }
 
 }  // namespace stui::native

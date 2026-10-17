@@ -8,16 +8,47 @@ struct BrowserCameraMotion {
     float orbitX{}, orbitY{}, zoom{}, panX{}, panY{};
     BrowserCameraFocus focus{BrowserCameraFocus::none};
     bool reset{};
+    bool initialFrame{};
     float frameCenterX{0.5F};
+    float initialPanX{}, initialPanY{};
     [[nodiscard]] bool empty() const noexcept {
         return orbitX == 0 && orbitY == 0 && zoom == 0 && panX == 0 && panY == 0 &&
             focus == BrowserCameraFocus::none && !reset;
     }
 };
+struct BrowserCameraPan {
+    float x{}, y{};
+    bool operator==(const BrowserCameraPan&) const = default;
+};
 struct BrowserCameraView {
     CameraVector position{};
     float yaw{}, pitch{};
     bool operator==(const BrowserCameraView&) const = default;
+};
+struct BrowserCameraRelativePose {
+    CameraVector cameraOffset{}, pivotOffset{};
+    float yaw{}, pitch{};
+};
+struct BrowserCameraRecalledView {
+    BrowserCameraView view;
+    CameraVector pivot{};
+};
+[[nodiscard]] std::optional<BrowserCameraRelativePose> captureBrowserCameraRelativePose(
+    const BrowserCameraView& view, const CameraVector& pivot,
+    const CameraVector& actorPosition) noexcept;
+[[nodiscard]] std::optional<BrowserCameraRecalledView> restoreBrowserCameraRelativePose(
+    const BrowserCameraRelativePose& pose, const CameraVector& actorPosition) noexcept;
+class BrowserCameraRecallStore {
+public:
+    [[nodiscard]] bool rememberObserved(bool menuOnRight,
+        const std::optional<BrowserCameraView>& renderedView,
+        const CameraVector& pivot, const CameraVector& actorPosition) noexcept;
+    [[nodiscard]] std::optional<BrowserCameraRecalledView> recall(
+        bool menuOnRight, const CameraVector& actorPosition) const noexcept;
+    void clear() noexcept;
+
+private:
+    std::array<std::optional<BrowserCameraRelativePose>, 2> m_sides;
 };
 struct BrowserCameraLandmarks {
     std::optional<CameraVector> boundsCenter, head, torso, leftHand, rightHand, leftFoot, rightFoot;
@@ -32,6 +63,11 @@ void applyBrowserCameraMotion(BrowserCameraView& view, CameraVector& focus,
     const BrowserCameraMotion& motion) noexcept;
 [[nodiscard]] BrowserCameraView centerBrowserCameraView(
     const BrowserCameraView& view, const CameraVector& focus, float lateralDistance) noexcept;
+[[nodiscard]] std::optional<BrowserCameraPan> browserCameraPanFromFocus(
+    const BrowserCameraView& view, const CameraVector& pivot,
+    const CameraVector& baseFocus) noexcept;
+[[nodiscard]] bool applyBrowserCameraPan(
+    BrowserCameraView& view, CameraVector& pivot, BrowserCameraPan pan) noexcept;
 // Restore the captured state's inputs independently of the current view/root.
 template <class State>
 struct BrowserCameraControlSnapshot {

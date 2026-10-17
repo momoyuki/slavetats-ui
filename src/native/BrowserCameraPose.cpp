@@ -78,6 +78,56 @@ std::optional<BrowserCameraView> browserCameraViewFromForward(
     return BrowserCameraView{position, std::atan2(forward[0],forward[1]),
         -std::asin(std::clamp(forward[2]/length,-1.0F,1.0F))};
 }
+std::optional<BrowserCameraRelativePose> captureBrowserCameraRelativePose(
+    const BrowserCameraView& view, const CameraVector& pivot,
+    const CameraVector& actorPosition) noexcept {
+    if (!finiteVector(view.position) || !finiteVector(pivot) ||
+        !finiteVector(actorPosition) || !std::isfinite(view.yaw) ||
+        !std::isfinite(view.pitch)) return std::nullopt;
+    BrowserCameraRelativePose pose;
+    for (int i = 0; i < 3; ++i) {
+        pose.cameraOffset[i] = view.position[i] - actorPosition[i];
+        pose.pivotOffset[i] = pivot[i] - actorPosition[i];
+    }
+    if (!finiteVector(pose.cameraOffset) || !finiteVector(pose.pivotOffset))
+        return std::nullopt;
+    pose.yaw = view.yaw;
+    pose.pitch = view.pitch;
+    return pose;
+}
+std::optional<BrowserCameraRecalledView> restoreBrowserCameraRelativePose(
+    const BrowserCameraRelativePose& pose, const CameraVector& actorPosition) noexcept {
+    if (!finiteVector(pose.cameraOffset) || !finiteVector(pose.pivotOffset) ||
+        !finiteVector(actorPosition) || !std::isfinite(pose.yaw) ||
+        !std::isfinite(pose.pitch)) return std::nullopt;
+    BrowserCameraRecalledView result;
+    for (int i = 0; i < 3; ++i) {
+        result.view.position[i] = actorPosition[i] + pose.cameraOffset[i];
+        result.pivot[i] = actorPosition[i] + pose.pivotOffset[i];
+    }
+    if (!finiteVector(result.view.position) || !finiteVector(result.pivot))
+        return std::nullopt;
+    result.view.yaw = pose.yaw;
+    result.view.pitch = pose.pitch;
+    return result;
+}
+bool BrowserCameraRecallStore::rememberObserved(bool menuOnRight,
+    const std::optional<BrowserCameraView>& renderedView,
+    const CameraVector& pivot, const CameraVector& actorPosition) noexcept {
+    if (!renderedView) return false;
+    const auto pose = captureBrowserCameraRelativePose(*renderedView, pivot, actorPosition);
+    if (!pose) return false;
+    m_sides[menuOnRight ? 1 : 0] = *pose;
+    return true;
+}
+std::optional<BrowserCameraRecalledView> BrowserCameraRecallStore::recall(
+    bool menuOnRight, const CameraVector& actorPosition) const noexcept {
+    const auto& pose = m_sides[menuOnRight ? 1 : 0];
+    return pose ? restoreBrowserCameraRelativePose(*pose, actorPosition) : std::nullopt;
+}
+void BrowserCameraRecallStore::clear() noexcept {
+    m_sides = {};
+}
 void applyBrowserCameraMotion(BrowserCameraView& v, CameraVector& focus,
     const BrowserCameraMotion& m) noexcept {
     if (m.empty()) return;
@@ -116,6 +166,46 @@ void applyBrowserCameraMotion(BrowserCameraView& v, CameraVector& focus,
             up[i]*std::clamp(m.panY,-80.0F,80.0F))*panScale;
         v.position[i] = focus[i]+offset[i];
     }
+}
+std::optional<BrowserCameraPan> browserCameraPanFromFocus(
+    const BrowserCameraView& view, const CameraVector& pivot,
+    const CameraVector& baseFocus) noexcept {
+    if (!finiteVector(view.position) || !finiteVector(pivot) ||
+        !finiteVector(baseFocus) || !std::isfinite(view.yaw) ||
+        !std::isfinite(view.pitch)) return std::nullopt;
+    const CameraVector right{std::cos(view.yaw), -std::sin(view.yaw), 0};
+    const CameraVector up{std::sin(view.yaw) * std::sin(view.pitch),
+        std::cos(view.yaw) * std::sin(view.pitch), std::cos(view.pitch)};
+    CameraVector delta{};
+    for (int i = 0; i < 3; ++i) delta[i] = pivot[i] - baseFocus[i];
+    BrowserCameraPan pan;
+    for (int i = 0; i < 3; ++i) {
+        pan.x += delta[i] * right[i];
+        pan.y += delta[i] * up[i];
+    }
+    return std::isfinite(pan.x) && std::isfinite(pan.y)
+        ? std::optional(pan) : std::nullopt;
+}
+bool applyBrowserCameraPan(
+    BrowserCameraView& view, CameraVector& pivot, BrowserCameraPan pan) noexcept {
+    if (!finiteVector(view.position) || !finiteVector(pivot) ||
+        !std::isfinite(view.yaw) || !std::isfinite(view.pitch) ||
+        !std::isfinite(pan.x) || !std::isfinite(pan.y) ||
+        std::abs(pan.x) > 500.0F || std::abs(pan.y) > 500.0F) return false;
+    const CameraVector right{std::cos(view.yaw), -std::sin(view.yaw), 0};
+    const CameraVector up{std::sin(view.yaw) * std::sin(view.pitch),
+        std::cos(view.yaw) * std::sin(view.pitch), std::cos(view.pitch)};
+    BrowserCameraView nextView = view;
+    CameraVector nextPivot = pivot;
+    for (int i = 0; i < 3; ++i) {
+        const float offset = right[i] * pan.x + up[i] * pan.y;
+        nextView.position[i] += offset;
+        nextPivot[i] += offset;
+    }
+    if (!finiteVector(nextView.position) || !finiteVector(nextPivot)) return false;
+    view = nextView;
+    pivot = nextPivot;
+    return true;
 }
 BrowserCameraView centerBrowserCameraView(
     const BrowserCameraView& v, const CameraVector& focus, float lateral) noexcept {

@@ -23,7 +23,8 @@ void BrowserCameraCoordinator::setOpen(bool open) {
 }
 
 void BrowserCameraCoordinator::setTarget(
-    std::uint32_t formId, bool menuOnRight, float frameCenterX) {
+    std::uint32_t formId, bool menuOnRight, float frameCenterX,
+    BrowserCameraPan initialPan) {
     {
         const std::scoped_lock lock(m_mutex);
         if (!m_open) return;
@@ -33,8 +34,14 @@ void BrowserCameraCoordinator::setTarget(
         m_pending = {};
         if (formId == 0x14) {
             m_pending.focus = BrowserCameraFocus::wholeBody;
+            m_pending.initialFrame = true;
             m_pending.frameCenterX = std::isfinite(frameCenterX) && frameCenterX > 0.0F &&
                 frameCenterX < 1.0F ? frameCenterX : (menuOnRight ? 0.25F : 0.75F);
+            if (std::isfinite(initialPan.x) && std::isfinite(initialPan.y) &&
+                std::abs(initialPan.x) <= 500.0F && std::abs(initialPan.y) <= 500.0F) {
+                m_pending.initialPanX = initialPan.x;
+                m_pending.initialPanY = initialPan.y;
+            }
         }
         ++m_revision;
     }
@@ -75,6 +82,18 @@ void BrowserCameraCoordinator::refresh() {
     scheduleIfNeeded();
 }
 
+void BrowserCameraCoordinator::resetGameSession() {
+    {
+        const std::scoped_lock lock(m_mutex);
+        m_open = false;
+        m_targetFormId = 0;
+        m_pending = {};
+        m_resetRequested = true;
+        ++m_revision;
+    }
+    scheduleIfNeeded();
+}
+
 void BrowserCameraCoordinator::scheduleIfNeeded() {
     {
         const std::scoped_lock lock(m_mutex);
@@ -96,6 +115,7 @@ void BrowserCameraCoordinator::drain() {
         std::uint32_t target;
         std::uint64_t revision;
         BrowserCameraMotion motion;
+        bool resetRequested;
         {
             const std::scoped_lock lock(m_mutex);
             open = m_open;
@@ -103,6 +123,11 @@ void BrowserCameraCoordinator::drain() {
             target = m_targetFormId;
             revision = m_revision;
             motion = std::exchange(m_pending, {});
+            resetRequested = std::exchange(m_resetRequested, false);
+        }
+        if (resetRequested) {
+            m_session.close();
+            m_session.clearRememberedViews();
         }
         if (!open || target == 0) {
             m_session.close();

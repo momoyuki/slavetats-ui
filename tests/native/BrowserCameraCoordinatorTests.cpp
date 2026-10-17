@@ -19,6 +19,7 @@ public:
     std::vector<bool> sides;
     int restored{};
     int moved{};
+    int cleared{};
     bool loaded{true};
     bool begin(std::uint32_t formId, bool menuOnRight) override {
         begun.push_back(formId);
@@ -31,6 +32,7 @@ public:
         lastMotion = motion; ++moved; return true;
     }
     void restore() override { ++restored; }
+    void clearRememberedViews() override { ++cleared; }
 };
 void panAndResetCommandsSurviveCoalescing() {
     FakePort port;
@@ -130,16 +132,18 @@ void openingFramesPlayerOnTheAvailableSideOnce() {
     stui::native::BrowserCameraCoordinator coordinator(port,
         [&tasks](std::function<void()> task) { tasks.push_back(std::move(task)); });
     coordinator.setOpen(true);
-    coordinator.setTarget(0x14, true, 0.27F);
+    coordinator.setTarget(0x14, true, 0.27F, {24.0F, -11.0F});
     tasks.back()();
     expect(port.lastMotion.focus == stui::native::BrowserCameraFocus::wholeBody &&
-        port.lastMotion.frameCenterX == 0.27F,
+        port.lastMotion.frameCenterX == 0.27F && port.lastMotion.initialFrame &&
+        port.lastMotion.initialPanX == 24.0F && port.lastMotion.initialPanY == -11.0F,
         "right-side menu must initially frame Player in the left control area");
     const auto movesAfterOpening = port.moved;
     coordinator.refresh();
     tasks.back()();
     expect(port.moved == movesAfterOpening + 1 &&
-        port.lastMotion.focus == stui::native::BrowserCameraFocus::none,
+        port.lastMotion.focus == stui::native::BrowserCameraFocus::none &&
+        port.lastMotion.initialPanX == 0.0F && port.lastMotion.initialPanY == 0.0F,
         "idle refresh must reassert the pose without repeating initial framing");
     coordinator.setOpen(false);
     tasks.back()();
@@ -149,6 +153,20 @@ void openingFramesPlayerOnTheAvailableSideOnce() {
     expect(port.lastMotion.focus == stui::native::BrowserCameraFocus::wholeBody &&
         port.lastMotion.frameCenterX == 0.73F,
         "left-side menu must initially frame Player in the right control area");
+}
+void gameResetDropsQueuedMotionAndClearsRecall() {
+    FakePort port;
+    std::vector<std::function<void()>> tasks;
+    stui::native::BrowserCameraCoordinator coordinator(port,
+        [&tasks](std::function<void()> task) { tasks.push_back(std::move(task)); });
+    coordinator.setOpen(true);
+    coordinator.setTarget(0x14);
+    tasks.back()();
+    coordinator.control({.orbitX = 5});
+    coordinator.resetGameSession();
+    tasks.back()();
+    expect(port.restored == 1 && port.cleared == 1 && port.moved == 1,
+        "save-load reset must restore camera, clear recalled views and drop stale motion");
 }
 
 }  // namespace
@@ -160,6 +178,7 @@ int main() {
         staleTargetAfterCloseCannotReopenOldNpc();
         refreshReassertsCameraStateWhileMenuIsOpen();
         openingFramesPlayerOnTheAvailableSideOnce();
+        gameResetDropsQueuedMotionAndClearsRecall();
         panAndResetCommandsSurviveCoalescing();
         std::cout << "PASS browser camera coordinator\n";
     } catch (const std::exception& error) {

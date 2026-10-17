@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 
 #define SMOOTHCAM_API_COMMONLIB
 #include "SmoothCamAPI.h"
@@ -66,7 +67,11 @@ struct SkyrimBrowserCameraPort::Impl {
     bool savedRun{}, savedLock{}, savedFreeInput{}, savedBlockInput{}, inputCaptured{};
     std::optional<BrowserCameraView> opening;
     BrowserCameraView view;
-    CameraVector pivot{}, openingPivot{};
+    CameraVector pivot{}, openingPivot{}, baseFocus{};
+    std::mutex currentPanMutex;
+    std::optional<BrowserCameraPan> currentPan;
+    BrowserCameraRecallStore recall;
+    bool recalledOpening{};
     unsigned traceUpdates{};
 };
 
@@ -158,6 +163,16 @@ bool SkyrimBrowserCameraPort::begin(std::uint32_t formId, bool menuOnRight) {
     m_impl->menuOnRight=menuOnRight;
     m_impl->view=*captured;
     m_impl->pivot=*focus;
+    m_impl->baseFocus=*focus;
+    m_impl->recalledOpening=false;
+    if (const auto* actorRoot=actor->Get3D()) {
+        const auto p=actorRoot->world.translate;
+        if (const auto recalled=m_impl->recall.recall(menuOnRight,{p.x,p.y,p.z})) {
+            m_impl->view=recalled->view;
+            m_impl->pivot=recalled->pivot;
+            m_impl->recalledOpening=true;
+        }
+    }
     if (!m_impl->opening || m_impl->openingFormId != formId) {
         m_impl->opening=*captured;
         m_impl->openingPivot=*focus;
@@ -176,9 +191,10 @@ bool SkyrimBrowserCameraPort::begin(std::uint32_t formId, bool menuOnRight) {
         m_impl->inputCaptured=true;
         controls->blockPlayerInput=true;
     }
-    free->translation={captured->position[0],captured->position[1],captured->position[2]};
-    free->rotation.x=captured->pitch;
-    free->rotation.y=captured->yaw;
+    free->translation={m_impl->view.position[0],m_impl->view.position[1],
+        m_impl->view.position[2]};
+    free->rotation.x=m_impl->view.pitch;
+    free->rotation.y=m_impl->view.yaw;
     free->zUpDown={0,0};
     free->verticalDirection=0;
     m_impl->traceUpdates=0;
@@ -197,13 +213,17 @@ bool SkyrimBrowserCameraPort::control(const BrowserCameraMotion& motion) {
         SKSE::log::info("[CameraTrace] free-camera ownership invalidated");
         restore(); return false;
     }
-    if (motion.reset && m_impl->opening) {
+    if (motion.initialFrame && m_impl->recalledOpening) {
+        // The remembered view replaces only the automatic opening composition.
+    } else if (motion.reset && m_impl->opening) {
         m_impl->view=*m_impl->opening;
         m_impl->pivot=m_impl->openingPivot;
+        m_impl->baseFocus=m_impl->openingPivot;
     } else if (motion.focus!=BrowserCameraFocus::none) {
         auto* actor=RE::TESForm::LookupByID<RE::Actor>(m_impl->formId);
         if (const auto focus=resolveBrowserCameraFocus(captureLandmarks(actor),motion.focus)) {
             m_impl->pivot=*focus;
+            m_impl->baseFocus=*focus;
             const auto& p=m_impl->view.position;
             const float dx=p[0]-(*focus)[0],dy=p[1]-(*focus)[1],dz=p[2]-(*focus)[2];
             const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
@@ -221,6 +241,15 @@ bool SkyrimBrowserCameraPort::control(const BrowserCameraMotion& motion) {
         }
     } else {
         applyBrowserCameraMotion(m_impl->view,m_impl->pivot,motion);
+    }
+    if (motion.initialFrame && !m_impl->recalledOpening) {
+        (void)applyBrowserCameraPan(m_impl->view, m_impl->pivot,
+            {motion.initialPanX, motion.initialPanY});
+    }
+    if (const auto pan = browserCameraPanFromFocus(
+            m_impl->view, m_impl->pivot, m_impl->baseFocus)) {
+        const std::scoped_lock lock(m_impl->currentPanMutex);
+        m_impl->currentPan = pan;
     }
     auto* free=m_impl->freeState;
     free->SetInputEventHandlingEnabled(false);
@@ -250,6 +279,15 @@ void SkyrimBrowserCameraPort::restore() {
         camera->cameraRoot==m_impl->root &&
         RE::Main::WorldRootCamera()==m_impl->rendered.get() &&
         camera->cameraTarget==m_impl->previousTarget;
+    if (owns && m_impl->formId == 0x14 && isTargetLoaded(m_impl->formId)) {
+        if (auto* actor=RE::TESForm::LookupByID<RE::Actor>(m_impl->formId)) {
+            if (const auto* actorRoot=actor->Get3D()) {
+                const auto p=actorRoot->world.translate;
+                (void)m_impl->recall.rememberObserved(m_impl->menuOnRight,
+                    captureRenderedView(camera),m_impl->pivot,{p.x,p.y,p.z});
+            }
+        }
+    }
     if (owns) {
         camera->ToggleFreeCameraMode(false);
         if (m_impl->savedState && camera->currentState!=m_impl->savedState)
@@ -279,6 +317,10 @@ void SkyrimBrowserCameraPort::restore() {
     }
     m_impl->inputCaptured=false;
     m_impl->active=false;
+    {
+        const std::scoped_lock lock(m_impl->currentPanMutex);
+        m_impl->currentPan.reset();
+    }
     if (m_impl->lease) m_impl->lease->release();
     m_impl->savedState.reset();
     m_impl->freeStateOwner.reset();
@@ -286,5 +328,12 @@ void SkyrimBrowserCameraPort::restore() {
     m_impl->savedThirdControls.reset();
     m_impl->root=nullptr;
     m_impl->rendered=nullptr;
+}
+void SkyrimBrowserCameraPort::clearRememberedViews() {
+    m_impl->recall.clear();
+}
+std::optional<BrowserCameraPan> SkyrimBrowserCameraPort::currentPan() const noexcept {
+    const std::scoped_lock lock(m_impl->currentPanMutex);
+    return m_impl->currentPan;
 }
 }  // namespace stui::native

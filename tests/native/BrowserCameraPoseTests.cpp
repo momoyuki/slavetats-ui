@@ -8,6 +8,22 @@ void expect(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
 }
 bool near(float a, float b) { return std::abs(a - b) < 0.001F; }
+void currentPanCanBecomeOpeningPan() {
+    using namespace stui::native;
+    BrowserCameraView view{{0, -150, 80}, 0, 0};
+    CameraVector pivot{0, 0, 80};
+    const CameraVector baseFocus = pivot;
+    expect(applyBrowserCameraPan(view, pivot, {25, -12}),
+        "valid opening pan should translate camera and pivot together");
+    const auto current = browserCameraPanFromFocus(view, pivot, baseFocus);
+    expect(current && near(current->x, 25) && near(current->y, -12),
+        "displayed current pan should match applied opening pan");
+    expect(near(view.position[0], 25) && near(view.position[2], 68),
+        "pan should preserve camera distance from pivot");
+    const auto before = view;
+    expect(!applyBrowserCameraPan(view, pivot, {501, 0}) && view == before,
+        "out-of-range pan should not move the camera");
+}
 struct FakeNativeState {
     std::array<float, 2> freeRotation{};
     bool freeRotationEnabled{};
@@ -172,15 +188,65 @@ void worldCameraMotionIsContinuous() {
     expect(!browserCameraViewFromForward(angled.position, {0, 0, 0}),
         "invalid orientation must not start a camera session");
 }
+void sessionRecallFollowsThePlayerWithoutKeepingWorldCoordinates() {
+    using namespace stui::native;
+    const BrowserCameraView view{{125, -180, 90}, 0.4F, -0.2F};
+    const CameraVector pivot{100, 20, 80};
+    const auto remembered = captureBrowserCameraRelativePose(view, pivot, {100, 0, 0});
+    expect(remembered.has_value(), "valid owned view must be remembered");
+    const auto restored = restoreBrowserCameraRelativePose(*remembered, {300, 50, 10});
+    expect(restored && restored->view.position == CameraVector{325, -130, 100} &&
+        restored->pivot == CameraVector{300, 70, 90} &&
+        restored->view.yaw == 0.4F && restored->view.pitch == -0.2F,
+        "recall must preserve orbit, focus and distance relative to moved Player");
+    auto invalid = view;
+    invalid.position[0] = std::numeric_limits<float>::quiet_NaN();
+    expect(!captureBrowserCameraRelativePose(invalid, pivot, {100, 0, 0}),
+        "nonfinite view must not replace a remembered camera pose");
+}
+void sessionRecallKeepsSidesSeparateAndClearsOnGameReset() {
+    using namespace stui::native;
+    BrowserCameraRecallStore recall;
+    const BrowserCameraView left{{10, -100, 80}, 0.2F, 0.1F};
+    const BrowserCameraView right{{-10, -200, 90}, -0.3F, -0.1F};
+    expect(recall.rememberObserved(false, left, {0, 0, 80}, {0, 0, 0}),
+        "valid left view must be stored");
+    expect(!recall.recall(true, {0, 0, 0}),
+        "left view must not populate the right side");
+    expect(recall.rememberObserved(true, right, {0, 0, 80}, {0, 0, 0}),
+        "valid right view must be stored");
+    expect(recall.recall(false, {0, 0, 0})->view == left &&
+        recall.recall(true, {0, 0, 0})->view == right,
+        "each side must retain its last view independently");
+    auto invalid = left;
+    invalid.yaw = std::numeric_limits<float>::infinity();
+    expect(!recall.rememberObserved(false, invalid, {0, 0, 80}, {0, 0, 0}) &&
+        recall.recall(false, {0, 0, 0})->view == left,
+        "invalid capture must preserve the previous valid view");
+    expect(!recall.rememberObserved(false, std::nullopt, {0, 0, 80}, {0, 0, 0}) &&
+        recall.recall(false, {0, 0, 0})->view == left,
+        "missing rendered pose must retain the last visible view");
+    const BrowserCameraView observed{{30, -120, 82}, 0.5F, 0.2F};
+    expect(recall.rememberObserved(false, observed, {0, 0, 80}, {0, 0, 0}) &&
+        recall.recall(false, {0, 0, 0})->view == observed,
+        "recall must use the observed view even when it differs from prior commands");
+    recall.clear();
+    expect(!recall.recall(false, {0, 0, 0}) &&
+        !recall.recall(true, {0, 0, 0}),
+        "loading another game must remove both remembered views");
+}
 }
 int main() {
     try {
+        currentPanCanBecomeOpeningPan();
         stateHandoffAndGestures();
         controlsRestoreAfterViewReplacement();
         nativeHandoffDoesNotReinterpretControls();
         capturedOffsetsSurviveCameraOwnershipCleanup();
         focusUsesBonesAndScaledBounds();
         worldCameraMotionIsContinuous();
+        sessionRecallFollowsThePlayerWithoutKeepingWorldCoordinates();
+        sessionRecallKeepsSidesSeparateAndClearsOnGameReset();
         std::cout << "PASS native browser camera controls\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';

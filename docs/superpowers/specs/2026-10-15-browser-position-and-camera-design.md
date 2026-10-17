@@ -91,7 +91,13 @@ The menu-side value travels with the target through the coordinator and position
 the input frame. Do not reflect the world position at acquisition: the prior
 reflection caused a first-gesture jump. Automatic side composition uses the
 center of the available control area as the initial framing target and remains
-subject to in-game visual acceptance.
+subject to in-game visual acceptance. The launcher exposes independent Left and
+Right initial camera X offsets in normalized viewport coordinates, each from
+-0.15 to +0.15 with zero as the default. The offset applies only to the first
+automatic Player composition for that side when no session view is remembered.
+Explicit Center and Reset View still use the control area's unadjusted center.
+Changing an offset takes effect on the next first composition, not on an
+already open camera view.
 Native state orientation/zoom are not proof of identical SmoothCam rendered
 distance at handoff; actual continuity remains an acceptance requirement.
 In-game acceptance must verify the actual NiCamera update, first-drag continuity,
@@ -151,6 +157,48 @@ camera diagnostics before adding explicit goal placement or distance settings.
 
 - https://github.com/pethzero/SlavetatsUIPzx/blob/main/src/tattoo_browser.cpp
 - https://github.com/mwilsnd/SkyrimSE-SmoothCam/blob/master/SmoothCam/include/SmoothCamAPI.h
+
+## Inspectable initial Pan — 2026-10-17
+
+Show Current Pan X/Y in the in-browser camera controls. These are the current
+pivot displacement from the selected focus, projected onto the camera's right
+and up axes, in game world units. Show the side's saved Initial Pan X/Y beside
+them and provide a one-shot action to copy the current pair to that side.
+Expose editable Initial Pan X/Y for Left and Right in the launcher. Persist
+each side independently in the plugin configuration, accepting only finite
+values within +/-500 units. Apply the saved pair after the normal initial
+Whole body composition, translating camera and pivot together. The existing
+normalized Opening frame X offset is a separate composition setting.
+Session recall takes precedence on subsequent openings of the same side;
+saved Initial Pan applies when that side has no recalled view. Current Pan
+is unavailable without ownership of a Player browser camera. No raw world
+position or native camera pointer is persisted.
+
+## Player camera recall within one game session — 2026-10-17
+
+On the first Player browser opening after a new game or save load, use the
+existing side-aware Whole body composition. After a successfully owned browser
+camera session closes, remember its final orbit, pan/focus and zoom separately
+for Left and Right. Opening that side again restores the remembered view. A
+side without a remembered view still uses the initial composition. Reset View
+continues to restore the game view captured on the current opening.
+
+Remember the final rendered NiCamera pose, not only the FreeCamera position
+requested by the UI; those may differ after an engine or SmoothCam update.
+Store only finite camera and pivot offsets relative to the loaded Player's
+current 3D root, plus orientation. Rebase those offsets against the Player's
+current root on reopening. Never retain native pointers, world positions or a
+savegame-persistent value. Capture only while the same Player camera state,
+root, rendered camera and target are still owned. Ownership refusal, a changed
+camera identity or an unloaded Player does not replace a remembered view.
+Closing the browser always restores the captured normal game camera and releases
+SmoothCam ownership; recall never changes that restoration path.
+
+Clear both sides on PreLoadGame and NewGame before any later Player opening.
+Route invalidation through the game-thread coordinator so a queued old gesture
+cannot restore or repopulate a view after the reset. The game process exit
+naturally discards the in-memory cache. NPC selection releases Player camera
+control and does not create an NPC remembered view. No new setting is needed.
 
 ## Approved inspection controls — 2026-10-16
 

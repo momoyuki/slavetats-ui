@@ -237,3 +237,68 @@ dedicated MO2 mod after backing up the prior DLL; built and deployed SHA-256
 match (`5572575DE007F8354BF5B9E2D089463B54FE209FB184CA680DAC127EEAB39273`).
 Left/right visual placement passed in-game acceptance on 2026-10-17.
 First-frame gesture continuity and close/restore still require in-game acceptance.
+
+### Player session camera recall — 2026-10-17
+
+- [x] Test a pure actor-relative view snapshot: orbit, pivot and zoom follow a
+  moved Player without retaining a world position; reject nonfinite input.
+- [x] Add an in-memory Left/Right cache to the game-thread camera port. Capture
+  only on a valid owned close, restore on a later opening of that side, and
+  preserve the current opening's Reset View and normal close restoration.
+- [x] Distinguish the coordinator's automatic first framing from an explicit
+  focus request, so recall does not suppress a later user Center action.
+- [x] Clear both sides on PreLoadGame/NewGame through the coordinator; test a
+  queued gesture at reset. Existing session tests cover target switch to NPC,
+  ownership refusal and stale camera identity separately.
+- [x] Run Debug and Release builds, complete CTest suites, `git diff --check`
+  and a scoped diff review.
+- [ ] Validate first/second opening, both sides, save load, close/restore and
+  SmoothCam in game before marking acceptance complete.
+
+The recovered snapshot was checked out separately after the original worktree
+was archived. Debug and Release builds and complete CTest suites passed 55/55
+each. The combined Release DLL was deployed to the dedicated MO2 mod on
+2026-10-17 after user approval; in-game validation remains pending.
+
+### Catalog footer and initial camera offsets — 2026-10-17
+
+- [x] Move the match count beside Thumbnail BG, remove the idle preview hint,
+  and put Save Tattoo/Undo on the Cancel/Close footer row.
+- [x] Persist bounded independent Left/Right initial camera X offsets in the
+  plugin JSON and expose both in the Menu Framework launcher.
+- [x] Build and run the full Debug and Release test suites; check the diff.
+- [x] Deploy the tested Release DLL to the dedicated MO2 mod after approval;
+  built and deployed SHA-256 hashes matched.
+- [ ] Verify footer alignment, first composition, camera recall and
+  close/restore in game.
+
+### Alpha-fitted catalog thumbnails — 2026-10-17
+
+- [x] Compute a padded alpha bounding box during DDS upload and retain its UVs
+  with the cached texture; fall back to full UVs for empty or unsupported data.
+- [x] Use the fitted UVs only in catalog gallery cards.
+- [x] Run Debug and Release builds and full tests, then inspect the scoped diff.
+- [ ] Verify small, wide, opaque, transparent, and BSA-backed DDS cards in game.
+
+Installed 4096x4096 DXT5 tattoo packs showed the alpha-scan cost of full
+decompression. A direct BC3 alpha-block path now avoids that allocation and
+skips their common transparent-block encoding. The Body 1, Face 1 and
+belly_preg_HATCHERY samples skipped 82.6%, 98.7% and 91.5% of blocks,
+respectively. Debug and Release builds and complete suites passed 55/55; the
+new Release DLL was deployed to MO2 after approval with matching SHA-256 hashes.
+In-game scrolling and visual acceptance remain pending.
+
+### Bounded BC3 thumbnail GPU resources — 2026-10-17
+
+- [x] Verify installed 4096x4096 DXT5 packs have no useful mip chain.
+- [x] Generate at most 512px RGBA BC3 thumbnails while scanning original alpha.
+- [x] Retain alpha crop and verify GPU dimensions/color in WARP tests.
+- [ ] Validate scrolling speed, visual detail and VRAM in Skyrim.
+
+# Inspectable initial Pan follow-up — 2026-10-17
+
+- [x] Define camera-local Current Pan X/Y from the owned pivot and focus.
+- [x] Persist bounded Initial Pan X/Y independently for Left and Right.
+- [x] Show Current/Initial Pan and an explicit copy-current action in browser controls.
+- [x] Apply Initial Pan on the first opening composition when no session recall exists.
+- [ ] Validate the values and first opening in Skyrim, including both sides and a new game load.

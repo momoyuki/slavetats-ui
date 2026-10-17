@@ -18,10 +18,11 @@ public:
 
     void setOpen(bool open);
     void setTarget(std::uint32_t formId, bool menuOnRight = true,
-        float frameCenterX = -1.0F);
+        float frameCenterX = -1.0F, BrowserCameraPan initialPan = {});
     void move(float orbitX, float orbitY, float zoom);
     void control(const BrowserCameraMotion& motion);
     void refresh();
+    void resetGameSession();
 
 private:
     void scheduleIfNeeded();
@@ -32,6 +33,7 @@ private:
     std::mutex m_mutex;
     bool m_open{};
     bool m_scheduled{};
+    bool m_resetRequested{};
     bool m_menuOnRight{true};
     std::uint32_t m_targetFormId{};
     std::uint64_t m_revision{};

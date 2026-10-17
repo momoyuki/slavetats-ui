@@ -49,12 +49,51 @@ void invalidValueKeepsSafeDefault() {
     std::filesystem::remove(path, ignored);
 }
 
+void cameraOffsetsPersistIndependentlyAndRejectInvalidValues() {
+    const auto path = std::filesystem::temp_directory_path() / "SlaveTatsUICameraOffsetTests.json";
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+    auto config = std::make_shared<stui::runtime::PluginConfigFile>(path);
+    stui::runtime::MenuSideSetting setting(config);
+    expect(setting.load(), "missing offsets should load");
+    expect(setting.initialCameraOffset(stui::runtime::MenuSide::left) == 0.0F,
+        "left offset should default to center");
+    expect(setting.initialCameraOffset(stui::runtime::MenuSide::right) == 0.0F,
+        "right offset should default to center");
+    expect(setting.setInitialCameraOffset(stui::runtime::MenuSide::left, -0.08F),
+        "left offset should save");
+    expect(setting.setInitialCameraOffset(stui::runtime::MenuSide::right, 0.12F),
+        "right offset should save");
+    expect(setting.setInitialCameraPan(stui::runtime::MenuSide::left, {24.0F, -11.0F}),
+        "left opening pan should save");
+    expect(setting.setInitialCameraPan(stui::runtime::MenuSide::right, {-8.0F, 13.0F}),
+        "right opening pan should save independently");
+    expect(!setting.setInitialCameraPan(stui::runtime::MenuSide::left, {501.0F, 0.0F}),
+        "out-of-range opening pan should be rejected");
+    expect(!setting.setInitialCameraOffset(stui::runtime::MenuSide::left, 0.2F),
+        "out-of-range offset should be rejected");
+    stui::runtime::MenuSideSetting restored(config);
+    expect(restored.load(), "valid saved offsets should load");
+    expect(restored.initialCameraOffset(stui::runtime::MenuSide::left) == -0.08F,
+        "left offset should restore independently");
+    expect(restored.initialCameraOffset(stui::runtime::MenuSide::right) == 0.12F,
+        "right offset should restore independently");
+    expect(restored.initialCameraPan(stui::runtime::MenuSide::left) ==
+        stui::runtime::CameraPanSetting{24.0F, -11.0F},
+        "left opening pan should restore independently");
+    expect(restored.initialCameraPan(stui::runtime::MenuSide::right) ==
+        stui::runtime::CameraPanSetting{-8.0F, 13.0F},
+        "right opening pan should restore independently");
+    std::filesystem::remove(path, ignored);
+}
+
 }  // namespace
 
 int main() {
     try {
         menuSideDefaultsAndPersistsWithoutChangingOtherSettings();
         invalidValueKeepsSafeDefault();
+        cameraOffsetsPersistIndependentlyAndRejectInvalidValues();
         std::cout << "PASS menu side setting\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';

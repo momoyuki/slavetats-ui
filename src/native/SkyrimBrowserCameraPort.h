@@ -20,6 +20,8 @@ public:
     [[nodiscard]] bool isTargetLoaded(std::uint32_t formId) override;
     [[nodiscard]] bool control(const BrowserCameraMotion& motion) override;
     void restore() override;
+    void clearRememberedViews() override;
+    [[nodiscard]] std::optional<BrowserCameraPan> currentPan() const noexcept;
 
 private:
     struct Impl;
