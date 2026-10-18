@@ -562,6 +562,15 @@ void galleryRequestsOnlyNearbyRows() {
         "expected bounded thumbnail window around the scrolled rows");
 }
 
+void browseFooterReservesStableSelectionSpace() {
+    const auto waiting = stui::native::catalogBrowseFooterHeight(40.0F, false);
+    const auto browsing = stui::native::catalogBrowseFooterHeight(40.0F, true);
+    expect(waiting == 80.0F && browsing == 160.0F,
+        "Browse should reserve enough footer space before a tattoo is selected");
+    expect(stui::native::catalogBrowseFooterHeight(-1.0F, true) == 0.0F,
+        "invalid frame height must not grow the footer");
+}
+
 void thumbnailCardWidgetsHaveStableUniqueIds() {
     expect(stui::native::catalogCardWidgetId("Thumbnail", "source-a.json", 7) ==
                "Thumbnail##source-a.json:7",
@@ -1746,6 +1755,7 @@ int main() {
         std::cout << "PASS thumbnail grid groups two cards into each row\n";
         thumbnailGridSupportsSixCardsPerRow();
         galleryRequestsOnlyNearbyRows();
+        browseFooterReservesStableSelectionSpace();
         cameraPointerInputUsesOnlySpaceOutsidePanel();
         cameraFocusIsLimitedToThePlayerForInitialQa();
         thumbnailCardWidgetsHaveStableUniqueIds();

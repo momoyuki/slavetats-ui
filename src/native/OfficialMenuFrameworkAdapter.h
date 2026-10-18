@@ -292,6 +292,9 @@ struct CatalogVisibleCardRange {
     std::size_t columnCount,
     std::size_t entryCount) noexcept;
 
+[[nodiscard]] float catalogBrowseFooterHeight(
+    float frameHeightWithSpacing, bool previewActive) noexcept;
+
 [[nodiscard]] std::string catalogCardWidgetId(
     std::string_view role,
     std::string_view sourceId,
@@ -597,7 +600,7 @@ public:
         runtime::MenuSide side = runtime::MenuSide::left) noexcept;
     [[nodiscard]] static bool renderLauncher(
         runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
-        NativeThumbnailRuntime& thumbnails);
+        NativeThumbnailRuntime& thumbnails, NativeCatalogBrowserModel& catalog);
     static void renderFoundation(
         NativeSlotWorkflowModel& workflow,
         NativeSlotWorkflowRuntime& slotRuntime,

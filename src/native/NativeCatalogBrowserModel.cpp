@@ -238,6 +238,19 @@ repository::TattooCatalogSnapshot NativeCatalogBrowserModel::snapshot() const no
     return m_snapshot;
 }
 
+std::vector<std::string> NativeCatalogBrowserModel::diskCacheBuildPaths() {
+    refresh();
+    if (!m_snapshot) return {};
+    repository::TattooFilter filter;
+    filter.pageSize = std::numeric_limits<std::size_t>::max();
+    const auto page = m_snapshot->repository.query(filter);
+    std::vector<std::string> paths;
+    paths.reserve(page.entries.size());
+    for (const auto& entry : page.entries)
+        paths.push_back(entry.texturePath);
+    return paths;
+}
+
 bool NativeCatalogBrowserModel::appliedOnly() const noexcept {
     return m_appliedOnly;
 }

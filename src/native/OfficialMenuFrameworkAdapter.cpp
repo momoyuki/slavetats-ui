@@ -2,7 +2,6 @@
 #include "runtime/HotkeyBinding.h"
 
 #include <RE/Skyrim.h>
-#include <spdlog/spdlog.h>
 
 #include "native/NativeThumbnailRuntime.h"
 #include "native/NativeSlotWorkflowModel.h"
@@ -784,6 +783,12 @@ CatalogVisibleCardRange catalogVisibleCardRange(
         .begin = std::min(entryCount, beginRow * columnCount),
         .end = std::min(entryCount, endRow * columnCount),
     };
+}
+
+float catalogBrowseFooterHeight(
+    float frameHeightWithSpacing, bool previewActive) noexcept {
+    return std::max(0.0F, frameHeightWithSpacing) *
+        (previewActive ? 4.0F : 2.0F);
 }
 
 std::string catalogCardWidgetId(
@@ -2854,7 +2859,7 @@ std::string_view launcherModVersionLabel() noexcept {
 
 bool OfficialMenuFrameworkAdapter::renderLauncher(
     runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
-    NativeThumbnailRuntime& thumbnails) {
+    NativeThumbnailRuntime& thumbnails, NativeCatalogBrowserModel& catalog) {
     ImGuiMCP::TextUnformatted("Open SlaveTatsUI when you are ready to browse tattoos.");
     ImGuiMCP::TextUnformatted(launcherModVersionLabel().data());
     const auto hotkeyLabel = hotkey.label();
@@ -2921,13 +2926,40 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
     }
     static bool cacheClearFailed = false;
     static bool cacheCleared = false;
-    if (ImGuiMCP::Button("Clear Thumbnail Cache")) {
+    static bool cacheBuildUnavailable = false;
+    auto buildStatus = thumbnails.diskCacheBuildStatus();
+    if (!buildStatus.active && ImGuiMCP::Button("Build Thumbnail Cache")) {
+        auto paths = catalog.diskCacheBuildPaths();
+        cacheBuildUnavailable = paths.empty();
+        if (!cacheBuildUnavailable) {
+            thumbnails.startDiskCacheBuild(std::move(paths));
+            buildStatus = thumbnails.diskCacheBuildStatus();
+            cacheCleared = false;
+        }
+    }
+    thumbnails.pumpDiskCacheBuild();
+    if (buildStatus.active) {
+        ImGuiMCP::Text("Building Thumbnail Cache: %zu / %zu", buildStatus.completed,
+            buildStatus.total);
+        ImGuiMCP::TextUnformatted("Please keep this menu open until the build is complete.");
+    } else if (buildStatus.total > 0) {
+        if (buildStatus.failed == 0)
+            ImGuiMCP::TextUnformatted("Thumbnail Cache ready. You can open the Tattoo Browser.");
+        else
+            ImGuiMCP::Text("Thumbnail Cache build complete: %zu / %zu (%zu failed)",
+                buildStatus.completed, buildStatus.total, buildStatus.failed);
+    }
+    if (cacheBuildUnavailable)
+        ImGuiMCP::TextUnformatted("No tattoo textures found. Thumbnail Cache was not built.");
+    ImGuiMCP::Text("Thumbnail Cache: %.1f MiB used",
+        static_cast<double>(thumbnails.diskCacheBytes()) / (1024.0 * 1024.0));
+    if (!buildStatus.active && ImGuiMCP::Button("Clear Thumbnail Cache")) {
         cacheCleared = thumbnails.clearDiskCache();
         cacheClearFailed = !cacheCleared;
     }
     if (cacheClearFailed) ImGuiMCP::TextUnformatted("Could not clear the thumbnail cache.");
     else if (cacheCleared) ImGuiMCP::TextUnformatted("Thumbnail cache cleared.");
-    return ImGuiMCP::Button("Open Tattoo Browser");
+    return !buildStatus.active && ImGuiMCP::Button("Open Tattoo Browser");
 }
 
 void OfficialMenuFrameworkAdapter::renderFoundation(
@@ -2982,7 +3014,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             }
             const bool down = ImGuiMCP::IsMouseDown(0);
             const bool dragging = ImGuiMCP::IsMouseDragging(0);
-            const bool pressed = down && !gesture.wasLeftDown;
             input = browserCameraPointerInput(
                 gesture, overUi || io->WantTextInput, down, dragging,
                 io->MouseDelta.x, io->MouseDelta.y, io->MouseWheel, io->KeyAlt,
@@ -3040,17 +3071,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 }
                 ImGuiMCP::End();
             }
-            static unsigned traceFrames = 0;
-            if (!down) traceFrames = 0;
-            if (pressed || (down && ++traceFrames % 30 == 0) || io->MouseWheel != 0.0F) {
-                const auto apiMouse = ImGuiMCP::GetMousePos();
-                spdlog::info("[CameraTrace] input target={:08X} mouse=({:.1f},{:.1f}) apiMouse=({:.1f},{:.1f}) frame=({:.1f},{:.1f},{:.1f},{:.1f}) inside={} window={} active={} down={} dragging={} latched={} delta=({:.2f},{:.2f}) wheel={:.2f} intent=({:.2f},{:.2f},{:.2f})",
-                    cameraTarget, io->MousePos.x, io->MousePos.y, apiMouse.x, apiMouse.y,
-                    frame.position.x, frame.position.y, frame.size.width, frame.size.height,
-                    insideFrame, hoveredWindow, activeItem, down, dragging,
-                    gesture.dragStartedOutside, io->MouseDelta.x, io->MouseDelta.y,
-                    io->MouseWheel, input.orbitX, input.orbitY, input.zoom);
-            }
         }
         cameraIntent(cameraTarget, input);
     };
@@ -3104,12 +3124,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
-    if (renderActorTargetHeader(workflow)) {
-        ImGuiMCP::End();
-        ImGuiMCP::PopStyleVar();
-        dispatchCameraIntent();
-        return;
-    }
+    // The actor is fixed for this Browse session. Target selection belongs on Current Slots.
     const bool targetActionsEnabled = actorTargetActionsEnabled(
         workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
     model.refresh();
@@ -3142,6 +3157,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const std::size_t searchLength = std::min(filter.search.size(), searchBuffer.size() - 1);
     std::copy_n(filter.search.data(), searchLength, searchBuffer.data());
     const auto snapshot = model.snapshot();
+    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
     std::vector<CatalogBrowserSourceOption> sourceOptions;
     std::vector<std::string> domainOptions;
     std::vector<const char*> domainLabels;
@@ -3186,7 +3202,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         sourceLabels.push_back(source.label.c_str());
     }
 
-    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
         if (ImGuiMCP::BeginTable(
                 "FilterControls",
                 2,
@@ -3349,10 +3364,8 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const auto* style = ImGuiMCP::GetStyle();
     const float itemSpacing = style ? style->ItemSpacing.y : 4.0F;
     const float metadataHeight = ImGuiMCP::GetTextLineHeightWithSpacing() + itemSpacing;
-    const bool previewHasStatus = slotRuntime.catalogPreviewSelection().has_value() ||
-        slotRuntime.catalogPreviewError() != nullptr;
-    const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing() *
-        (slotRuntime.catalogPreviewActive() ? (previewHasStatus ? 3.0F : 2.0F) : 1.0F);
+    const float footerHeight = catalogBrowseFooterHeight(
+        ImGuiMCP::GetFrameHeightWithSpacing(), slotRuntime.catalogPreviewActive());
     constexpr float galleryRowHeight = 160.0F;
     const float cellPadding = style ? style->CellPadding.y * 2.0F : 8.0F;
     const CatalogBrowserGridLayout gridLayout{
@@ -3670,6 +3683,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 if (ImGuiMCP::Button("Retry##CatalogPreview"))
                     slotRuntime.retryCatalogPreview();
             }
+        } else if (!slotRuntime.catalogPreviewStarting() &&
+                   slotRuntime.catalogPreviewError()) {
+            if (ImGuiMCP::Button("Retry Preview##CatalogPreviewBegin"))
+                slotRuntime.retryCatalogPreview();
         }
 
         ImGuiMCP::TableSetColumnIndex(1);

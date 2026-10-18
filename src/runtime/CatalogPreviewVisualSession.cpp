@@ -77,7 +77,7 @@ bool CatalogPreviewVisualSession::paint(
     const auto normal = previewTexturePath(candidate.bump);
     const auto glowTexture = previewTexturePath(candidate.glowTexture);
     if (!diffuse || diffuse->empty() || !normal || !glowTexture) return false;
-    return writeAndVerify(CatalogPreviewVisualSnapshot{
+    const CatalogPreviewVisualSnapshot desired{
         .diffuse = *diffuse,
         .normal = *normal,
         .glowTexture = *glowTexture,
@@ -87,7 +87,14 @@ bool CatalogPreviewVisualSession::paint(
         .emissiveMult = candidate.emissiveMult,
         .glossiness = candidate.glossiness,
         .specularStrength = candidate.specularStrength,
-    });
+    };
+    // A concurrent overlay refresh can replace the visible material while Browse stays open.
+    // Polling an unchanged preview should not issue another full SKEE write.
+    if (m_restorePending && m_bindings.capture &&
+        m_bindings.capture(*m_target) == desired) {
+        return true;
+    }
+    return writeAndVerify(desired);
 }
 
 bool CatalogPreviewVisualSession::restore(const CatalogPreviewVisualContext& context) {
@@ -101,10 +108,11 @@ bool CatalogPreviewVisualSession::restore(const CatalogPreviewVisualContext& con
 }
 
 bool CatalogPreviewVisualSession::clear(const CatalogPreviewVisualContext& context) {
-    if (!m_original || !resolveStableTarget(context)) {
+    if (!m_original || !m_context || context != *m_context) {
         return false;
     }
-    if (m_restorePending && !writeAndVerify(*m_original)) {
+    if (m_restorePending &&
+        (!resolveStableTarget(context) || !writeAndVerify(*m_original))) {
         return false;
     }
     m_restorePending = false;

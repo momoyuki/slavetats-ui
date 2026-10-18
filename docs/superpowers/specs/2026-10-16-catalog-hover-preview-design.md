@@ -119,8 +119,10 @@ remove operations during browsing is not an acceptable preview implementation.
 In-game trace on 2026-10-17 showed a successful nonpersistent BellyHeart2 paint
 while UI hover remained unchanged for more than seven seconds, although the
 Actor visual reverted to its original Body Cum tattoo after about five seconds.
-While a clicked selection remains active, the runtime may reassert the same
-visual-only SKEE properties no more often than every two seconds. The refresh
+While a clicked selection remains active, the runtime checks the material every
+500 milliseconds and reasserts visual-only SKEE properties only when they differ.
+The earlier unconditional two-second repaint did not prevent visible returns of
+the original tattoo during in-game testing on 2026-10-18. The refresh
 uses the existing Actor/slot validation and paint scheduler, stops on Undo,
 Close, Save, failure, or world invalidation, and never repeats an authoritative
 SlaveTatsNG mutation.
@@ -169,6 +171,10 @@ readback confirm the requested identity/appearance. History updates once on succ
 Undo/Close restores the exact original visual, including an empty slot, texture,
 alpha, glow/emission, gloss/specular and bump state. Restore failure stays visible
 and retryable. Navigation cannot complete while a required restore is unresolved.
+An untouched session, or one whose original appearance was already restored,
+can close without resolving an old material or slot snapshot; it performs no
+write. A session with a pending visual restore still requires the original
+Actor, slot, and material to be stable before any restore write.
 SKEE scalar snapshots and paint values with NaN or infinity are rejected before
 the first write: they cannot pass exact restore readback comparison.
 A successful commit followed by sync failure cannot be treated as an unsaved
@@ -176,6 +182,9 @@ preview and rolled back by a stale Close/selection ticket.
 
 After Save, return to Current Slots with fresh readback and the usual detailed
 Edit Appearance action available. Do not open the detailed editor automatically.
+If the nonpersistent preview session cannot begin, Browse stays open, shows the
+error, and offers an explicit Retry Preview action. Failed begins do not retry
+continuously in the background.
 
 ## Verification and implementation sequence
 

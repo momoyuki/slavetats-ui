@@ -378,7 +378,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                 auto source = std::make_unique<native::D3D11NativeThumbnailSource>(
                     textureRoot,
                     device,
-                    16,
+                    64,
                     std::chrono::minutes(2),
                     [](std::string_view resourcePath) {
                         const std::string path(resourcePath);
@@ -414,7 +414,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                     },
                     [] { return textures::TextureCacheClock::now(); });
                 logger::info(
-                    "SlaveTatsUI: native thumbnail runtime initialized (capacity=16, vramCacheBudget=16MiB, diskCacheBudget=256MiB, ttl=2m)");
+                    "SlaveTatsUI: native thumbnail runtime initialized (capacity=64, vramCacheBudget=16MiB, diskCacheBudget=256MiB, ttl=2m)");
             }
         }
         g_nativeSlotWorkflow.start();
@@ -549,7 +549,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
             [] { return g_browserCameraPort.currentPan(); });
     }, [] {
         return native::OfficialMenuFrameworkAdapter::renderLauncher(
-            *g_hotkeyBinding, *g_menuSideSetting, *g_nativeThumbnailRuntime);
+            *g_hotkeyBinding, *g_menuSideSetting, *g_nativeThumbnailRuntime,
+            g_nativeCatalogBrowser);
     });
     nativeMenu.setOpenGuard([] {
         auto* ui = RE::UI::GetSingleton();

@@ -112,9 +112,11 @@ core::CatalogPreviewRestoreResult CatalogPreviewRuntimeSession::restore(
         return std::unexpected(previewError(core::ServiceErrorCode::previewConflict,
             "Catalog preview session is stale"));
     }
-    auto slot=validateSlot(request.context);
-    if (!slot || *slot!=*m_originalSlot) return std::unexpected(previewError(
-        core::ServiceErrorCode::previewConflict,"The selected slot changed during preview"));
+    if (m_visual->restorePending()) {
+        auto slot=validateSlot(request.context);
+        if (!slot || *slot!=*m_originalSlot) return std::unexpected(previewError(
+            core::ServiceErrorCode::previewConflict,"The selected slot changed during preview"));
+    }
     if (!m_visual->restore(visualContext(request.context))) {
         return std::unexpected(previewError(core::ServiceErrorCode::previewFailed,
             "Catalog preview restore failed"));

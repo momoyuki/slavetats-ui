@@ -201,9 +201,9 @@ Ink/Glow/Glossy draft controls and explicit Save/Undo semantics. The approved
 transaction and nonpersistent visual-backend contract is recorded in
 `docs/superpowers/specs/2026-10-16-catalog-hover-preview-design.md`; implementation
 is deployed for in-game testing. Hover shows only the card tooltip and outline;
-it does not change the Actor. Save, Undo, NPC behavior, in-use card indicator,
-and save/co-save/reload isolation remain to be
-accepted in game. Active plan:
+it does not change the Actor. The user confirmed a Preview save/load cycle on
+2026-10-18. Specific quicksave, autosave, co-save, NPC behavior, in-use card
+indicator and other Preview cases remain separate acceptance checks. Active plan:
 `docs/superpowers/plans/active/2026-10-16-catalog-hover-preview.md`.
 
 **Design:** `docs/superpowers/specs/2026-10-15-scrollable-tattoo-grid-design.md`,
@@ -215,6 +215,8 @@ work for visible rows. Narrow panels use fewer columns. This remains in the
 existing SKSE Menu Framework browser with the Actor visible beside it.
 The catalog gallery now fits each DDS's visible alpha region into its card,
 with padding and a zoom limit; source textures and applied tattoos are unchanged.
+The user accepted 192-pixel cached thumbnails after prebuilding and scrolling
+in game on 2026-10-18. Direct VRAM measurement remains open.
 
 Clicking a tattoo shows an uncommitted preview on the exact Actor Target;
 Undo or Close restores the prior visual state. This requires
@@ -229,6 +231,9 @@ area opposite the configured browser side, retaining the captured angle and
 distance. The user confirmed the Left and Right menu positions in-game.
 First-gesture continuity, close/restore, and the SmoothCam handoff still need
 separate acceptance.
+The user confirmed camera close/restore and SmoothCam behavior in game on
+2026-10-18; first-gesture continuity and the remaining camera cases still need
+their own results recorded.
 
 **Next camera follow-up (implemented in worktree; in-game acceptance pending):**
 On the first Player browser opening in a game session, use the configured

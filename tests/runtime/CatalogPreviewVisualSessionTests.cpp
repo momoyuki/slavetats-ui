@@ -88,6 +88,23 @@ void paintsAndRestoresExactOriginal() {
     expect(fake.values == original, "restore should write the exact captured snapshot");
 }
 
+void repaintSkipsUnchangedMaterialAndRecoversExternalOverwrite() {
+    FakeVisual fake;
+    const auto original = fake.values;
+    CatalogPreviewVisualSession session(fake.bindings());
+    const CatalogPreviewVisualContext context{0x14, 4, TattooArea::body, 2};
+    expect(session.begin(context), "begin should capture the original material");
+    expect(session.paint(context, candidate()) && fake.writes == 1,
+        "initial selection must write the preview");
+    expect(session.paint(context, candidate()) && fake.writes == 1,
+        "refresh should not rewrite a material that still matches the preview");
+    fake.values = original;
+    expect(session.paint(context, candidate()) && fake.writes == 2,
+        "refresh should repaint when another system restores the original visual");
+    expect(session.restore(context) && fake.values == original && fake.writes == 3,
+        "close must restore the captured original after an external overwrite");
+}
+
 void rejectsInvalidPackTextureBeforeWriting() {
     FakeVisual fake;
     CatalogPreviewVisualSession session(fake.bindings());
@@ -108,6 +125,34 @@ void rejectsRebuiltMaterialBeforeWriting() {
 
     expect(!session.paint(context, candidate()), "paint should reject a replaced material");
     expect(fake.writes == 0, "replaced material must not be written");
+}
+
+void untouchedSessionCanCloseAfterMaterialRebuild() {
+    FakeVisual fake;
+    CatalogPreviewVisualSession session(fake.bindings());
+    const CatalogPreviewVisualContext context{0x14, 9, TattooArea::body, 1};
+    expect(session.begin(context), "begin should capture the untouched material");
+    fake.target.material = 99;
+    expect(session.restore(context),
+        "closing an untouched session should not depend on the old material");
+    expect(fake.writes == 0 && !session.restorePending(),
+        "closing an untouched session must not write to a rebuilt material");
+}
+
+void paintedSessionWaitsForOriginalMaterialBeforeRestore() {
+    FakeVisual fake;
+    const auto original = fake.values;
+    CatalogPreviewVisualSession session(fake.bindings());
+    const CatalogPreviewVisualContext context{0x14, 10, TattooArea::body, 1};
+    expect(session.begin(context), "begin should capture the original material");
+    expect(session.paint(context, candidate()), "paint should change the original material");
+    fake.target.material = 99;
+    expect(!session.restore(context) && session.restorePending(),
+        "painted session must retain cleanup when its material is rebuilt");
+    expect(fake.writes == 1, "restore must not write to a different material");
+    fake.target.material = 4;
+    expect(session.restore(context) && fake.values == original,
+        "restore should retry against the original material when it returns");
 }
 
 void rejectsStaleActorGenerationAndSlot() {
@@ -197,8 +242,11 @@ void clearRestoresWithoutEndingSession() {
 
 int main() {
     paintsAndRestoresExactOriginal();
+    repaintSkipsUnchangedMaterialAndRecoversExternalOverwrite();
     rejectsInvalidPackTextureBeforeWriting();
     rejectsRebuiltMaterialBeforeWriting();
+    untouchedSessionCanCloseAfterMaterialRebuild();
+    paintedSessionWaitsForOriginalMaterialBeforeRestore();
     rejectsStaleActorGenerationAndSlot();
     failedReadbackLeavesRestoreObligation();
     partialWriteFailureKeepsRestoreRetryable();

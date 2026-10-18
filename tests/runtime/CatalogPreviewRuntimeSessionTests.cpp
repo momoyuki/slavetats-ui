@@ -85,6 +85,20 @@ void validatesAuthorityOnEveryOperation() {
     expect(fixture.writes == 1, "foreign slot must not receive a restore write");
 }
 
+void untouchedSessionCanCloseAfterSlotChanges() {
+    Fixture fixture;
+    auto session = fixture.makeSession();
+    const core::CatalogPreviewBeginRequest context{0x14, 4, core::TattooArea::body, 0};
+    const auto begun = session.begin(context);
+    expect(begun.has_value(), "empty slot should start an untouched preview");
+    fixture.slots.slots[0].occupancy = core::SlotOccupancy::external;
+    fixture.target.material = 99;
+    expect(session.restore({begun->sessionId, context}).has_value(),
+        "untouched preview should close after foreign slot and material changes");
+    expect(fixture.writes == 0,
+        "closing after foreign changes must not write to that material");
+}
+
 void rejectsLockedAndExternalSlotsBeforeCapture() {
     Fixture fixture;
     fixture.slots.slots[0] = {.index = 0, .occupancy = core::SlotOccupancy::external};
@@ -248,6 +262,7 @@ void saveChecksSlotAndRetriesSynchronizationOnly() {
 
 int main() {
     validatesAuthorityOnEveryOperation();
+    untouchedSessionCanCloseAfterSlotChanges();
     rejectsLockedAndExternalSlotsBeforeCapture();
     rejectsStaleSessionWithoutPlayerFallback();
     rejectsSaveAfterVisualTargetIsRebuilt();

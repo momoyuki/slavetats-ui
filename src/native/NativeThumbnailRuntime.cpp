@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 namespace stui::native {
@@ -97,14 +98,83 @@ std::vector<NativeThumbnailView> NativeThumbnailRuntime::views() const {
 }
 
 void NativeThumbnailRuntime::reset() {
+    {
+        std::scoped_lock lock(m_buildMutex);
+        ++m_buildGeneration;
+        m_buildPaths.clear();
+        m_buildStatus = {};
+        m_buildInFlight = false;
+    }
     m_controller.clear();
     m_source->clear();
     m_lastPrune.reset();
 }
 
 bool NativeThumbnailRuntime::clearDiskCache() {
+    if (diskCacheBuildStatus().active) return false;
     reset();
     return m_source->clearDiskCache();
+}
+
+void NativeThumbnailRuntime::startDiskCacheBuild(std::vector<std::string> texturePaths) {
+    std::scoped_lock lock(m_buildMutex);
+    if (m_buildStatus.active) return;
+    std::unordered_set<std::string> unique;
+    m_buildPaths.clear();
+    m_buildPaths.reserve(texturePaths.size());
+    for (auto& path : texturePaths) {
+        if (!path.empty() && unique.insert(path).second)
+            m_buildPaths.push_back(std::move(path));
+    }
+    ++m_buildGeneration;
+    m_buildInFlight = false;
+    m_buildStatus = {.total = m_buildPaths.size(), .active = !m_buildPaths.empty()};
+}
+
+void NativeThumbnailRuntime::pumpDiskCacheBuild() {
+    std::string path;
+    std::uint64_t generation{};
+    {
+        std::scoped_lock lock(m_buildMutex);
+        if (!m_buildStatus.active || m_buildInFlight) return;
+        path = m_buildPaths[m_buildStatus.completed];
+        generation = m_buildGeneration;
+        m_buildInFlight = true;
+    }
+    auto task = [this, path = std::move(path), generation] {
+        {
+            std::scoped_lock lock(m_buildMutex);
+            if (generation != m_buildGeneration) return;
+        }
+        bool success = false;
+        try { success = m_source->prepareDiskCache(path); } catch (...) {}
+        std::scoped_lock lock(m_buildMutex);
+        if (generation != m_buildGeneration) return;
+        ++m_buildStatus.completed;
+        if (!success) ++m_buildStatus.failed;
+        m_buildInFlight = false;
+        if (m_buildStatus.completed == m_buildStatus.total)
+            m_buildStatus.active = false;
+    };
+    try { m_scheduler(std::move(task)); }
+    catch (...) {
+        std::scoped_lock lock(m_buildMutex);
+        if (generation != m_buildGeneration) return;
+        ++m_buildStatus.completed;
+        ++m_buildStatus.failed;
+        m_buildInFlight = false;
+        if (m_buildStatus.completed == m_buildStatus.total)
+            m_buildStatus.active = false;
+    }
+}
+
+ThumbnailCacheBuildStatus NativeThumbnailRuntime::diskCacheBuildStatus() const {
+    std::scoped_lock lock(m_buildMutex);
+    return m_buildStatus;
+}
+
+std::uintmax_t NativeThumbnailRuntime::diskCacheBytes() const {
+    return m_source->diskCacheBytes();
 }
 
 }  // namespace stui::native

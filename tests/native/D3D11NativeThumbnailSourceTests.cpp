@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <exception>
 #include <expected>
@@ -99,6 +100,22 @@ std::vector<std::uint8_t> makeLargeBc3Dds() {
     if (FAILED(DirectX::SaveToDDSMemory(source.GetImages(), source.GetImageCount(),
             source.GetMetadata(), DirectX::DDS_FLAGS_NONE, dds)))
         throw std::runtime_error("could not encode BC3 fixture");
+    const auto* begin = static_cast<const std::uint8_t*>(dds.GetBufferPointer());
+    return {begin, begin + dds.GetBufferSize()};
+}
+
+std::vector<std::uint8_t> makeMipmappedBc7Dds() {
+    DirectX::ScratchImage source;
+    if (FAILED(source.Initialize2D(DXGI_FORMAT_BC7_UNORM, 512, 512, 1, 4)))
+        throw std::runtime_error("could not create BC7 fixture");
+    for (std::size_t mip = 0; mip < 4; ++mip) {
+        auto* image = source.GetImage(mip, 0, 0);
+        std::memset(image->pixels, 0, image->slicePitch);
+    }
+    DirectX::Blob dds;
+    if (FAILED(DirectX::SaveToDDSMemory(source.GetImages(), source.GetImageCount(),
+            source.GetMetadata(), DirectX::DDS_FLAGS_NONE, dds)))
+        throw std::runtime_error("could not encode BC7 fixture");
     const auto* begin = static_cast<const std::uint8_t*>(dds.GetBufferPointer());
     return {begin, begin + dds.GetBufferSize()};
 }
@@ -260,10 +277,10 @@ void diskCacheSkipsArchiveAfterGpuCacheIsCleared() {
             return TextureBytesResult(dds);
         }, {}, directory.path() / "cache");
     const auto first = source.load("Pack/large.dds", [] { return true; }, {});
-    expect(first && first->get()->width == 512, "first load should build a small thumbnail");
+    expect(first && first->get()->width == 192, "first load should build a small thumbnail");
     source.clear();
     const auto second = source.load("Pack/large.dds", [] { return true; }, {});
-    expect(second && second->get()->width == 512, "second load should use cached thumbnail");
+    expect(second && second->get()->width == 192, "second load should use cached thumbnail");
     expect(archiveReads == 1, "disk hit should avoid reading the archive again");
     expect(source.clearDiskCache(), "clear button should remove disk cache");
     source.clear();
@@ -296,6 +313,7 @@ void diskCacheInvalidatesLooseChangesAndPreservesOtherFilesOnClear() {
     stui::textures::ThumbnailDiskCache cache(directory.path() / "cache", looseRoot);
     const std::vector<std::uint8_t> thumbnail{3, 4, 5};
     cache.store("Pack/tattoo.dds", thumbnail);
+    expect(cache.bytes() == thumbnail.size(), "disk usage should include stored DDS");
     expect(cache.load("Pack/tattoo.dds") == thumbnail,
         "unchanged loose source should reuse disk thumbnail");
     const auto original = looseRoot / "Pack" / "tattoo.dds";
@@ -305,8 +323,70 @@ void diskCacheInvalidatesLooseChangesAndPreservesOtherFilesOnClear() {
     expect(!cache.load("../outside.dds"), "traversal must not read outside cache");
     directory.write(fs::path("cache") / "keep.txt", {8});
     expect(cache.clear(), "cache clear should succeed");
+    expect(cache.bytes() == 0, "disk usage should reset after clear");
     expect(fs::exists(directory.path() / "cache" / "keep.txt"),
         "clear should leave unrelated files alone");
+}
+
+void prebuildWritesDiskWithoutUploadingGpuTexture() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeLargeBc3Dds();
+    std::size_t archiveReads{};
+    D3D11NativeThumbnailSource source(directory.path() / "loose", device.Get(),
+        12, 2min, [&](std::string_view) {
+            ++archiveReads;
+            return TextureBytesResult(dds);
+        }, {}, directory.path() / "cache");
+    expect(source.prepareDiskCache("Pack/large.dds"),
+        "prebuild should create a cache entry");
+    expect(source.diskCacheBytes() > 0, "prebuild should report disk usage");
+    expect(!source.find("Pack/large.dds", {}),
+        "prebuild should not upload a GPU texture");
+    expect(source.prepareDiskCache("Pack/large.dds") && archiveReads == 1,
+        "second prebuild should reuse disk entry");
+}
+
+void reportsDiskLookupAndUploadTiming() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeLargeBc3Dds();
+    std::vector<stui::native::NativeThumbnailTimingStage> stages;
+    D3D11NativeThumbnailSource source(directory.path() / "loose", device.Get(),
+        12, 2min, [&](std::string_view) { return TextureBytesResult(dds); },
+        {}, directory.path() / "cache",
+        [&](std::string_view path, stui::native::NativeThumbnailTimingStage stage,
+            double elapsedMs) {
+            expect(path == "Pack/timed.dds" && elapsedMs >= 0.0,
+                "timing should identify a nonnegative phase duration");
+            stages.push_back(stage);
+        });
+    expect(source.prepareDiskCache("Pack/timed.dds"), "timing fixture should prebuild");
+    expect(source.load("Pack/timed.dds", [] { return true; }, {}).has_value(),
+        "cached thumbnail should upload");
+    expect(stages == std::vector<stui::native::NativeThumbnailTimingStage>{
+            stui::native::NativeThumbnailTimingStage::diskLookup,
+            stui::native::NativeThumbnailTimingStage::upload},
+        "cache hit should report disk read and GPU upload separately");
+}
+
+void prebuiltBc7LoadsSmallTextureWithoutSecondArchiveRead() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeMipmappedBc7Dds();
+    std::size_t archiveReads{};
+    D3D11NativeThumbnailSource source(directory.path() / "loose", device.Get(),
+        12, 2min, [&](std::string_view) {
+            ++archiveReads;
+            return TextureBytesResult(dds);
+        }, {}, directory.path() / "cache");
+    expect(source.prepareDiskCache("Pack/bc7.dds"),
+        "BC7 should prebuild into disk cache");
+    const auto loaded = source.load("Pack/bc7.dds", [] { return true; }, {});
+    expect(loaded && (*loaded)->width == 192 && (*loaded)->height == 192,
+        "BC7 disk hit should upload only a 192px texture");
+    expect(archiveReads == 1,
+        "BC7 disk hit should skip rereading the original texture");
 }
 
 void diskCacheEvictsOldestFilesAtByteBudget() {
@@ -391,6 +471,12 @@ int main() {
     failures += run("small DDS also reuses disk cache", smallDdsAlsoUsesDiskCache);
     failures += run("disk cache validates source and clears only cache files",
         diskCacheInvalidatesLooseChangesAndPreservesOtherFilesOnClear);
+    failures += run("prebuild writes disk without GPU upload",
+        prebuildWritesDiskWithoutUploadingGpuTexture);
+    failures += run("reports disk lookup and upload timing",
+        reportsDiskLookupAndUploadTiming);
+    failures += run("prebuilt BC7 loads small texture",
+        prebuiltBc7LoadsSmallTextureWithoutSecondArchiveRead);
     failures += run("disk cache evicts oldest files at byte budget",
         diskCacheEvictsOldestFilesAtByteBudget);
     failures += run("clear removes cache entries", clearRemovesCacheEntries);

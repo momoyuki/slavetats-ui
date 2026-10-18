@@ -80,6 +80,19 @@ void displaysSixEntriesPerPage() {
         "expected remaining entry on final page");
 }
 
+void cacheBuildPathsLoadCatalogBeforeBrowsing() {
+    TattooCatalogSnapshot current = snapshot({
+        tattoo("pack.json", "Marks", "Body", "First", 0),
+        tattoo("pack.json", "Marks", "Body", "Second", 1),
+    });
+    NativeCatalogBrowserModel model([&current] { return current; });
+    expect(!model.snapshot(), "expected catalog model to start without a snapshot");
+    const auto paths = model.diskCacheBuildPaths();
+    expect(paths.size() == 2 && paths[0] == "fixture.dds" &&
+            paths[1] == "fixture.dds",
+        "expected cache build to load all catalog entries before Browse opens");
+}
+
 void galleryContainsAllFilteredMatchesWithoutChangingPagedView() {
     TattooCatalogSnapshot current = catalogWithEntries(13);
     NativeCatalogBrowserModel model([&current] { return current; });
@@ -390,6 +403,7 @@ int run(std::string_view name, Test&& test) {
 int main() {
     int failures = 0;
     failures += run("displays six entries per page", displaysSixEntriesPerPage);
+    failures += run("cache build loads catalog before browsing", cacheBuildPathsLoadCatalogBeforeBrowsing);
     failures += run("gallery contains all filtered matches", galleryContainsAllFilteredMatchesWithoutChangingPagedView);
     failures += run("combines filters and resets to first page", combinesFiltersAndResetsToFirstPage);
     failures += run("clamps previous, next, and one-based input", clampsPreviousNextAndOneBasedPageInput);

@@ -19,6 +19,34 @@
 
 ## 2026-10-17 disk thumbnail cache follow-up
 
+2026-10-18 follow-up: reduce large BC3 cache thumbnails to 128 pixels per
+side and invalidate the previous cache key. Add a launcher build action that
+prepares disk files without GPU uploads, reports progress and disk usage, and
+retains the existing clear action. Verify with Debug and Release suites and
+in-game quality/performance checks.
+
+2026-10-18 quality experiment: after the user confirmed the prebuilt cache
+improved browsing, raise BC3 and BC7 thumbnails to 256 pixels and invalidate
+the 128-pixel cache key. Compare image detail and scrolling smoothness in game.
+
+2026-10-18 follow-up: try 192-pixel thumbnails to balance detail and cached
+scrolling performance. Use exact proportional BC3 output dimensions rather
+than integer scale rounding, and invalidate the 256-pixel cache key.
+
+The user accepted the prebuilt 192-pixel cache after in-game scrolling. Remove
+the temporary per-image and gallery timing logs from the deployed plugin while
+retaining failure warnings and the optional timing hook for future diagnostics.
+Visual detail and scrolling are accepted; direct VRAM measurement remains open.
+
+2026-10-18 performance diagnosis: in-game scrolling still stutters after
+prebuilding the disk cache. Add bounded `[ThumbPerf]` timing logs for cache
+lookup, source resolution, preparation, GPU upload, and Browse table render.
+Compare first and repeated scrolls before changing the execution pipeline.
+The 2026-10-18 in-game trace showed gallery rendering below 0.5 ms while
+BC7 uploads took 50–220 ms each. These textures exceeded the 2 MiB fallback
+cache limit and were not reduced by the BC3-only thumbnail path. Extend the
+reducer to BC7 mip chains, add cache/reuse regression tests, and retest in game.
+
 The user requested persistent thumbnail files for repeated long gallery scrolls
 and a cache clear button in the SKSE launcher. The implementation creates
 reduced DDS files for large BC3 source textures and copies other DDS files up

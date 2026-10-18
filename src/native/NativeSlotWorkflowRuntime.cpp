@@ -300,7 +300,7 @@ void NativeSlotWorkflowRuntime::pump() {
 
     if (m_catalogPreviewSession && m_catalogPreviewModel.open()) {
         if (m_catalogPreviewModel.selectedCandidate() && m_catalogPreviewLastPaint &&
-            now - *m_catalogPreviewLastPaint >= std::chrono::seconds(2))
+            now - *m_catalogPreviewLastPaint >= std::chrono::milliseconds(500))
             m_catalogPreviewModel.requestRepaint();
         if (auto paint = m_catalogPreviewModel.takePaint()) {
             scheduleCatalogPreviewPaint(std::move(*paint));

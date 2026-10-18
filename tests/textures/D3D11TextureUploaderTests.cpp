@@ -190,13 +190,13 @@ int main() {
     const auto expectedLargeBounds = stui::textures::visibleBc3AlphaBounds(
         {largeImage->pixels, largeImage->slicePitch},
         largeImage->width, largeImage->height, largeImage->rowPitch);
-    if (!smallPreview || smallPreview->width != 512 || smallPreview->height != 512 ||
+    if (!smallPreview || smallPreview->width != 192 || smallPreview->height != 192 ||
         !smallPreview->shaderResourceView ||
         smallPreview->visibleBounds.left != expectedLargeBounds.left ||
         smallPreview->visibleBounds.top != expectedLargeBounds.top ||
         smallPreview->visibleBounds.right != expectedLargeBounds.right ||
         smallPreview->visibleBounds.bottom != expectedLargeBounds.bottom) {
-        std::cerr << "FAIL large BC3 should upload a cropped 512px preview\n";
+        std::cerr << "FAIL large BC3 should upload a cropped 192px preview\n";
         return 1;
     }
     Microsoft::WRL::ComPtr<ID3D11Resource> previewResource;
@@ -208,7 +208,7 @@ int main() {
     }
     D3D11_TEXTURE2D_DESC previewDesc{};
     previewTexture->GetDesc(&previewDesc);
-    if (previewDesc.Width != 512 || previewDesc.Height != 512 ||
+    if (previewDesc.Width != 192 || previewDesc.Height != 192 ||
         previewDesc.Format != DXGI_FORMAT_R8G8B8A8_UNORM) {
         std::cerr << "FAIL GPU should retain only the small RGBA preview\n";
         return 1;
@@ -232,13 +232,44 @@ int main() {
         return 1;
     }
     const auto* markedPixel = static_cast<const std::uint8_t*>(mapped.pData) +
-        256 * mapped.RowPitch + 256 * 4;
+        96 * mapped.RowPitch + 96 * 4;
     const auto* emptyPixel = static_cast<const std::uint8_t*>(mapped.pData);
     const bool correctPixels = markedPixel[0] > 240 && markedPixel[1] < 8 &&
         markedPixel[2] < 8 && markedPixel[3] == 255 && emptyPixel[3] == 0;
     context->Unmap(staging.Get(), 0);
     if (!correctPixels) {
         std::cerr << "FAIL reduced BC3 pixels should retain color and alpha\n";
+        return 1;
+    }
+
+    DirectX::ScratchImage bc7Source;
+    if (FAILED(bc7Source.Initialize2D(DXGI_FORMAT_BC7_UNORM, 512, 512, 1, 4))) {
+        std::cerr << "FAIL could not create mipmapped BC7 fixture\n";
+        return 1;
+    }
+    for (std::size_t mip = 0; mip < 4; ++mip) {
+        auto* image = bc7Source.GetImage(mip, 0, 0);
+        std::memset(image->pixels, 0, image->slicePitch);
+    }
+    DirectX::Blob bc7Dds;
+    if (FAILED(DirectX::SaveToDDSMemory(bc7Source.GetImages(),
+            bc7Source.GetImageCount(), bc7Source.GetMetadata(),
+            DirectX::DDS_FLAGS_NONE, bc7Dds))) {
+        std::cerr << "FAIL could not encode mipmapped BC7 fixture\n";
+        return 1;
+    }
+    const auto bc7Bytes = std::span(
+        static_cast<const std::uint8_t*>(bc7Dds.GetBufferPointer()),
+        bc7Dds.GetBufferSize());
+    const auto cachedBc7 = stui::textures::makeCachedThumbnailDds(bc7Bytes);
+    DirectX::TexMetadata cachedMetadata{};
+    DirectX::ScratchImage cachedImage;
+    if (!cachedBc7 || FAILED(DirectX::LoadFromDDSMemory(cachedBc7->data(),
+            cachedBc7->size(), DirectX::DDS_FLAGS_NONE, &cachedMetadata,
+            cachedImage)) || cachedMetadata.width != 192 ||
+        cachedMetadata.height != 192 || cachedMetadata.mipLevels != 1 ||
+        cachedMetadata.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+        std::cerr << "FAIL BC7 cache should use a 192px decompressed mip\n";
         return 1;
     }
 

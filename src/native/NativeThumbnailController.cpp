@@ -120,13 +120,15 @@ void NativeThumbnailController::synchronize(
     m_pendingEpoch.reset();
     m_pendingPaths.clear();
 
-    if (m_epoch != epoch) {
+    const bool sameEpoch = m_epoch == epoch;
+    if (!sameEpoch) {
         m_epoch = std::move(epoch);
         m_negativeFailures.clear();
         m_deviceUnavailablePaths.clear();
     }
 
     ++m_generation;
+    auto previousViews = std::move(m_views);
     m_views.clear();
     m_views.reserve(texturePaths.size());
     m_queuedPaths.clear();
@@ -141,6 +143,16 @@ void NativeThumbnailController::synchronize(
         } else if (cachedTextures[index]) {
             view.status = NativeThumbnailStatus::ready;
             view.texture = std::move(cachedTextures[index]);
+        } else if (sameEpoch) {
+            const auto previous = std::ranges::find(previousViews, texturePath,
+                &NativeThumbnailView::texturePath);
+            if (previous != previousViews.end() &&
+                previous->status == NativeThumbnailStatus::ready && previous->texture) {
+                view.status = NativeThumbnailStatus::ready;
+                view.texture = previous->texture;
+            } else {
+                shouldQueue = true;
+            }
         } else {
             shouldQueue = true;
         }

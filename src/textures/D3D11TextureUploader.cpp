@@ -45,7 +45,7 @@ D3D11Texture::UvBounds finishVisibleBounds(
 
 bool makeBc3Thumbnail(const DirectX::Image& source, DirectX::ScratchImage& thumbnail,
     D3D11Texture::UvBounds& visibleBounds) {
-    constexpr std::size_t maxThumbnailSize = 512;
+    constexpr std::size_t maxThumbnailSize = 192;
     constexpr std::size_t maxSourcePixels = 4096 * 4096;
     if (source.width <= maxThumbnailSize && source.height <= maxThumbnailSize)
         return false;
@@ -58,10 +58,11 @@ bool makeBc3Thumbnail(const DirectX::Image& source, DirectX::ScratchImage& thumb
     if (!source.pixels || source.rowPitch < blocksWide * 16 ||
         source.slicePitch / source.rowPitch < blocksHigh) return false;
 
-    const auto scale = std::max((source.width + maxThumbnailSize - 1) / maxThumbnailSize,
-        (source.height + maxThumbnailSize - 1) / maxThumbnailSize);
-    const auto width = (source.width + scale - 1) / scale;
-    const auto height = (source.height + scale - 1) / scale;
+    const auto longestSide = std::max(source.width, source.height);
+    const auto width = std::max<std::size_t>(1,
+        source.width * maxThumbnailSize / longestSide);
+    const auto height = std::max<std::size_t>(1,
+        source.height * maxThumbnailSize / longestSide);
     const auto outputFormat = source.format == DXGI_FORMAT_BC3_UNORM_SRGB
         ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     if (FAILED(thumbnail.Initialize2D(outputFormat, width, height, 1, 1))) return false;
@@ -127,8 +128,8 @@ bool makeBc3Thumbnail(const DirectX::Image& source, DirectX::ScratchImage& thumb
                     right = std::max(right, sourceX + 1);
                     bottom = std::max(bottom, sourceY + 1);
                     const auto& color = colors[(colorIndices >> (pixel * 2)) & 3];
-                    const auto outputX = sourceX / scale;
-                    const auto outputY = sourceY / scale;
+                    const auto outputX = sourceX * width / source.width;
+                    const auto outputY = sourceY * height / source.height;
                     auto& result = accumulated[outputY * width + outputX];
                     result.red += color[0] * opacity;
                     result.green += color[1] * opacity;
@@ -158,6 +159,54 @@ bool makeBc3Thumbnail(const DirectX::Image& source, DirectX::ScratchImage& thumb
     return true;
 }
 
+bool makeBc7Thumbnail(const DirectX::ScratchImage& source,
+    DirectX::ScratchImage& thumbnail, D3D11Texture::UvBounds& visibleBounds) {
+    constexpr std::size_t maxThumbnailSize = 192;
+    constexpr std::size_t maxSourcePixels = 4096 * 4096;
+    const auto* first = source.GetImage(0, 0, 0);
+    if (!first || (first->format != DXGI_FORMAT_BC7_UNORM &&
+            first->format != DXGI_FORMAT_BC7_UNORM_SRGB) ||
+        (first->width <= maxThumbnailSize && first->height <= maxThumbnailSize) ||
+        first->height == 0 || first->width > maxSourcePixels / first->height)
+        return false;
+
+    std::size_t mip = 0;
+    for (std::size_t next = 1; next < source.GetMetadata().mipLevels; ++next) {
+        const auto* candidate = source.GetImage(next, 0, 0);
+        if (!candidate ||
+            std::max(candidate->width, candidate->height) < maxThumbnailSize) break;
+        mip = next;
+    }
+    const auto* selected = source.GetImage(mip, 0, 0);
+    if (!selected) return false;
+    const auto outputFormat = selected->format == DXGI_FORMAT_BC7_UNORM_SRGB
+        ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+    DirectX::ScratchImage decompressed;
+    if (FAILED(DirectX::Decompress(*selected, outputFormat, decompressed)))
+        return false;
+    const auto* rgba = decompressed.GetImage(0, 0, 0);
+    if (!rgba) return false;
+    if (std::max(rgba->width, rgba->height) > maxThumbnailSize) {
+        const auto scale = static_cast<double>(maxThumbnailSize) /
+            static_cast<double>(std::max(rgba->width, rgba->height));
+        const auto width = std::max<std::size_t>(1, rgba->width * scale);
+        const auto height = std::max<std::size_t>(1, rgba->height * scale);
+        if (FAILED(DirectX::Resize(*rgba, width, height,
+                DirectX::TEX_FILTER_TRIANGLE |
+                    DirectX::TEX_FILTER_SEPARATE_ALPHA |
+                    DirectX::TEX_FILTER_FORCE_NON_WIC,
+                thumbnail))) return false;
+    } else {
+        thumbnail = std::move(decompressed);
+    }
+    const auto* output = thumbnail.GetImage(0, 0, 0);
+    if (!output) return false;
+    visibleBounds = visibleAlphaBounds(
+        {output->pixels, output->slicePitch}, output->width,
+        output->height, output->rowPitch);
+    return true;
+}
+
 }  // namespace
 
 std::optional<std::vector<std::uint8_t>> makeCachedThumbnailDds(
@@ -168,7 +217,8 @@ std::optional<std::vector<std::uint8_t>> makeCachedThumbnailDds(
     if (!first) return std::nullopt;
     DirectX::ScratchImage thumbnail;
     D3D11Texture::UvBounds bounds;
-    if (!makeBc3Thumbnail(*first, thumbnail, bounds)) {
+    if (!makeBc3Thumbnail(*first, thumbnail, bounds) &&
+        !makeBc7Thumbnail(*decoded, thumbnail, bounds)) {
         if (ddsBytes.size() <= 2 * 1024 * 1024)
             return std::vector<std::uint8_t>(ddsBytes.begin(), ddsBytes.end());
         return std::nullopt;
@@ -277,7 +327,8 @@ D3D11TextureResult uploadDdsTexture(
     DirectX::ScratchImage thumbnail;
     D3D11Texture::UvBounds reducedBounds;
     const bool reduced = firstImage &&
-        makeBc3Thumbnail(*firstImage, thumbnail, reducedBounds);
+        (makeBc3Thumbnail(*firstImage, thumbnail, reducedBounds) ||
+            makeBc7Thumbnail(*decoded, thumbnail, reducedBounds));
     const HRESULT result = DirectX::CreateShaderResourceView(
         device,
         reduced ? thumbnail.GetImages() : decoded->GetImages(),

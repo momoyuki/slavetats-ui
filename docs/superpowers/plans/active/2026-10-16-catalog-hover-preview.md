@@ -22,6 +22,20 @@
 > Debug and Release suites passed 55/55; the tested DLL was deployed with the
 > prior DLL backed up. In-game acceptance remains pending.
 
+> 2026-10-18 retry follow-up: A failed preview begin now exposes Retry Preview
+> in the Browse footer. The runtime test covers a failed begin, no automatic
+> retry loop, and successful explicit retry in the same Browse session.
+
+> 2026-10-18 close safety: An untouched preview can close after its original
+> slot or material changes without writing to either. Once visual paint has
+> occurred, restore still requires the original target and retains a retryable
+> cleanup obligation when it changes. Debug and Release suites pass 55/55;
+> the matching DLL is deployed. In-game acceptance remains pending.
+
+> 2026-10-18 user acceptance: preview during a save/load cycle passed in game.
+> Quicksave, autosave, co-save inspection and NPC-specific cases remain listed
+> separately until their individual results are recorded.
+
 > **For agentic workers:** Use executing-plans inline; a fresh reviewer checks the final change.
 
 **Goal:** Click-to-preview catalog tattoos, retain exact quick appearance, Save once, and cancel without persistent preview writes.

@@ -72,7 +72,6 @@ struct SkyrimBrowserCameraPort::Impl {
     std::optional<BrowserCameraPan> currentPan;
     BrowserCameraRecallStore recall;
     bool recalledOpening{};
-    unsigned traceUpdates{};
 };
 
 SkyrimBrowserCameraPort::SkyrimBrowserCameraPort() : m_impl(std::make_unique<Impl>()) {}
@@ -197,7 +196,6 @@ bool SkyrimBrowserCameraPort::begin(std::uint32_t formId, bool menuOnRight) {
     free->rotation.y=m_impl->view.yaw;
     free->zUpDown={0,0};
     free->verticalDirection=0;
-    m_impl->traceUpdates=0;
     SKSE::log::info("[CameraTrace] free-camera-v1 acquired position=({:.2f},{:.2f},{:.2f}) yaw={:.3f} pitch={:.3f}",
         captured->position[0],captured->position[1],captured->position[2],captured->yaw,captured->pitch);
     return true;
@@ -263,12 +261,6 @@ bool SkyrimBrowserCameraPort::control(const BrowserCameraMotion& motion) {
     camera->zoomInput=0;
     if (auto* controls=RE::PlayerControls::GetSingleton()) controls->blockPlayerInput=true;
     if (auto* ui=RE::UI::GetSingleton(); ui && ui->GameIsPaused()) camera->Update();
-    if (++m_impl->traceUpdates<=3 || m_impl->traceUpdates%60==0) {
-        const auto actual=m_impl->rendered->world.translate;
-        SKSE::log::info("[CameraTrace] free-camera-v1 wanted=({:.2f},{:.2f},{:.2f}) actual=({:.2f},{:.2f},{:.2f}) pivot=({:.2f},{:.2f},{:.2f})",
-            free->translation.x,free->translation.y,free->translation.z,actual.x,actual.y,actual.z,
-            m_impl->pivot[0],m_impl->pivot[1],m_impl->pivot[2]);
-    }
     return true;
 }
 

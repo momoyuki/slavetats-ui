@@ -18,6 +18,17 @@ enum class NativeThumbnailFailureStage {
     exception,
 };
 
+enum class NativeThumbnailTimingStage {
+    diskLookup,
+    resolve,
+    prepare,
+    upload,
+    store,
+};
+
+using NativeThumbnailTimingObserver =
+    std::function<void(std::string_view, NativeThumbnailTimingStage, double)>;
+
 using NativeThumbnailFailureObserver =
     std::function<void(std::string_view, NativeThumbnailFailureStage)>;
 
@@ -30,7 +41,8 @@ public:
         textures::TextureCacheDuration idleTtl,
         textures::TextureArchiveReader archiveReader,
         NativeThumbnailFailureObserver failureObserver = {},
-        std::filesystem::path diskCacheDirectory = {});
+        std::filesystem::path diskCacheDirectory = {},
+        NativeThumbnailTimingObserver timingObserver = {});
 
     [[nodiscard]] std::shared_ptr<textures::D3D11Texture> find(
         std::string_view texturePath,
@@ -42,6 +54,8 @@ public:
     void pruneExpired(textures::TextureCacheTimePoint now) override;
     void clear() override;
     [[nodiscard]] bool clearDiskCache() override;
+    [[nodiscard]] bool prepareDiskCache(std::string_view texturePath) override;
+    [[nodiscard]] std::uintmax_t diskCacheBytes() const override;
     [[nodiscard]] bool available() const noexcept override;
 
 private:
@@ -51,6 +65,7 @@ private:
     std::unique_ptr<textures::ThumbnailDiskCache> m_diskCache;
     textures::TextureArchiveReader m_archiveReader;
     NativeThumbnailFailureObserver m_failureObserver;
+    NativeThumbnailTimingObserver m_timingObserver;
     mutable std::mutex m_mutex;
 };
 

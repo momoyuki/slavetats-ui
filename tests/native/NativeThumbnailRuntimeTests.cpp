@@ -113,6 +113,12 @@ public:
         cached.clear();
     }
 
+    bool prepareDiskCache(std::string_view path) override {
+        preparedPaths.emplace_back(path);
+        return true;
+    }
+    std::uintmax_t diskCacheBytes() const override { return 65536; }
+
     bool available() const noexcept override {
         return isAvailable;
     }
@@ -127,6 +133,7 @@ public:
     std::vector<bool> cancellationResults;
     std::vector<TextureCacheTimePoint> pruneTimes;
     std::size_t clearCount{};
+    std::vector<std::string> preparedPaths;
 };
 
 struct RuntimeFixture {
@@ -310,6 +317,29 @@ void sourceFailureInTaskCompletesRequestAndAllowsQueueProgress() {
         "expected queue to advance after source failure");
 }
 
+void buildsDiskCacheOneEntryPerPump() {
+    RuntimeFixture fixture;
+    fixture.runtime->startDiskCacheBuild({"a.dds", "a.dds", "b.dds"});
+    expect(fixture.runtime->diskCacheBuildStatus().total == 2,
+        "build should deduplicate texture paths");
+    fixture.runtime->pumpDiskCacheBuild();
+    fixture.runtime->pumpDiskCacheBuild();
+    expect(fixture.scheduled.size() == 1,
+        "only one cache build task should be in flight");
+    fixture.scheduled.front()();
+    fixture.runtime->pumpDiskCacheBuild();
+    expect(fixture.scheduled.size() == 2,
+        "second entry should schedule after first completes");
+    fixture.scheduled.back()();
+    const auto status = fixture.runtime->diskCacheBuildStatus();
+    expect(status.completed == 2 && !status.active && status.failed == 0,
+        "build should report completed progress");
+    expect(fixture.source->preparedPaths == std::vector<std::string>{"a.dds", "b.dds"},
+        "build should process each unique path once");
+    expect(fixture.runtime->diskCacheBytes() == 65536,
+        "runtime should expose disk usage");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -339,5 +369,6 @@ int main() {
     failures += run(
         "source failure in task completes request and allows queue progress",
         sourceFailureInTaskCompletesRequestAndAllowsQueueProgress);
+    failures += run("builds disk cache one entry per pump", buildsDiskCacheOneEntryPerPump);
     return failures == 0 ? 0 : 1;
 }

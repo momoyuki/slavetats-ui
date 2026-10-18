@@ -88,7 +88,7 @@ std::filesystem::path ThumbnailDiskCache::entryPath(std::string_view texturePath
     std::error_code error;
     const bool loose = std::filesystem::is_regular_file(loosePath, error) && !error;
     const auto stamp = loose ? fileStamp(loosePath) : m_archiveStamp;
-    auto hash = appendHash(kHashBasis, "thumbnail-v1:");
+    auto hash = appendHash(kHashBasis, "thumbnail-v5:");
     hash = appendHash(hash, canonical);
     hash = appendHash(hash, loose ? ":loose:" : ":archive:");
     hash = appendHash(hash, std::to_string(stamp));

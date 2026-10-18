@@ -44,6 +44,7 @@ public:
     [[nodiscard]] std::size_t scrollRevision() const noexcept;
     [[nodiscard]] repository::TattooFacets contextualFacets() const;
     [[nodiscard]] repository::TattooCatalogSnapshot snapshot() const noexcept;
+    [[nodiscard]] std::vector<std::string> diskCacheBuildPaths();
     [[nodiscard]] bool appliedOnly() const noexcept;
     [[nodiscard]] bool favoritesOnly() const noexcept;
     [[nodiscard]] bool recentlyUsedOnly() const noexcept;

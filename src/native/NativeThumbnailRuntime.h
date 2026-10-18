@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -31,7 +32,16 @@ public:
     virtual void pruneExpired(textures::TextureCacheTimePoint now) = 0;
     virtual void clear() = 0;
     [[nodiscard]] virtual bool clearDiskCache() { return false; }
+    [[nodiscard]] virtual bool prepareDiskCache(std::string_view) { return false; }
+    [[nodiscard]] virtual std::uintmax_t diskCacheBytes() const { return 0; }
     virtual bool available() const noexcept = 0;
+};
+
+struct ThumbnailCacheBuildStatus {
+    std::size_t completed{};
+    std::size_t total{};
+    std::size_t failed{};
+    bool active{};
 };
 
 class NativeThumbnailRuntime {
@@ -51,6 +61,10 @@ public:
     [[nodiscard]] std::vector<NativeThumbnailView> views() const;
     void reset();
     [[nodiscard]] bool clearDiskCache();
+    void startDiskCacheBuild(std::vector<std::string> texturePaths);
+    void pumpDiskCacheBuild();
+    [[nodiscard]] ThumbnailCacheBuildStatus diskCacheBuildStatus() const;
+    [[nodiscard]] std::uintmax_t diskCacheBytes() const;
 
 private:
     std::unique_ptr<NativeThumbnailTextureSource> m_source;
@@ -58,6 +72,11 @@ private:
     NativeThumbnailNow m_now;
     NativeThumbnailController m_controller;
     std::optional<textures::TextureCacheTimePoint> m_lastPrune;
+    mutable std::mutex m_buildMutex;
+    std::vector<std::string> m_buildPaths;
+    ThumbnailCacheBuildStatus m_buildStatus;
+    bool m_buildInFlight{};
+    std::uint64_t m_buildGeneration{};
 };
 
 }  // namespace stui::native

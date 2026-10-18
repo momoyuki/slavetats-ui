@@ -22,13 +22,17 @@ The Outfit Gallery video shared on 2026-10-15 is a visual reference for the over
   BC3/DXT5 textures are scanned directly from compressed alpha blocks to avoid
   allocating a full decompressed image; common fully transparent blocks are
   skipped before per-pixel inspection.
-- BC3/DXT5 textures larger than 512 pixels in either dimension generate a
+- BC3/DXT5 textures larger than 192 pixels in either dimension generate a
   bounded RGBA thumbnail during that same alpha scan. The GPU cache keeps the
   thumbnail rather than the source-resolution texture. Alpha-weighted color
   and maximum source alpha preserve narrow marks in the gallery. Non-BC3 and
   small textures retain the existing upload path. This changes only browser
   thumbnail presentation; SlaveTatsNG still reads the original DDS for tattoos.
-  The GPU cache retains up to 16 recently used thumbnails within a 16 MiB
+  Large BC7 textures use the closest existing mip at or above 192 pixels,
+  decompress only that mip, and cache a bounded RGBA DDS. If the source has
+  too few mips, the selected mip is resized to 192 pixels. This prevents
+  full-resolution BC7 upload and alpha analysis during browsing.
+  The GPU cache retains up to 64 recently used thumbnails within a 16 MiB
   uploaded-image byte budget and a two-minute idle TTL. Oversized images can
   still be displayed but are not retained by the cache. Visible references
   may temporarily use additional VRAM. Large BC3 thumbnails are cached as
@@ -39,7 +43,23 @@ The Outfit Gallery video shared on 2026-10-15 is a visual reference for the over
   or archive metadata stamps select the cache entry. Invalid cached images
   fall back to the original DDS. The SKSE launcher has a Clear Thumbnail Cache
   button that removes only files in this dedicated cache directory.
+  The launcher also offers Build Thumbnail Cache for all installed catalog
+  texture paths, processing one path per scheduled game task and showing
+  completed/total/failure counts plus current disk usage. Building creates
+  disk DDS files without uploading textures to GPU; Clear is unavailable
+  while a build is active.
+  The 192-pixel size is an in-game quality experiment between the responsive
+  128-pixel cache and the sharper 256-pixel version. It uses a new cache key
+  so older entries cannot be reused. Typical RGBA thumbnails use about 144 KiB
+  each, allowing up to 64 entries within the existing 16 MiB GPU budget when
+  other sizes permit.
 - The footer keeps Cancel and Close while removing page-number navigation from this screen.
+- The Browse footer reserves the same space before and after a tattoo is
+  selected, so clicking a card does not resize the visible gallery window or
+  push footer buttons below the viewport. Thumbnails that remain visible across
+  a small scroll retain their ready texture even if the GPU cache evicted it.
+- Browse shows the fixed Actor in its target label and omits Actor switching controls.
+  Contextual filter options are computed only while the Filters popup is open.
 - Current Slots retains pagination. A user-approved presentation refinement uses
   four columns and twelve slots per page, as described in the FLICK UI spec.
 

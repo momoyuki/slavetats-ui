@@ -60,6 +60,7 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     NativeSlotWorkflowModel model(catalog);
     std::vector<NativeSlotTask> scheduled;
     int begins{}, paints{}, restores{}, commits{};
+    bool failFirstBegin = true;
     auto now = std::chrono::steady_clock::time_point{};
     std::optional<stui::core::CatalogPreviewCommitRequest> saved;
     NativeSlotWorkflowRuntime runtime(
@@ -88,10 +89,15 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
         [&scheduled](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
         [&now] { return now; },
         {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-        [&begins](const stui::core::CatalogPreviewBeginRequest& request)
+        [&begins, &failFirstBegin](const stui::core::CatalogPreviewBeginRequest& request)
             -> stui::core::CatalogPreviewBeginResult {
             expect(request.actorFormId == 0x14 && request.slot == 0,
                 "begin must target selected Player slot");
+            if (failFirstBegin) {
+                failFirstBegin = false;
+                return std::unexpected(stui::core::ServiceError{
+                    ServiceErrorCode::previewUnavailable, "Visual target is unavailable"});
+            }
             return stui::core::CatalogPreviewBeginSuccess{static_cast<std::uint64_t>(++begins)};
         },
         [&paints](const stui::core::CatalogPreviewPaintRequest& request)
@@ -124,7 +130,16 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     model.start(); runtime.pump(); runNext();
     expect(model.selectSlot(0), "empty slot should open catalog");
     runtime.pump(); expect(runtime.catalogPreviewStarting(), "begin should be scheduled");
-    runNext(); expect(runtime.catalogPreviewActive(), "begin should open preview");
+    runNext();
+    expect(!runtime.catalogPreviewActive() && runtime.catalogPreviewError() &&
+        runtime.catalogPreviewError()->code == ServiceErrorCode::previewUnavailable,
+        "failed begin should leave Browse open with a retryable error");
+    runtime.pump();
+    expect(scheduled.empty(), "failed begin must not spin without a user retry");
+    runtime.retryCatalogPreview();
+    runtime.pump();
+    expect(runtime.catalogPreviewStarting(), "explicit retry should schedule another begin");
+    runNext(); expect(runtime.catalogPreviewActive(), "retry should open preview");
     TattooDefinition mark;
     mark.section = "Pack"; mark.name = "Mark"; mark.area = "Body";
     mark.texturePath = "mark.dds"; mark.glow = 0x123456;
@@ -164,14 +179,14 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     runtime.pump(); runNext();
     runtime.selectCatalogPreview(mark);
     runtime.pump(); runNext();
-    now += 1999ms;
+    now += 499ms;
     runtime.pump();
     expect(scheduled.empty(), "selected preview should not repaint before refresh interval");
     now += 1ms;
     runtime.pump();
     expect(scheduled.size() == 1, "selected preview should schedule a bounded repaint");
     runNext();
-    expect(paints == 3, "refresh should reassert the same preview after two seconds");
+    expect(paints == 3, "refresh should check the same preview after 500ms");
     expect(runtime.saveCatalogPreview(), "pinned tattoo should queue Save");
     runtime.pump(); runNext();
     runtime.pump(); runNext();

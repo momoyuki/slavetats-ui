@@ -240,6 +240,11 @@ First-frame gesture continuity and close/restore still require in-game acceptanc
 
 ### Player session camera recall — 2026-10-17
 
+On 2026-10-18 the user confirmed that closing the browser restores the game
+camera and the camera works with SmoothCam. Other listed recall scenarios remain
+separate acceptance checks. Remove the high-frequency input/pose trace after
+this confirmation while keeping ownership event logs.
+
 - [x] Test a pure actor-relative view snapshot: orbit, pivot and zoom follow a
   moved Player without retaining a world position; reject nonfinite input.
 - [x] Add an in-memory Left/Right cache to the game-thread camera port. Capture
