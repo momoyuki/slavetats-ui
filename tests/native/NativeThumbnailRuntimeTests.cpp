@@ -113,6 +113,12 @@ public:
         cached.clear();
     }
 
+    bool clearDiskCache() override {
+        ++diskClearCount;
+        if (throwOnDiskClear) throw std::runtime_error("disk clear failure");
+        return diskClearSucceeds;
+    }
+
     bool prepareDiskCache(std::string_view path) override {
         preparedPaths.emplace_back(path);
         return true;
@@ -125,6 +131,8 @@ public:
 
     bool isAvailable{true};
     bool throwOnLoad{};
+    bool throwOnDiskClear{};
+    bool diskClearSucceeds{true};
     std::unordered_map<std::string, std::shared_ptr<D3D11Texture>> cached;
     std::vector<std::string> findPaths;
     std::vector<TextureCacheTimePoint> findTimes;
@@ -133,6 +141,7 @@ public:
     std::vector<bool> cancellationResults;
     std::vector<TextureCacheTimePoint> pruneTimes;
     std::size_t clearCount{};
+    std::size_t diskClearCount{};
     std::vector<std::string> preparedPaths;
 };
 
@@ -231,11 +240,16 @@ void resetClearsControllerAndSource() {
     RuntimeFixture fixture;
     const auto page = pageOfSix("reset-");
     fixture.runtime->synchronize(snapshot(page), page);
+    fixture.runtime->pump();
+    expect(fixture.source->pruneTimes.size() == 1, "expected initial expiry prune");
 
     fixture.runtime->reset();
 
     expect(fixture.source->clearCount == 1, "expected reset to clear texture source");
     expect(fixture.runtime->views().empty(), "expected reset to clear thumbnail views");
+    fixture.runtime->pump();
+    expect(fixture.source->pruneTimes.size() == 2,
+        "expected expiry prune after reset without waiting one second");
 }
 
 void leavesPlaceholdersWhenSourceIsUnavailable() {
@@ -342,6 +356,46 @@ void buildsDiskCacheOneEntryPerPump() {
         "runtime should expose disk usage");
 }
 
+void clearDiskCacheRunsAfterRenderCallback() {
+    RuntimeFixture fixture;
+    expect(fixture.runtime->requestDiskCacheClear(),
+        "clear request should be accepted");
+    expect(fixture.scheduled.size() == 1 && fixture.source->clearCount == 0 &&
+        fixture.source->diskClearCount == 0,
+        "request must schedule work without clearing in the render callback");
+    expect(fixture.runtime->diskCacheClearState() ==
+            stui::native::ThumbnailCacheClearState::pending,
+        "launcher should observe pending clear work");
+    expect(!fixture.runtime->requestDiskCacheClear() && fixture.scheduled.size() == 1,
+        "a pending clear must not be queued twice");
+    fixture.runtime->startDiskCacheBuild({"a.dds"});
+    expect(!fixture.runtime->diskCacheBuildStatus().active,
+        "a cache build must not start while clearing");
+    fixture.scheduled.front()();
+    expect(fixture.source->clearCount == 1 && fixture.source->diskClearCount == 1 &&
+        fixture.runtime->diskCacheClearState() ==
+            stui::native::ThumbnailCacheClearState::succeeded,
+        "scheduled task should clear memory and disk and publish success");
+}
+
+void clearDiskCacheReportsSchedulerAndSourceFailures() {
+    RuntimeFixture fixture;
+    fixture.schedulerThrows = true;
+    expect(!fixture.runtime->requestDiskCacheClear() &&
+        fixture.runtime->diskCacheClearState() ==
+            stui::native::ThumbnailCacheClearState::failed &&
+        fixture.source->diskClearCount == 0,
+        "scheduler rejection should fail without touching the disk");
+    fixture.source->throwOnDiskClear = true;
+    expect(fixture.runtime->requestDiskCacheClear() && fixture.scheduled.size() == 1,
+        "failed request should be retryable");
+    fixture.scheduled.front()();
+    expect(fixture.runtime->diskCacheClearState() ==
+            stui::native::ThumbnailCacheClearState::failed &&
+        fixture.source->diskClearCount == 1,
+        "source exception should report failure without escaping the task");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -372,5 +426,8 @@ int main() {
         "source failure in task completes request and allows queue progress",
         sourceFailureInTaskCompletesRequestAndAllowsQueueProgress);
     failures += run("builds disk cache one entry per pump", buildsDiskCacheOneEntryPerPump);
+    failures += run("clear disk cache runs after render callback", clearDiskCacheRunsAfterRenderCallback);
+    failures += run("clear disk cache reports scheduler and source failures",
+        clearDiskCacheReportsSchedulerAndSourceFailures);
     return failures == 0 ? 0 : 1;
 }

@@ -42,7 +42,9 @@ The Outfit Gallery video shared on 2026-10-15 is a visual reference for the over
   256 MiB, and evicts least recently used files. Source path plus loose-file
   or archive metadata stamps select the cache entry. Invalid cached images
   fall back to the original DDS. The SKSE launcher has a Clear Thumbnail Cache
-  button that removes only files in this dedicated cache directory.
+  button that removes only files in this dedicated cache directory. Clearing is
+  scheduled outside the render callback; the launcher shows pending, success,
+  or failure and prevents a cache build from starting until clearing finishes.
   The launcher also offers Build Thumbnail Cache for all installed catalog
   texture paths, processing one path per scheduled game task and showing
   completed/total/failure counts plus current disk usage. Building creates

@@ -2924,17 +2924,16 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
     if (cameraPanSaveFailed) {
         ImGuiMCP::TextUnformatted("Could not save the initial camera Pan.");
     }
-    static bool cacheClearFailed = false;
-    static bool cacheCleared = false;
     static bool cacheBuildUnavailable = false;
     auto buildStatus = thumbnails.diskCacheBuildStatus();
-    if (!buildStatus.active && ImGuiMCP::Button("Build Thumbnail Cache")) {
+    auto clearState = thumbnails.diskCacheClearState();
+    if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Build Thumbnail Cache")) {
         auto paths = catalog.diskCacheBuildPaths();
         cacheBuildUnavailable = paths.empty();
         if (!cacheBuildUnavailable) {
             thumbnails.startDiskCacheBuild(std::move(paths));
             buildStatus = thumbnails.diskCacheBuildStatus();
-            cacheCleared = false;
         }
     }
     thumbnails.pumpDiskCacheBuild();
@@ -2953,13 +2952,21 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         ImGuiMCP::TextUnformatted("No tattoo textures found. Thumbnail Cache was not built.");
     ImGuiMCP::Text("Thumbnail Cache: %.1f MiB used",
         static_cast<double>(thumbnails.diskCacheBytes()) / (1024.0 * 1024.0));
-    if (!buildStatus.active && ImGuiMCP::Button("Clear Thumbnail Cache")) {
-        cacheCleared = thumbnails.clearDiskCache();
-        cacheClearFailed = !cacheCleared;
+    if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Clear Thumbnail Cache")) {
+        if (!thumbnails.requestDiskCacheClear())
+            clearState = ThumbnailCacheClearState::failed;
+        else
+            clearState = thumbnails.diskCacheClearState();
     }
-    if (cacheClearFailed) ImGuiMCP::TextUnformatted("Could not clear the thumbnail cache.");
-    else if (cacheCleared) ImGuiMCP::TextUnformatted("Thumbnail cache cleared.");
-    return !buildStatus.active && ImGuiMCP::Button("Open Tattoo Browser");
+    if (clearState == ThumbnailCacheClearState::pending)
+        ImGuiMCP::TextUnformatted("Clearing thumbnail cache...");
+    else if (clearState == ThumbnailCacheClearState::failed)
+        ImGuiMCP::TextUnformatted("Could not clear the thumbnail cache.");
+    else if (clearState == ThumbnailCacheClearState::succeeded)
+        ImGuiMCP::TextUnformatted("Thumbnail cache cleared.");
+    return !buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Open Tattoo Browser");
 }
 
 void OfficialMenuFrameworkAdapter::renderFoundation(

@@ -44,9 +44,16 @@ void NativeThumbnailRuntime::pump() {
     using namespace std::chrono_literals;
 
     const auto currentTime = m_now();
-    if (!m_lastPrune || currentTime - *m_lastPrune >= 1s) {
+    bool shouldPrune = false;
+    {
+        std::scoped_lock lock(m_buildMutex);
+        if (!m_lastPrune || currentTime - *m_lastPrune >= 1s) {
+            m_lastPrune = currentTime;
+            shouldPrune = true;
+        }
+    }
+    if (shouldPrune) {
         m_source->pruneExpired(currentTime);
-        m_lastPrune = currentTime;
     }
 
     if (!m_source->available()) {
@@ -104,21 +111,49 @@ void NativeThumbnailRuntime::reset() {
         m_buildPaths.clear();
         m_buildStatus = {};
         m_buildInFlight = false;
+        m_lastPrune.reset();
     }
     m_controller.clear();
     m_source->clear();
-    m_lastPrune.reset();
 }
 
-bool NativeThumbnailRuntime::clearDiskCache() {
-    if (diskCacheBuildStatus().active) return false;
+bool NativeThumbnailRuntime::clearDiskCacheNow() {
     reset();
     return m_source->clearDiskCache();
 }
 
+bool NativeThumbnailRuntime::requestDiskCacheClear() {
+    {
+        std::scoped_lock lock(m_buildMutex);
+        if (m_buildStatus.active || m_clearState == ThumbnailCacheClearState::pending)
+            return false;
+        m_clearState = ThumbnailCacheClearState::pending;
+    }
+    try {
+        m_scheduler([this] {
+            bool succeeded = false;
+            try { succeeded = clearDiskCacheNow(); } catch (...) {}
+            std::scoped_lock lock(m_buildMutex);
+            m_clearState = succeeded ? ThumbnailCacheClearState::succeeded :
+                ThumbnailCacheClearState::failed;
+        });
+    } catch (...) {
+        std::scoped_lock lock(m_buildMutex);
+        m_clearState = ThumbnailCacheClearState::failed;
+        return false;
+    }
+    return true;
+}
+
+ThumbnailCacheClearState NativeThumbnailRuntime::diskCacheClearState() const {
+    std::scoped_lock lock(m_buildMutex);
+    return m_clearState;
+}
+
 void NativeThumbnailRuntime::startDiskCacheBuild(std::vector<std::string> texturePaths) {
     std::scoped_lock lock(m_buildMutex);
-    if (m_buildStatus.active) return;
+    if (m_buildStatus.active || m_clearState == ThumbnailCacheClearState::pending) return;
+    m_clearState = ThumbnailCacheClearState::idle;
     std::unordered_set<std::string> unique;
     m_buildPaths.clear();
     m_buildPaths.reserve(texturePaths.size());

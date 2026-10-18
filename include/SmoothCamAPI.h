@@ -18,7 +18,7 @@ static_assert(0, "SmoothCamAPI: Define one of (SMOOTHCAM_API_SKSE, SMOOTHCAM_API
 
 /*
 * For modders: Copy this file into your own project if you wish to use this API
-* 
+*
 * #define SMOOTHCAM_API_SKSE if using SKSE
 * #define SMOOTHCAM_API_COMMONLIB if using CommonLibSSE
 */
@@ -157,7 +157,7 @@ namespace SmoothCamAPI {
 		/// Request that position interpolators continue to update while you have camera control.
 		/// SmoothCam will not update the camera position with interpolators running, but will enable functions like
 		/// `GetLastCameraPosition` to return current, up to date values while you own the camera resource.
-		/// 
+		///
 		/// When given control of the camera, the default action is to pause interpolator updates. If you want them
 		/// to continue running, you must call this method each time you gain control of the camera.
 		/// </summary>

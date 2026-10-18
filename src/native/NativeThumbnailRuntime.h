@@ -44,6 +44,13 @@ struct ThumbnailCacheBuildStatus {
     bool active{};
 };
 
+enum class ThumbnailCacheClearState {
+    idle,
+    pending,
+    succeeded,
+    failed,
+};
+
 class NativeThumbnailRuntime {
 public:
     NativeThumbnailRuntime(
@@ -60,13 +67,15 @@ public:
     void pump();
     [[nodiscard]] std::vector<NativeThumbnailView> views() const;
     void reset();
-    [[nodiscard]] bool clearDiskCache();
+    [[nodiscard]] bool requestDiskCacheClear();
+    [[nodiscard]] ThumbnailCacheClearState diskCacheClearState() const;
     void startDiskCacheBuild(std::vector<std::string> texturePaths);
     void pumpDiskCacheBuild();
     [[nodiscard]] ThumbnailCacheBuildStatus diskCacheBuildStatus() const;
     [[nodiscard]] std::uintmax_t diskCacheBytes() const;
 
 private:
+    [[nodiscard]] bool clearDiskCacheNow();
     std::unique_ptr<NativeThumbnailTextureSource> m_source;
     NativeThumbnailScheduler m_scheduler;
     NativeThumbnailNow m_now;
@@ -75,6 +84,7 @@ private:
     mutable std::mutex m_buildMutex;
     std::vector<std::string> m_buildPaths;
     ThumbnailCacheBuildStatus m_buildStatus;
+    ThumbnailCacheClearState m_clearState{ThumbnailCacheClearState::idle};
     bool m_buildInFlight{};
     std::uint64_t m_buildGeneration{};
 };
