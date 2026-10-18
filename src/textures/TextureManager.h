@@ -25,8 +25,10 @@ class TextureManager {
 public:
     explicit TextureManager(
         std::size_t capacity,
-        TextureCacheDuration idleTtl = TextureCacheDuration::max())
-        : m_cache(capacity, idleTtl) {}
+        TextureCacheDuration idleTtl = TextureCacheDuration::max(),
+        std::size_t maxBytes = SIZE_MAX,
+        std::function<std::size_t(const Resource&)> resourceBytes = {})
+        : m_cache(capacity, idleTtl, maxBytes, std::move(resourceBytes)) {}
 
     [[nodiscard]] std::shared_ptr<Resource> find(
         std::string_view texturePath,

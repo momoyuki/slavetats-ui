@@ -1,5 +1,11 @@
 # Semantic Version, CI, and GitHub Release Implementation Plan
 
+> Superseded on 2026-10-18: `v1.8.0-beta.1` was published on 2026-10-03.
+> This checklist preserves the original implementation sequence, including
+> unchecked historical steps; it must not be replayed to publish beta.1 again.
+> The current integration and beta.2 sequence is in
+> `../active/2026-10-18-vnext5-integration-beta2.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prepare SlaveTats UI `v1.8.0-beta.1`, validate every pull request and `main` push on Windows, and publish a verified installable GitHub pre-release only from an approved Semantic Version tag.

@@ -87,6 +87,18 @@ void preservesTeammateMetadataDuringNormalization() {
         "expected follower metadata to remain attached to copied identities");
 }
 
+void nearbyPickerIncludesNpcAndFollowerWithinRadius() {
+    const auto result = stui::native::normalizeLoadedActorCandidates({
+        candidate(0x20, 20.0F, "Citizen"),
+        candidate(0x21, 2048.0F, "Follower", true),
+        candidate(0x22, 2048.1F, "Distant Citizen"),
+        candidate(0x23, 5000.0F, "Distant Follower", true),
+    });
+    expect(result.size() == 2 && result[0].target.formId == 0x20 &&
+            result[1].target.formId == 0x21 && result[1].isPlayerTeammate,
+        "unified NPC picker must include nearby NPCs and followers, but reject distant Actors");
+}
+
 }  // namespace
 
 int main() {
@@ -98,6 +110,7 @@ int main() {
         rejectsPlayerInvalidIdentityAndDistance();
         std::cout << "PASS rejects Player and invalid candidates\n";
         preservesTeammateMetadataDuringNormalization();
+        nearbyPickerIncludesNpcAndFollowerWithinRadius();
         std::cout << "PASS preserves follower metadata during normalization\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';

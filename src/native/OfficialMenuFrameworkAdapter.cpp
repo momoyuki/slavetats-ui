@@ -21,6 +21,10 @@
 #include "SKSEMenuFramework.h"
 
 namespace stui::native {
+namespace {
+runtime::MenuSide g_renderMenuSide = runtime::MenuSide::left;
+}
+
 std::string_view loadoutStatusMessage(std::size_t count, bool pending) noexcept {
     if (pending) return "Saving or loading loadouts...";
     if (count == 0) return "No loadouts saved.";
@@ -214,12 +218,11 @@ std::string_view loadedActorPickerStatusMessage(
         ? "No loaded followers found." : "No loaded NPC matches the search.";
 }
 
-std::string currentTattoosTitle(const ActorTarget* target) {
+std::string actorTargetTitle(const ActorTarget* target) {
     if (!target) {
-        return "Current Tattoos";
+        return "Target: None";
     }
-    return "Current Tattoos - " +
-        (target->displayName.empty() ? std::string("Unnamed Actor") : target->displayName);
+    return "Target: " + formatActorTargetIdentity(*target);
 }
 
 std::string_view actorTargetStatusLabel(bool resolving, const ActorTarget* target) noexcept {
@@ -251,6 +254,15 @@ bool applyActorTargetHeaderIntent(
         return controls.crosshairEnabled && workflow.selectCrosshairTarget();
     case ActorTargetHeaderIntent::refresh:
         return controls.refreshEnabled && workflow.refreshCrosshairTarget();
+    case ActorTargetHeaderIntent::npcPicker:
+        if (workflow.isMutationInFlight() || workflow.isActorTargetResolutionInFlight()) {
+            return false;
+        }
+        if (workflow.explicitNpcPickerOpen()) {
+            workflow.closeExplicitNpcPicker();
+            return true;
+        }
+        return workflow.chooseExplicitNpcTarget();
     case ActorTargetHeaderIntent::none:
         return false;
     }
@@ -271,11 +283,27 @@ SlotCardTreatment slotCardTreatment(core::SlotOccupancy occupancy) noexcept {
 
 std::string_view slotCardStatusLabel(core::SlotOccupancy occupancy) noexcept {
     switch (occupancy) {
-    case core::SlotOccupancy::empty: return "Add Tattoo";
-    case core::SlotOccupancy::slaveTats: return "Edit Tattoo";
-    case core::SlotOccupancy::external: return "External - Read Only";
+    case core::SlotOccupancy::empty: return "";
+    case core::SlotOccupancy::slaveTats: return "";
+    case core::SlotOccupancy::external: return "";
     }
     return "Unavailable";
+}
+
+std::optional<core::TattooArea> SlotAreaTabSelectionState::synchronize(
+    core::TattooArea selectedArea) noexcept {
+    if (m_selectedArea == selectedArea) return std::nullopt;
+    m_selectedArea = selectedArea;
+    return selectedArea;
+}
+
+std::optional<SlotReadOnlyIndicator> calculateSlotReadOnlyIndicator(
+    core::SlotOccupancy occupancy, float width, float headerHeight) noexcept {
+    if (occupancy != core::SlotOccupancy::external ||
+        width < 16.0F || headerHeight < 8.0F) return std::nullopt;
+    return SlotReadOnlyIndicator{
+        .x = width - 8.0F, .y = headerHeight / 2.0F,
+        .radius = 4.0F, .color = 0xFF4040EF};
 }
 
 std::string_view workflowBreadcrumb(
@@ -423,7 +451,7 @@ std::string formatActorTargetIdentityWithPreviewStatus(
     bool resolving, const ActorTarget* target, LivePreviewStatus previewStatus) {
     const auto targetStatus = actorTargetStatusLabel(resolving, target);
     std::string text = targetStatus.empty() && target
-        ? formatActorTargetIdentity(*target)
+        ? actorTargetTitle(target)
         : std::string(targetStatus);
     const auto previewStatusText = livePreviewStatusLabel(previewStatus);
     if (!previewStatusText.empty()) {
@@ -535,10 +563,18 @@ std::vector<std::string> buildCatalogBrowserDomainOptions(
 
 std::vector<std::string> collectPickerTexturePaths(
     const repository::TattooPage& page) {
-    const std::size_t visibleCount = pickerVisibleCardCount(page);
+    return collectPickerTexturePaths(page, 0, pickerVisibleCardCount(page));
+}
+
+std::vector<std::string> collectPickerTexturePaths(
+    const repository::TattooPage& page,
+    std::size_t begin,
+    std::size_t end) {
+    begin = std::min(begin, page.entries.size());
+    end = std::clamp(end, begin, page.entries.size());
     std::vector<std::string> paths;
-    paths.reserve(visibleCount);
-    for (std::size_t index = 0; index < visibleCount; ++index) {
+    paths.reserve(end - begin);
+    for (std::size_t index = begin; index < end; ++index) {
         if (!page.entries[index].texturePath.empty()) {
             paths.push_back(page.entries[index].texturePath);
         }
@@ -603,7 +639,7 @@ bool OfficialMenuFrameworkAdapter::isWindowOpen(MenuWindow window) const noexcep
 }
 
 FoundationLayout OfficialMenuFrameworkAdapter::calculateFoundationLayout(
-    MenuPosition viewportPosition, MenuSize viewportSize) noexcept {
+    MenuPosition viewportPosition, MenuSize viewportSize, runtime::MenuSide side) noexcept {
     constexpr float margin = 20.0F;
     constexpr float minimumPanelWidth = 360.0F;
     const float availableWidth = std::max(0.0F, viewportSize.width - (margin * 2.0F));
@@ -613,11 +649,65 @@ FoundationLayout OfficialMenuFrameworkAdapter::calculateFoundationLayout(
     };
     return {
         {
-            viewportPosition.x + margin,
+            viewportPosition.x + (side == runtime::MenuSide::left
+                ? margin : viewportSize.width - panelSize.width - margin),
             viewportPosition.y + margin,
         },
         panelSize,
     };
+}
+
+std::uint32_t browserCameraTargetFormId(const ActorTarget* target) noexcept {
+    return target && target->kind == ActorTargetKind::player && target->formId == 0x14
+        ? target->formId : 0;
+}
+
+FoundationLayout calculateBrowserCameraControlFrame(
+    MenuPosition viewportPosition, MenuSize viewportSize, runtime::MenuSide side) noexcept {
+    const auto panel = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        viewportPosition, viewportSize, side);
+    constexpr float margin = 20.0F;
+    constexpr float gap = 12.0F;
+    const float left = side == runtime::MenuSide::right
+        ? viewportPosition.x + margin : panel.position.x + panel.size.width + gap;
+    const float right = side == runtime::MenuSide::right
+        ? panel.position.x - gap : viewportPosition.x + viewportSize.width - margin;
+    return {{left, viewportPosition.y + margin},
+        {std::max(0.0F, right - left), std::max(0.0F, viewportSize.height - 2.0F * margin)}};
+}
+
+bool browserCameraFrameContains(const FoundationLayout& frame, MenuPosition pointer) noexcept {
+    return frame.size.width > 0.0F && frame.size.height > 0.0F &&
+        pointer.x >= frame.position.x && pointer.x < frame.position.x + frame.size.width &&
+        pointer.y >= frame.position.y && pointer.y < frame.position.y + frame.size.height;
+}
+
+BrowserCameraPointerInput browserCameraPointerInput(
+    BrowserCameraGestureState& state, bool overUi, bool leftDown,
+    bool dragging, float deltaX, float deltaY, float wheel, bool alt,
+    float keyboardOrbit, float keyboardPan, float deltaTime) noexcept {
+    if (!leftDown) {
+        state.dragStartedOutside = false;
+    } else if (!state.wasLeftDown) {
+        state.dragStartedOutside = !overUi;
+        state.panDrag = alt;
+    }
+    state.wasLeftDown = leftDown;
+    BrowserCameraPointerInput result{
+        .orbitX = dragging && state.dragStartedOutside && !overUi ? deltaX : 0.0F,
+        .orbitY = dragging && state.dragStartedOutside && !overUi ? -deltaY : 0.0F,
+        .zoom = overUi ? 0.0F : wheel,
+    };
+    if (state.panDrag) {
+        result.panX = std::exchange(result.orbitX, 0.0F);
+        result.panY = std::exchange(result.orbitY, 0.0F);
+    }
+    if (alt && !overUi) {
+        const float seconds = std::clamp(deltaTime, 0.0F, 0.05F);
+        result.orbitX += keyboardOrbit * seconds * 180.0F;
+        result.panY += keyboardPan * seconds * 200.0F;
+    }
+    return result;
 }
 
 CatalogThumbnailFit fitCatalogThumbnail(
@@ -636,6 +726,18 @@ CatalogThumbnailFit fitCatalogThumbnail(
     return {.width = width * scale, .height = height * scale};
 }
 
+CatalogThumbnailFit fitVisibleThumbnail(
+    std::size_t textureWidth, std::size_t textureHeight,
+    float left, float top, float right, float bottom,
+    float maximumWidth, float maximumHeight) noexcept {
+    return fitCatalogThumbnail(
+        std::max<std::size_t>(1, static_cast<std::size_t>(
+            textureWidth * (right - left))),
+        std::max<std::size_t>(1, static_cast<std::size_t>(
+            textureHeight * (bottom - top))),
+        maximumWidth, maximumHeight);
+}
+
 std::uint32_t thumbnailBackgroundFillColor(ThumbnailBackgroundMode mode) noexcept {
     return mode == ThumbnailBackgroundMode::white ? 0xFFFFFFFF : 0xFF000000;
 }
@@ -652,6 +754,41 @@ CatalogCardGridPosition catalogCardGridPosition(
         return {};
     }
     return {.row = index / columnCount, .column = index % columnCount};
+}
+
+std::size_t catalogColumnCount(float availableWidth) noexcept {
+    constexpr float minimumCardWidth = 140.0F;
+    if (!std::isfinite(availableWidth) || availableWidth <= 0.0F) {
+        return 1;
+    }
+    return std::clamp(static_cast<std::size_t>(availableWidth / minimumCardWidth),
+        std::size_t{1}, std::size_t{6});
+}
+
+CatalogVisibleCardRange catalogVisibleCardRange(
+    float scrollY,
+    float viewportHeight,
+    float rowHeight,
+    std::size_t columnCount,
+    std::size_t entryCount) noexcept {
+    if (rowHeight <= 0.0F || columnCount == 0 || entryCount == 0) {
+        return {};
+    }
+    const auto firstRow = static_cast<std::size_t>(std::max(0.0F, scrollY) / rowHeight);
+    const auto visibleRows = static_cast<std::size_t>(
+        std::ceil(std::max(0.0F, viewportHeight) / rowHeight));
+    const auto beginRow = firstRow == 0 ? 0 : firstRow - 1;
+    const auto endRow = firstRow + visibleRows + 1;
+    return {
+        .begin = std::min(entryCount, beginRow * columnCount),
+        .end = std::min(entryCount, endRow * columnCount),
+    };
+}
+
+float catalogBrowseFooterHeight(
+    float frameHeightWithSpacing, bool previewActive) noexcept {
+    return std::max(0.0F, frameHeightWithSpacing) *
+        (previewActive ? 4.0F : 2.0F);
 }
 
 std::string catalogCardWidgetId(
@@ -1222,11 +1359,9 @@ void renderSlotImage(
     ThumbnailBackgroundMode backgroundMode,
     ImGuiMCP::ImVec4 tint = {1.0F, 1.0F, 1.0F, 1.0F}) {
     if (slot.occupancy == core::SlotOccupancy::empty) {
-        ImGuiMCP::TextUnformatted("Add");
         return;
     }
     if (slot.occupancy == core::SlotOccupancy::external) {
-        ImGuiMCP::TextUnformatted("External - Locked");
         return;
     }
     if (!slot.tattoo || slot.tattoo->texturePath.empty()) {
@@ -1242,9 +1377,11 @@ void renderSlotImage(
         : nullptr;
     if (thumbnail && thumbnail->status == NativeThumbnailStatus::ready &&
         thumbnail->texture && thumbnail->texture->shaderResourceView) {
-        const auto fit = fitCatalogThumbnail(
+        const auto& bounds = thumbnail->texture->visibleBounds;
+        const auto fit = fitVisibleThumbnail(
             thumbnail->texture->width,
             thumbnail->texture->height,
+            bounds.left, bounds.top, bounds.right, bounds.bottom,
             region.x,
             region.y);
         const auto origin = ImGuiMCP::GetCursorPos();
@@ -1264,8 +1401,8 @@ void renderSlotImage(
             static_cast<ImGuiMCP::ImTextureID>(
                 thumbnail->texture->shaderResourceView.get()),
             {fit.width, fit.height},
-            {0.0F, 0.0F},
-            {1.0F, 1.0F},
+            {bounds.left, bounds.top},
+            {bounds.right, bounds.bottom},
             tint);
         return;
     }
@@ -1286,29 +1423,25 @@ bool renderActorTargetHeader(
         kind, resolving, workflow.isMutationInFlight());
     ActorTargetHeaderIntent intent = ActorTargetHeaderIntent::none;
     ImGuiMCP::BeginDisabled(!controls.playerEnabled);
-    if (ImGuiMCP::RadioButton("Player", kind == ActorTargetKind::player)) {
+    if (ImGuiMCP::Button("Player")) {
         intent = ActorTargetHeaderIntent::player;
     }
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
-    bool nearbyChanged = false;
-    const bool chooseNpcEnabled = !workflow.explicitNpcPickerOpen() &&
+    const bool chooseNpcEnabled =
         !workflow.isActorTargetResolutionInFlight() && !workflow.isMutationInFlight();
     ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
     if (ImGuiMCP::Button("Choose NPC")) {
-        nearbyChanged = workflow.chooseExplicitNpcTarget();
-    }
-    ImGuiMCP::EndDisabled();
-    ImGuiMCP::SameLine();
-    ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
-    if (ImGuiMCP::Button("Followers")) {
-        nearbyChanged = workflow.chooseFollowerTarget();
+        intent = ActorTargetHeaderIntent::npcPicker;
     }
     ImGuiMCP::EndDisabled();
 
+    if (intent != ActorTargetHeaderIntent::none) {
+        return applyActorTargetHeaderIntent(workflow, intent);
+    }
+
     if (workflow.explicitNpcPickerOpen()) {
         const auto pickerTitle = actorPickerTitle(workflow.actorPickerMode());
-        const bool followerPicker = workflow.actorPickerMode() == ActorPickerMode::followers;
         ImGuiMCP::Separator();
         ImGuiMCP::TextUnformatted(pickerTitle.data());
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
@@ -1354,45 +1487,17 @@ bool renderActorTargetHeader(
         return true;
     }
 
-    const auto& nearbyActors = workflow.nearbyActors();
-    std::string nearbyLabel = "Select nearby Actor";
-    if (resolving) {
-        nearbyLabel = "Scanning nearby Actors...";
-    } else if (kind == ActorTargetKind::nearby && workflow.actorTarget()) {
-        nearbyLabel = formatActorTargetIdentity(*workflow.actorTarget());
-    }
-    ImGuiMCP::BeginDisabled(!controls.crosshairEnabled || resolving);
-    if (ImGuiMCP::BeginCombo("Nearby Actor", nearbyLabel.c_str())) {
-        for (std::size_t index = 0; index < nearbyActors.size(); ++index) {
-            const auto& candidate = nearbyActors[index];
-            const bool selected = workflow.actorTarget() &&
-                workflow.actorTarget()->formId == candidate.target.formId;
-            const auto label = formatNearbyActorSelectorLabel(candidate, index);
-            if (ImGuiMCP::Selectable(label.c_str(), selected)) {
-                nearbyChanged = workflow.selectNearbyActor(index);
-            }
-        }
-        if (nearbyActors.empty()) {
-            ImGuiMCP::TextUnformatted(
-                resolving ? "Scanning nearby Actors..." : "No nearby Actor found");
-        }
-        ImGuiMCP::EndCombo();
-    }
-    ImGuiMCP::EndDisabled();
-    if (workflow.nearbyActorScanRetryAvailable()) {
-        ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Retry Nearby Scan")) {
-            nearbyChanged = workflow.retryNearbyActorScan();
-        }
-    }
     const auto* target = workflow.actorTarget();
     const auto identity = formatActorTargetIdentityWithPreviewStatus(
         resolving, target, previewStatus);
     ImGuiMCP::TextUnformatted(identity.c_str());
-    ImGuiMCP::TextWrapped("%s", workflowBreadcrumb(
-        workflow.screen(), workflow.tattooLoadoutScreen()).data());
-    ImGuiMCP::Separator();
-    return nearbyChanged || applyActorTargetHeaderIntent(workflow, intent);
+    if (workflow.screen() != SlotWorkflowScreen::currentSlots ||
+        workflow.tattooLoadoutScreen() != TattooLoadoutScreen::none) {
+        ImGuiMCP::TextWrapped("%s", workflowBreadcrumb(
+            workflow.screen(), workflow.tattooLoadoutScreen()).data());
+        ImGuiMCP::Separator();
+    }
+    return false;
 }
 
 void renderLoadoutStoreStatus(NativeSlotWorkflowModel& workflow) {
@@ -1444,7 +1549,8 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
     const auto* viewport = ImGuiMCP::GetMainViewport();
     if (!viewport) return;
     const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
-        {viewport->Pos.x, viewport->Pos.y}, {viewport->Size.x, viewport->Size.y});
+        {viewport->Pos.x, viewport->Pos.y}, {viewport->Size.x, viewport->Size.y},
+        g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos({layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0, 0});
     ImGuiMCP::SetNextWindowSize({layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     const auto screen = workflow.tattooLoadoutScreen();
@@ -1586,7 +1692,7 @@ void renderCurrentSlots(
     }
     const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {viewport->Pos.x, viewport->Pos.y},
-        {viewport->Size.x, viewport->Size.y});
+        {viewport->Size.x, viewport->Size.y}, g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos(
         {layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0.0F, 0.0F});
     ImGuiMCP::SetNextWindowSize(
@@ -1607,54 +1713,57 @@ void renderCurrentSlots(
     }
     const bool targetActionsEnabled = actorTargetActionsEnabled(
         workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
-    const auto* slots = workflow.slots();
-    const auto paths = slots
-        ? collectVisibleSlotTexturePaths(
-              *slots,
-              workflow.slotPageIndex(),
-              NativeSlotWorkflowModel::kPageSize)
-        : std::vector<std::string>{};
-    thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
-    const auto title = currentTattoosTitle(workflow.actorTarget());
-    ImGuiMCP::TextUnformatted(title.c_str());
     const auto* style = ImGuiMCP::GetStyle();
     const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
-    const auto page = slots
-        ? calculateSlotPage(
-              slots->slots.size(),
-              workflow.slotPageIndex(),
-              NativeSlotWorkflowModel::kPageSize)
-        : SlotPageRange{};
+    SlotPageRange page;
     bool tattoosTab = false;
     if (ImGuiMCP::BeginTabBar("CurrentSlotsTabs")) {
         if (ImGuiMCP::BeginTabItem("Tattoos")) {
             tattoosTab = true;
-            ImGuiMCP::BeginDisabled(!targetActionsEnabled);
-            if (ImGuiMCP::Button("Refresh")) {
-                workflow.refreshSelectedArea();
-            }
-            ImGuiMCP::EndDisabled();
-
             constexpr std::array<core::TattooArea, 4> areas{
                 core::TattooArea::body,
                 core::TattooArea::face,
                 core::TattooArea::hands,
                 core::TattooArea::feet,
             };
-            for (std::size_t index = 0; index < areas.size(); ++index) {
-                if (index != 0) {
-                    ImGuiMCP::SameLine();
+            if (ImGuiMCP::BeginTabBar("SlotAreaTabs")) {
+                static SlotAreaTabSelectionState areaTabState;
+                const auto forcedArea = areaTabState.synchronize(workflow.selectedArea());
+                for (std::size_t index = 0; index < areas.size(); ++index) {
+                    const auto label = std::string(slotAreaLabel(areas[index])) + "##SlotArea" +
+                        std::to_string(index);
+                    const auto flags = forcedArea == areas[index]
+                        ? ImGuiMCP::ImGuiTabItemFlags_SetSelected
+                        : ImGuiMCP::ImGuiTabItemFlags_None;
+                    if (ImGuiMCP::BeginTabItem(label.c_str(), nullptr, flags)) {
+                        if ((!forcedArea || forcedArea == areas[index]) &&
+                            areas[index] != workflow.selectedArea()) {
+                            workflow.selectArea(areas[index]);
+                        }
+                        ImGuiMCP::EndTabItem();
+                    }
                 }
-                const auto label = std::string(slotAreaLabel(areas[index])) + "##SlotArea" +
-                    std::to_string(index);
-                ImGuiMCP::BeginDisabled(areas[index] == workflow.selectedArea());
-                if (ImGuiMCP::Button(label.c_str())) {
-                    workflow.selectArea(areas[index]);
+                ImGuiMCP::BeginDisabled(!targetActionsEnabled);
+                if (ImGuiMCP::TabItemButton("Refresh##SlotAreaRefresh")) {
+                    workflow.refreshSelectedArea();
                 }
                 ImGuiMCP::EndDisabled();
+                ImGuiMCP::EndTabBar();
             }
+
+            // Read the new area's snapshot only after processing tab selection.
+            const auto* slots = workflow.slots();
+            const auto paths = slots
+                ? collectVisibleSlotTexturePaths(
+                      *slots, workflow.slotPageIndex(), NativeSlotWorkflowModel::kPageSize)
+                : std::vector<std::string>{};
+            thumbnails.synchronize(slotThumbnailEpoch(workflow.selectedArea()), paths);
+            thumbnails.pump();
+            const auto thumbnailViews = thumbnails.views();
+            page = slots
+                ? calculateSlotPage(slots->slots.size(), workflow.slotPageIndex(),
+                      NativeSlotWorkflowModel::kPageSize)
+                : SlotPageRange{};
 
             if (const auto* error = workflow.error()) {
                 ImGuiMCP::TextUnformatted(error->message.c_str());
@@ -1681,14 +1790,14 @@ void renderCurrentSlots(
                 ImGuiMCP::EndChild();
             } else if (ImGuiMCP::BeginTable(
                            "CurrentSlotCards",
-                           2,
+                           4,
                            ImGuiMCP::ImGuiTableFlags_SizingStretchSame |
                                ImGuiMCP::ImGuiTableFlags_BordersInner |
                                ImGuiMCP::ImGuiTableFlags_NoPadOuterX |
                                ImGuiMCP::ImGuiTableFlags_NoPadInnerX,
                            {0.0F, gridLayout.gridHeight})) {
                 for (std::size_t index = page.begin; index < page.end; ++index) {
-                    const auto gridPosition = catalogCardGridPosition(index - page.begin, 2);
+                    const auto gridPosition = catalogCardGridPosition(index - page.begin, 4);
                     if (gridPosition.column == 0) {
                         ImGuiMCP::TableNextRow(0, gridLayout.rowHeight);
                     }
@@ -1697,8 +1806,6 @@ void renderCurrentSlots(
                     const auto widgetId = std::string("SlotCard##") + std::to_string(slot.index);
                     const bool disabled = !targetActionsEnabled || slotCardTreatment(slot.occupancy) ==
                         SlotCardTreatment::disabled;
-                    bool lockClicked = false;
-                    bool lockHovered = false;
                     ImGuiMCP::BeginDisabled(disabled);
                     ImGuiMCP::PushStyleColor(
                         ImGuiMCP::ImGuiCol_ChildBg,
@@ -1709,8 +1816,22 @@ void renderCurrentSlots(
                             ImGuiMCP::ImGuiChildFlags_Border,
                             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                                 ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
+                        const auto cardOrigin = ImGuiMCP::GetCursorScreenPos();
+                        const float cardWidth = ImGuiMCP::GetContentRegionAvail().x;
                         ImGuiMCP::Text("Slot %d", slot.index);
-                        ImGuiMCP::TextWrapped("%s", slotCardStatusLabel(slot.occupancy).data());
+                        if (const auto dot = calculateSlotReadOnlyIndicator(
+                                slot.occupancy, cardWidth, ImGuiMCP::GetTextLineHeight())) {
+                            ImGuiMCP::ImDrawListManager::AddCircleFilled(
+                                ImGuiMCP::GetWindowDrawList(),
+                                {cardOrigin.x + dot->x, cardOrigin.y + dot->y},
+                                dot->radius, dot->color, 16);
+                        }
+                        ImGuiMCP::SetCursorScreenPos({
+                            cardOrigin.x, cardOrigin.y + ImGuiMCP::GetFrameHeightWithSpacing()});
+                        const auto status = slotCardStatusLabel(slot.occupancy);
+                        if (!status.empty()) {
+                            ImGuiMCP::TextWrapped("%s", status.data());
+                        }
                         const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
                         const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
                         renderSlotImage(slot, thumbnailViews, imageRegion, backgroundMode);
@@ -1741,45 +1862,19 @@ void renderCurrentSlots(
                                 0,
                                 1.0F);
                         }
-                        if (slot.occupancy == core::SlotOccupancy::slaveTats && slot.tattoo) {
-                            const auto lockPresentation = slotLockActionPresentation(slot.tattoo->locked);
-                            const auto lockIcon = FontAwesome::UnicodeToUtf8(
-                                lockPresentation.iconCodepoint);
-                            const auto lockWidgetId = lockIcon + "##SlotLock" +
-                                std::to_string(slot.index);
-                            FontAwesome::PushSolid();
-                            const auto iconSize = ImGuiMCP::CalcTextSize(lockIcon.c_str());
-                            const float buttonSize = catalogIconButtonSize(
-                                iconSize.y,
-                                style ? style->FramePadding.y : 4.0F);
-                            ImGuiMCP::SetCursorScreenPos({
-                                imageScreenOrigin.x + imageRegion.x - buttonSize - 6.0F,
-                                imageScreenOrigin.y + 6.0F,
-                            });
-                            ImGuiMCP::BeginDisabled(workflow.isLockStateChangeInFlight());
-                            if (ImGuiMCP::Button(lockWidgetId.c_str(), {buttonSize, buttonSize})) {
-                                lockClicked = workflow.toggleSlotLock(slot.index);
-                            }
-                            lockHovered = ImGuiMCP::IsItemHovered(
-                                ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled);
-                            if (lockHovered) {
-                                ImGuiMCP::SetTooltip("%s", lockPresentation.tooltip.data());
-                            }
-                            ImGuiMCP::EndDisabled();
-                            FontAwesome::Pop();
-                        }
                     }
                     ImGuiMCP::EndChild();
                     ImGuiMCP::PopStyleColor();
                     ImGuiMCP::EndDisabled();
-                    if (!disabled && !lockClicked && !lockHovered && ImGuiMCP::IsItemClicked()) {
+                    if (!disabled && ImGuiMCP::IsItemClicked()) {
                         (void)workflow.selectSlot(slot.index);
                     }
-                    if (ImGuiMCP::IsItemHovered()) {
-                        if (slot.tattoo) {
+                    if (ImGuiMCP::IsItemHovered(ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        if (slot.occupancy == core::SlotOccupancy::external) {
+                            ImGuiMCP::SetTooltip(
+                                "Slot %d - Read Only: managed by another overlay mod", slot.index);
+                        } else if (slot.tattoo) {
                             ImGuiMCP::SetTooltip("Slot %d - %s", slot.index, slot.tattoo->name.c_str());
-                        } else if (disabled) {
-                            ImGuiMCP::SetTooltip("Slot %d is managed by another overlay mod", slot.index);
                         } else {
                             ImGuiMCP::SetTooltip("Add a tattoo to Slot %d", slot.index);
                         }
@@ -1883,7 +1978,7 @@ void renderSlotActions(
     }
     const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {viewport->Pos.x, viewport->Pos.y},
-        {viewport->Size.x, viewport->Size.y});
+        {viewport->Size.x, viewport->Size.y}, g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos(
         {layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0.0F, 0.0F});
     ImGuiMCP::SetNextWindowSize(
@@ -2066,7 +2161,7 @@ void renderPreview(
     }
     const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {viewport->Pos.x, viewport->Pos.y},
-        {viewport->Size.x, viewport->Size.y});
+        {viewport->Size.x, viewport->Size.y}, g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos(
         {layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0.0F, 0.0F});
     ImGuiMCP::SetNextWindowSize(
@@ -2247,6 +2342,7 @@ void renderPreview(
 
 void renderEditAppearance(
     NativeSlotWorkflowModel& workflow,
+    NativeCatalogBrowserModel& catalog,
     NativeThumbnailRuntime& thumbnails,
     ThumbnailBackgroundMode backgroundMode,
     const std::function<void()>& close) {
@@ -2256,7 +2352,7 @@ void renderEditAppearance(
     }
     const auto layout = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {viewport->Pos.x, viewport->Pos.y},
-        {viewport->Size.x, viewport->Size.y});
+        {viewport->Size.x, viewport->Size.y}, g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos(
         {layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0.0F, 0.0F});
     ImGuiMCP::SetNextWindowSize(
@@ -2308,6 +2404,22 @@ void renderEditAppearance(
         const auto targetLabel = formatSlotTargetLabel(
             workflow.actorTarget(), session->area, session->slot);
         ImGuiMCP::TextUnformatted(targetLabel.c_str());
+        if (session->favoriteDefinition) {
+            const auto& favoriteTattoo = *session->favoriteDefinition;
+            const bool favorited = catalog.isFavorite(favoriteTattoo);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::BeginDisabled(workflow.favoritePending());
+            if (ImGuiMCP::Button(favorited ? "Favorited" : "Favorite")) {
+                (void)workflow.requestFavorite(favoriteTattoo, !favorited);
+            }
+            ImGuiMCP::EndDisabled();
+        }
+    }
+    if (const auto* favoriteError = workflow.favoriteError()) {
+        ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
+        if (ImGuiMCP::Button("Retry favorite save")) {
+            (void)workflow.retryFavorite();
+        }
     }
     if (const auto* error = workflow.error()) {
         ImGuiMCP::TextUnformatted(error->message.c_str());
@@ -2745,7 +2857,9 @@ std::string_view launcherModVersionLabel() noexcept {
     return "SlaveTats UI v" SLAVETATSUI_VERSION " (" SLAVETATSUI_GIT_REVISION ")";
 }
 
-bool OfficialMenuFrameworkAdapter::renderLauncher(runtime::HotkeyBinding& hotkey) {
+bool OfficialMenuFrameworkAdapter::renderLauncher(
+    runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
+    NativeThumbnailRuntime& thumbnails, NativeCatalogBrowserModel& catalog) {
     ImGuiMCP::TextUnformatted("Open SlaveTatsUI when you are ready to browse tattoos.");
     ImGuiMCP::TextUnformatted(launcherModVersionLabel().data());
     const auto hotkeyLabel = hotkey.label();
@@ -2766,7 +2880,93 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(runtime::HotkeyBinding& hotkey
     if (hotkeySaveFailed) {
         ImGuiMCP::TextUnformatted("Could not save the hotkey setting.");
     }
-    return ImGuiMCP::Button("Open Tattoo Browser");
+    static bool menuSideSaveFailed = false;
+    const auto selectedSide = menuSide.side();
+    if (ImGuiMCP::BeginCombo(
+            "Browser position", selectedSide == runtime::MenuSide::left ? "Left" : "Right")) {
+        for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
+            const char* label = side == runtime::MenuSide::left ? "Left" : "Right";
+            const bool selected = side == selectedSide;
+            if (ImGuiMCP::Selectable(label, selected)) {
+                menuSideSaveFailed = !menuSide.select(side);
+            }
+            if (selected) ImGuiMCP::SetItemDefaultFocus();
+        }
+        ImGuiMCP::EndCombo();
+    }
+    if (menuSideSaveFailed) {
+        ImGuiMCP::TextUnformatted("Could not save the browser position.");
+    }
+    static bool cameraOffsetSaveFailed = false;
+    for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
+        float offset = menuSide.initialCameraOffset(side);
+        const char* label = side == runtime::MenuSide::left
+            ? "Opening frame X offset (Left)"
+            : "Opening frame X offset (Right)";
+        if (ImGuiMCP::SliderFloat(label, &offset, -0.15F, 0.15F, "%.2f")) {
+            cameraOffsetSaveFailed = !menuSide.setInitialCameraOffset(side, offset);
+        }
+    }
+    if (cameraOffsetSaveFailed) {
+        ImGuiMCP::TextUnformatted("Could not save the initial camera position.");
+    }
+    static bool cameraPanSaveFailed = false;
+    for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
+        auto pan = menuSide.initialCameraPan(side);
+        const char* xLabel = side == runtime::MenuSide::left
+            ? "Initial Pan X (Left)" : "Initial Pan X (Right)";
+        const char* yLabel = side == runtime::MenuSide::left
+            ? "Initial Pan Y (Left)" : "Initial Pan Y (Right)";
+        bool changed = ImGuiMCP::InputFloat(xLabel, &pan.x, 0.0F, 0.0F, "%.1f");
+        changed = ImGuiMCP::InputFloat(yLabel, &pan.y, 0.0F, 0.0F, "%.1f") || changed;
+        if (changed) cameraPanSaveFailed = !menuSide.setInitialCameraPan(side, pan);
+    }
+    if (cameraPanSaveFailed) {
+        ImGuiMCP::TextUnformatted("Could not save the initial camera Pan.");
+    }
+    static bool cacheBuildUnavailable = false;
+    auto buildStatus = thumbnails.diskCacheBuildStatus();
+    auto clearState = thumbnails.diskCacheClearState();
+    if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Build Thumbnail Cache")) {
+        auto paths = catalog.diskCacheBuildPaths();
+        cacheBuildUnavailable = paths.empty();
+        if (!cacheBuildUnavailable) {
+            thumbnails.startDiskCacheBuild(std::move(paths));
+            buildStatus = thumbnails.diskCacheBuildStatus();
+        }
+    }
+    thumbnails.pumpDiskCacheBuild();
+    if (buildStatus.active) {
+        ImGuiMCP::Text("Building Thumbnail Cache: %zu / %zu", buildStatus.completed,
+            buildStatus.total);
+        ImGuiMCP::TextUnformatted("Please keep this menu open until the build is complete.");
+    } else if (buildStatus.total > 0) {
+        if (buildStatus.failed == 0)
+            ImGuiMCP::TextUnformatted("Thumbnail Cache ready. You can open the Tattoo Browser.");
+        else
+            ImGuiMCP::Text("Thumbnail Cache build complete: %zu / %zu (%zu failed)",
+                buildStatus.completed, buildStatus.total, buildStatus.failed);
+    }
+    if (cacheBuildUnavailable)
+        ImGuiMCP::TextUnformatted("No tattoo textures found. Thumbnail Cache was not built.");
+    ImGuiMCP::Text("Thumbnail Cache: %.1f MiB used",
+        static_cast<double>(thumbnails.diskCacheBytes()) / (1024.0 * 1024.0));
+    if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Clear Thumbnail Cache")) {
+        if (!thumbnails.requestDiskCacheClear())
+            clearState = ThumbnailCacheClearState::failed;
+        else
+            clearState = thumbnails.diskCacheClearState();
+    }
+    if (clearState == ThumbnailCacheClearState::pending)
+        ImGuiMCP::TextUnformatted("Clearing thumbnail cache...");
+    else if (clearState == ThumbnailCacheClearState::failed)
+        ImGuiMCP::TextUnformatted("Could not clear the thumbnail cache.");
+    else if (clearState == ThumbnailCacheClearState::succeeded)
+        ImGuiMCP::TextUnformatted("Thumbnail cache cleared.");
+    return !buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
+        ImGuiMCP::Button("Open Tattoo Browser");
 }
 
 void OfficialMenuFrameworkAdapter::renderFoundation(
@@ -2774,34 +2974,140 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     NativeSlotWorkflowRuntime& slotRuntime,
     NativeCatalogBrowserModel& model,
     NativeThumbnailRuntime& thumbnails,
-    const std::function<void()>& close) {
+    runtime::MenuSide side,
+    const std::function<void(std::uint32_t, BrowserCameraPointerInput)>& cameraIntent,
+    const std::function<void()>& close,
+    runtime::MenuSideSetting* panSettings,
+    const std::function<std::optional<BrowserCameraPan>()>& currentPan) {
+    g_renderMenuSide = side;
     static ThumbnailBackgroundMode backgroundMode = ThumbnailBackgroundMode::black;
     slotRuntime.pump();
     if (dispatchMenuCloseRequest(workflow, close)) {
         return;
     }
+    const auto dispatchCameraIntent = [&] {
+        if (!cameraIntent) return;
+        const auto* io = ImGuiMCP::GetIO();
+        const auto* viewport = ImGuiMCP::GetMainViewport();
+        const auto* target = workflow.actorTarget();
+        const auto cameraTarget = browserCameraTargetFormId(target);
+        BrowserCameraPointerInput input;
+        if (io && viewport) {
+            static BrowserCameraGestureState gesture;
+            const auto frame = calculateBrowserCameraControlFrame(
+                {viewport->Pos.x, viewport->Pos.y},
+                {viewport->Size.x, viewport->Size.y}, side);
+            const bool insideFrame = cameraTarget != 0 && browserCameraFrameContains(
+                frame, {io->MousePos.x, io->MousePos.y});
+            const bool hoveredWindow = ImGuiMCP::IsWindowHovered(ImGuiMCP::ImGuiHoveredFlags_AnyWindow);
+            const bool activeItem = ImGuiMCP::IsAnyItemActive();
+            const bool overUi =
+                !insideFrame || hoveredWindow || activeItem;
+            if (cameraTarget != 0 && frame.size.width > 0.0F && frame.size.height > 0.0F) {
+                auto* drawList = ImGuiMCP::GetBackgroundDrawList();
+                const ImGuiMCP::ImVec2 minimum{frame.position.x, frame.position.y};
+                const ImGuiMCP::ImVec2 maximum{
+                    frame.position.x + frame.size.width, frame.position.y + frame.size.height};
+                ImGuiMCP::ImDrawListManager::AddRect(drawList, minimum, maximum,
+                    overUi ? 0x70FFFFFF : 0xCCFFFFFF, 4.0F, 0, 1.5F);
+                const char* hint = io->KeyAlt
+                    ? "Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down"
+                    : "Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom";
+                if (ImGuiMCP::CalcTextSize(hint).x * 0.65F + 16.0F <= frame.size.width) {
+                    ImGuiMCP::ImDrawListManager::AddText(drawList,
+                        ImGuiMCP::GetFont(), ImGuiMCP::GetFontSize() * 0.65F,
+                        {minimum.x + 8.0F, minimum.y + 8.0F}, 0xB0FFFFFF, hint);
+                }
+            }
+            const bool down = ImGuiMCP::IsMouseDown(0);
+            const bool dragging = ImGuiMCP::IsMouseDragging(0);
+            input = browserCameraPointerInput(
+                gesture, overUi || io->WantTextInput, down, dragging,
+                io->MouseDelta.x, io->MouseDelta.y, io->MouseWheel, io->KeyAlt,
+                static_cast<float>(ImGuiMCP::IsKeyDown(ImGuiMCP::ImGuiKey_D)) -
+                    static_cast<float>(ImGuiMCP::IsKeyDown(ImGuiMCP::ImGuiKey_A)),
+                static_cast<float>(ImGuiMCP::IsKeyDown(ImGuiMCP::ImGuiKey_W)) -
+                    static_cast<float>(ImGuiMCP::IsKeyDown(ImGuiMCP::ImGuiKey_S)),
+                io->DeltaTime);
+            input.frameCenterX = viewport->Size.x > 0
+                ? (frame.position.x + frame.size.width / 2 - viewport->Pos.x) / viewport->Size.x
+                : 0.5F;
+            if (cameraTarget != 0 && frame.size.width >= 300.0F && frame.size.height >= 100.0F) {
+                ImGuiMCP::SetNextWindowPos(
+                    {frame.position.x + 8, frame.position.y + frame.size.height - 8},
+                    ImGuiMCP::ImGuiCond_Always, {0, 1});
+                ImGuiMCP::SetNextWindowBgAlpha(0.6F);
+                const auto flags = ImGuiMCP::ImGuiWindowFlags_NoTitleBar |
+                    ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize | ImGuiMCP::ImGuiWindowFlags_NoMove |
+                    ImGuiMCP::ImGuiWindowFlags_NoSavedSettings;
+                if (ImGuiMCP::Begin("##SlaveTatsCameraTools", nullptr, flags)) {
+                    ImGuiMCP::SetWindowFontScale(0.7F);
+                    static int focusIndex = 0;
+                    constexpr const char* names[]{"Whole body", "Face", "Body", "Hands", "Feet"};
+                    ImGuiMCP::SetNextItemWidth(120.0F);
+                    const bool changed = ImGuiMCP::Combo("##CameraFocus", &focusIndex, names, 5);
+                    ImGuiMCP::SameLine();
+                    const bool center = ImGuiMCP::Button("Center");
+                    ImGuiMCP::SameLine();
+                    if (ImGuiMCP::Button("Reset View")) {
+                        input = {.reset = true, .frameCenterX = input.frameCenterX};
+                        focusIndex = 0;
+                    } else if (changed || center) {
+                        input = {.focus = static_cast<BrowserCameraFocus>(focusIndex + 1),
+                            .frameCenterX = input.frameCenterX};
+                    }
+                    if (panSettings && currentPan) {
+                        static bool panSaveFailed = false;
+                        const auto pan = currentPan();
+                        const auto initial = panSettings->initialCameraPan(side);
+                        if (pan) {
+                            ImGuiMCP::Text("Current Pan X %.1f  Y %.1f", pan->x, pan->y);
+                            ImGuiMCP::Text("Initial Pan X %.1f  Y %.1f", initial.x, initial.y);
+                            if (ImGuiMCP::Button("Use current Pan as initial")) {
+                                panSaveFailed = !panSettings->setInitialCameraPan(
+                                    side, {pan->x, pan->y});
+                            }
+                            if (ImGuiMCP::IsItemHovered()) {
+                                ImGuiMCP::SetTooltip("Applies when this side has no remembered session view.");
+                            }
+                            if (panSaveFailed) {
+                                ImGuiMCP::TextUnformatted("Could not save initial Pan.");
+                            }
+                        }
+                    }
+                }
+                ImGuiMCP::End();
+            }
+        }
+        cameraIntent(cameraTarget, input);
+    };
     if (workflow.tattooLoadoutScreen() != TattooLoadoutScreen::none) {
         renderLoadoutScreen(workflow, close);
+        dispatchCameraIntent();
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::currentSlots) {
         renderCurrentSlots(workflow, thumbnails, backgroundMode, close);
+        dispatchCameraIntent();
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::slotActions ||
         workflow.screen() == SlotWorkflowScreen::removeConfirmation ||
         workflow.screen() == SlotWorkflowScreen::removing) {
         renderSlotActions(workflow, thumbnails, backgroundMode, close);
+        dispatchCameraIntent();
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::editAppearance ||
         workflow.screen() == SlotWorkflowScreen::savingAppearance) {
-        renderEditAppearance(workflow, thumbnails, backgroundMode, close);
+        renderEditAppearance(workflow, model, thumbnails, backgroundMode, close);
+        dispatchCameraIntent();
         return;
     }
     if (workflow.screen() == SlotWorkflowScreen::preview ||
         workflow.screen() == SlotWorkflowScreen::applying) {
         renderPreview(workflow, model, thumbnails, backgroundMode, close);
+        dispatchCameraIntent();
         return;
     }
 
@@ -2811,7 +3117,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     }
     const auto layout = calculateFoundationLayout(
         {viewport->Pos.x, viewport->Pos.y},
-        {viewport->Size.x, viewport->Size.y});
+        {viewport->Size.x, viewport->Size.y}, g_renderMenuSide);
     ImGuiMCP::SetNextWindowPos(
         {layout.position.x, layout.position.y}, ImGuiMCP::ImGuiCond_Appearing, {0.0F, 0.0F});
     ImGuiMCP::SetNextWindowSize(
@@ -2825,11 +3131,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
 
-    if (renderActorTargetHeader(workflow)) {
-        ImGuiMCP::End();
-        ImGuiMCP::PopStyleVar();
-        return;
-    }
+    // The actor is fixed for this Browse session. Target selection belongs on Current Slots.
     const bool targetActionsEnabled = actorTargetActionsEnabled(
         workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
     model.refresh();
@@ -2837,9 +3139,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     if (model.filter().area != targetArea) {
         model.setArea(std::string(targetArea));
     }
-    thumbnails.synchronize(model.snapshot(), collectPickerTexturePaths(model.page()));
-    thumbnails.pump();
-    const auto thumbnailViews = thumbnails.views();
     const auto targetLabel = formatSlotTargetLabel(
         workflow.actorTarget(), workflow.selectedArea(), workflow.targetSlot().value_or(-1));
     ImGuiMCP::Text("Target: %s", targetLabel.c_str());
@@ -2856,6 +3155,8 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 : "Thumbnail BG: White")) {
         backgroundMode = toggledThumbnailBackgroundMode(backgroundMode);
     }
+    ImGuiMCP::SameLine();
+    ImGuiMCP::Text("%zu tattoos", model.scrollPage().matchedEntries);
 
     constexpr std::size_t searchCapacity = 256;
     std::array<char, searchCapacity> searchBuffer{};
@@ -2863,6 +3164,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const std::size_t searchLength = std::min(filter.search.size(), searchBuffer.size() - 1);
     std::copy_n(filter.search.data(), searchLength, searchBuffer.data());
     const auto snapshot = model.snapshot();
+    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
     std::vector<CatalogBrowserSourceOption> sourceOptions;
     std::vector<std::string> domainOptions;
     std::vector<const char*> domainLabels;
@@ -2907,7 +3209,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         sourceLabels.push_back(source.label.c_str());
     }
 
-    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
         if (ImGuiMCP::BeginTable(
                 "FilterControls",
                 2,
@@ -3046,7 +3347,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::EndPopup();
     }
 
-    const auto& page = model.page();
+    const auto& page = model.scrollPage();
     const auto emptyState = classifyCatalogBrowserEmptyState(
         snapshot != nullptr,
         page,
@@ -3069,15 +3370,18 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     }
     const auto* style = ImGuiMCP::GetStyle();
     const float itemSpacing = style ? style->ItemSpacing.y : 4.0F;
-    const float metadataHeight = calculateCatalogCardMetadataHeight(
-        ImGuiMCP::GetTextLineHeightWithSpacing(), itemSpacing);
-    const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
-    const auto gridLayout = calculateCatalogBrowserGridLayout(
-        ImGuiMCP::GetContentRegionAvail().y,
-        footerHeight,
-        metadataHeight,
-        3);
+    const float metadataHeight = ImGuiMCP::GetTextLineHeightWithSpacing() + itemSpacing;
+    const float footerHeight = catalogBrowseFooterHeight(
+        ImGuiMCP::GetFrameHeightWithSpacing(), slotRuntime.catalogPreviewActive());
+    constexpr float galleryRowHeight = 160.0F;
+    const float cellPadding = style ? style->CellPadding.y * 2.0F : 8.0F;
+    const CatalogBrowserGridLayout gridLayout{
+        .gridHeight = std::max(0.0F, ImGuiMCP::GetContentRegionAvail().y - footerHeight),
+        .rowHeight = galleryRowHeight,
+        .thumbnailHeight = std::max(1.0F, galleryRowHeight - metadataHeight - cellPadding),
+    };
     if (emptyState != CatalogBrowserEmptyState::none) {
+        thumbnails.synchronize(model.snapshot(), std::vector<std::string>{});
         if (ImGuiMCP::BeginChild(
                 "CatalogEmptyState",
                 {0.0F, gridLayout.gridHeight},
@@ -3088,22 +3392,41 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         }
         ImGuiMCP::EndChild();
     } else {
-        constexpr std::size_t columnCount = 2;
+        const std::size_t columnCount = catalogColumnCount(ImGuiMCP::GetContentRegionAvail().x);
         constexpr auto tableFlags =
             ImGuiMCP::ImGuiTableFlags_SizingStretchSame |
             ImGuiMCP::ImGuiTableFlags_BordersInner |
             ImGuiMCP::ImGuiTableFlags_NoPadOuterX |
-            ImGuiMCP::ImGuiTableFlags_NoPadInnerX;
+            ImGuiMCP::ImGuiTableFlags_NoPadInnerX |
+            ImGuiMCP::ImGuiTableFlags_ScrollY;
         if (ImGuiMCP::BeginTable(
                 "TattooCards",
                 static_cast<int>(columnCount),
                 tableFlags,
                 {0.0F, gridLayout.gridHeight})) {
-            for (std::size_t index = 0; index < pickerVisibleCardCount(page); ++index) {
-                const auto gridPosition = catalogCardGridPosition(index, columnCount);
-                if (gridPosition.column == 0) {
+            static std::size_t lastScrollRevision{};
+            if (lastScrollRevision != model.scrollRevision()) {
+                ImGuiMCP::SetScrollY(0.0F);
+                lastScrollRevision = model.scrollRevision();
+            }
+            const auto visibleRange = catalogVisibleCardRange(
+                ImGuiMCP::GetScrollY(), gridLayout.gridHeight,
+                gridLayout.rowHeight, columnCount, page.entries.size());
+            thumbnails.synchronize(model.snapshot(),
+                collectPickerTexturePaths(page, visibleRange.begin, visibleRange.end));
+            thumbnails.pump();
+            const auto thumbnailViews = thumbnails.views();
+            const auto rowCount = (page.entries.size() + columnCount - 1) / columnCount;
+            auto* clipper = ImGuiMCP::ImGuiListClipperManager::Create();
+            ImGuiMCP::ImGuiListClipperManager::Begin(
+                clipper, static_cast<int>(rowCount), gridLayout.rowHeight);
+            while (ImGuiMCP::ImGuiListClipperManager::Step(clipper)) {
+                for (int row = clipper->DisplayStart; row < clipper->DisplayEnd; ++row) {
                     ImGuiMCP::TableNextRow(0, gridLayout.rowHeight);
-                }
+                    const auto rowBegin = static_cast<std::size_t>(row) * columnCount;
+                    const auto rowEnd = std::min(page.entries.size(), rowBegin + columnCount);
+                    for (std::size_t index = rowBegin; index < rowEnd; ++index) {
+                const auto gridPosition = catalogCardGridPosition(index, columnCount);
                 ImGuiMCP::TableSetColumnIndex(static_cast<int>(gridPosition.column));
                 const auto& tattoo = page.entries[index];
                 const auto domainLabel = domainThumbnailBadgeLabel(tattoo.domain);
@@ -3117,7 +3440,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
 
                 const auto thumbnailWidgetId = catalogCardWidgetId(
                     "Thumbnail", tattoo.sourceId, tattoo.sourceIndex);
-                bool favoriteClicked = false;
 
                 ImGuiMCP::PushStyleColor(
                     ImGuiMCP::ImGuiCol_ChildBg,
@@ -3134,9 +3456,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     if (thumbnail && thumbnail->status == NativeThumbnailStatus::ready &&
                         thumbnail->texture && thumbnail->texture->shaderResourceView) {
                         const auto texture = thumbnail->texture;
-                        const auto fit = fitCatalogThumbnail(
-                            texture->width,
-                            texture->height,
+                        const auto& bounds = texture->visibleBounds;
+                        const auto fit = fitVisibleThumbnail(
+                            texture->width, texture->height,
+                            bounds.left, bounds.top, bounds.right, bounds.bottom,
                             imageRegion.x,
                             imageRegion.y);
                         ImGuiMCP::SetCursorPos({
@@ -3154,7 +3477,9 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         ImGuiMCP::Image(
                             static_cast<ImGuiMCP::ImTextureID>(
                                 texture->shaderResourceView.get()),
-                            {fit.width, fit.height});
+                            {fit.width, fit.height},
+                            {bounds.left, bounds.top},
+                            {bounds.right, bounds.bottom});
                     } else if (thumbnail) {
                         const auto label = catalogThumbnailStatusLabel(thumbnail->status);
                         if (!label.empty()) {
@@ -3162,73 +3487,6 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         }
                     }
 
-                    ImGuiMCP::SetCursorPos({imageOrigin.x + 4.0F, imageOrigin.y + 4.0F});
-                    const bool favorite = model.isFavorite(tattoo);
-                    const auto favoriteIcon = FontAwesome::UnicodeToUtf8(
-                        catalogFavoriteButtonIcon(favorite));
-                    const auto favoriteWidgetId = catalogCardWidgetId(
-                        favorite ? "RemoveFavorite" : "AddFavorite",
-                        tattoo.sourceId,
-                        tattoo.sourceIndex);
-                    const auto favoriteLabel = favoriteIcon + "##" + favoriteWidgetId;
-                    ImGuiMCP::BeginDisabled(workflow.favoritePending());
-                    if (favorite) {
-                        FontAwesome::PushSolid();
-                    } else {
-                        FontAwesome::PushRegular();
-                    }
-                    const auto favoriteIconSize = ImGuiMCP::CalcTextSize(favoriteIcon.c_str());
-                    const float favoriteButtonSize = catalogIconButtonSize(
-                        favoriteIconSize.y,
-                        style ? style->FramePadding.y : 4.0F);
-                    ImGuiMCP::PushStyleColor(
-                        ImGuiMCP::ImGuiCol_Text,
-                        favorite ? 0xFF4FD8FF : 0xFFC0C0C0);
-                    favoriteClicked = ImGuiMCP::Button(
-                        favoriteLabel.c_str(),
-                        {favoriteButtonSize, favoriteButtonSize});
-                    if (ImGuiMCP::IsItemHovered()) {
-                        ImGuiMCP::SetTooltip(
-                            "%s",
-                            favorite ? "Remove from favorites" : "Add to favorites");
-                    }
-                    ImGuiMCP::PopStyleColor();
-                    FontAwesome::Pop();
-                    ImGuiMCP::EndDisabled();
-
-                    if (!inUseSlots.empty()) {
-                        constexpr const char* badgeText = "In Use";
-                        const auto textSize = ImGuiMCP::CalcTextSize(badgeText);
-                        const auto badge = calculateCatalogBadgeLayout(
-                            imageRegion.x,
-                            textSize.x,
-                            textSize.y,
-                            6.0F,
-                            3.0F,
-                            4.0F);
-                        auto* drawList = ImGuiMCP::GetWindowDrawList();
-                        ImGuiMCP::ImDrawListManager::AddRectFilled(
-                            drawList,
-                            {
-                                imageScreenOrigin.x + badge.x,
-                                imageScreenOrigin.y + badge.y,
-                            },
-                            {
-                                imageScreenOrigin.x + badge.x + badge.width,
-                                imageScreenOrigin.y + badge.y + badge.height,
-                            },
-                            0xB8000000,
-                            3.0F,
-                            0);
-                        ImGuiMCP::ImDrawListManager::AddText(
-                            drawList,
-                            {
-                                imageScreenOrigin.x + badge.textX,
-                                imageScreenOrigin.y + badge.textY,
-                            },
-                            0xFFFFFFFF,
-                            badgeText);
-                    }
                     const auto materialLabels = catalogMaterialBadgeLabels(tattoo);
                     std::vector<std::pair<std::string_view, float>> materialLabelWidths;
                     materialLabelWidths.reserve(materialLabels.size());
@@ -3249,7 +3507,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         2.0F,
                         4.0F,
                         4.0F,
-                        4.0F + favoriteButtonSize + 4.0F);
+                        4.0F);
                     if (!materialBadges.empty()) {
                         auto* drawList = ImGuiMCP::GetWindowDrawList();
                         for (const auto& materialBadge : materialBadges) {
@@ -3299,19 +3557,58 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                             0xFFFFFFFF,
                             domainLabel.data());
                     }
+                    if (!inUseSlots.empty()) {
+                        ImGuiMCP::ImDrawListManager::AddCircleFilled(
+                            ImGuiMCP::GetWindowDrawList(),
+                            {imageScreenOrigin.x + imageRegion.x - 9.0F,
+                                imageScreenOrigin.y + 9.0F},
+                            4.5F, 0xFF48CF63, 16);
+                    }
                 }
                 ImGuiMCP::EndChild();
                 ImGuiMCP::PopStyleColor();
-                if (ImGuiMCP::IsItemHovered()) {
+                const auto cardMin = ImGuiMCP::GetItemRectMin();
+                const auto cardMax = ImGuiMCP::GetItemRectMax();
+                const bool hovered = ImGuiMCP::IsItemHovered();
+                const bool pinned = slotRuntime.catalogPreviewIsPinned(tattoo);
+                auto* cardDrawList = ImGuiMCP::GetWindowDrawList();
+                if (pinned || hovered) {
+                    ImGuiMCP::ImDrawListManager::AddRect(
+                        cardDrawList, cardMin, cardMax,
+                        pinned ? 0xFF3298EB : 0xCCFFFFFF,
+                        3.0F, 0, pinned ? 3.0F : 1.5F);
+                }
+                if (hovered) {
                     const auto tooltip = formatCatalogTattooTooltip(tattoo.name, inUseSlots);
                     ImGuiMCP::SetTooltip("%s", tooltip.c_str());
                 }
-                if (favoriteClicked) {
-                    (void)workflow.requestFavorite(tattoo, !model.isFavorite(tattoo));
-                } else if (targetActionsEnabled && ImGuiMCP::IsItemClicked()) {
-                    workflow.selectTattoo(tattoo);
+                if ((targetActionsEnabled || slotRuntime.catalogPreviewActive()) &&
+                    ImGuiMCP::IsItemClicked()) {
+                    if (slotRuntime.catalogPreviewActive()) {
+                        slotRuntime.selectCatalogPreview(tattoo);
+                    } else if (!slotRuntime.catalogPreviewStarting()) {
+                        workflow.selectTattoo(tattoo);
+                    }
+                }
+                const auto nameWidgetId = catalogCardWidgetId(
+                    "Name", tattoo.sourceId, tattoo.sourceIndex);
+                if (ImGuiMCP::BeginChild(
+                        nameWidgetId.c_str(),
+                        {0.0F, ImGuiMCP::GetTextLineHeightWithSpacing()},
+                        ImGuiMCP::ImGuiChildFlags_None,
+                        ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
+                            ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
+                    ImGuiMCP::TextUnformatted(tattoo.name.c_str());
+                    if (ImGuiMCP::IsItemHovered()) {
+                        ImGuiMCP::SetTooltip("%s", tattoo.name.c_str());
+                    }
+                }
+                ImGuiMCP::EndChild();
+                    }
                 }
             }
+            ImGuiMCP::ImGuiListClipperManager::End(clipper);
+            ImGuiMCP::ImGuiListClipperManager::Destroy(clipper);
             ImGuiMCP::EndTable();
         }
     }
@@ -3320,6 +3617,44 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::GetCursorPosY(),
         ImGuiMCP::GetContentRegionAvail().y,
         footerHeight));
+    if (slotRuntime.catalogPreviewActive()) {
+        const auto selected = slotRuntime.catalogPreviewSelection();
+        if (const auto* error = slotRuntime.catalogPreviewError()) {
+            ImGuiMCP::TextWrapped("Preview: %s", error->message.c_str());
+        } else if (selected) {
+            ImGuiMCP::Text("Selected: %s - not saved", selected->name.c_str());
+        } else {
+            ImGuiMCP::TextUnformatted("Click a tattoo to preview and select.");
+        }
+        const auto displayed = slotRuntime.catalogPreviewDisplay();
+        const auto ink = tattooColorComponents(displayed ? displayed->color : 0x000000);
+        const auto glow = tattooColorComponents(displayed ? displayed->glow : 0x000000);
+        float inkValues[3]{ink.red, ink.green, ink.blue};
+        float glowValues[3]{glow.red, glow.green, glow.blue};
+        bool glossy = displayed &&
+            (displayed->glossiness > 0.0F || displayed->specularStrength > 0.0F);
+        ImGuiMCP::SetNextItemWidth(105.0F);
+        if (ImGuiMCP::ColorEdit3("Ink##CatalogPreview", inkValues,
+                ImGuiMCP::ImGuiColorEditFlags_NoInputs)) {
+            slotRuntime.setCatalogPreviewInk(tattooColorValue(
+                {inkValues[0], inkValues[1], inkValues[2]}));
+        }
+        ImGuiMCP::SameLine();
+        ImGuiMCP::SetNextItemWidth(105.0F);
+        if (ImGuiMCP::ColorEdit3("Glow##CatalogPreview", glowValues,
+                ImGuiMCP::ImGuiColorEditFlags_NoInputs)) {
+            slotRuntime.setCatalogPreviewGlow(tattooColorValue(
+                {glowValues[0], glowValues[1], glowValues[2]}));
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Checkbox("Glossy##CatalogPreview", &glossy)) {
+            slotRuntime.setCatalogPreviewGlossy(glossy);
+        }
+    } else if (slotRuntime.catalogPreviewStarting()) {
+        ImGuiMCP::TextUnformatted("Preparing live preview...");
+    } else if (const auto* error = slotRuntime.catalogPreviewError()) {
+        ImGuiMCP::Text("Live preview unavailable: %s", error->message.c_str());
+    }
     const float horizontalButtonPadding =
         style ? style->FramePadding.x * 2.0F : 16.0F;
     const float cancelButtonWidth =
@@ -3335,7 +3670,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
                 ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
         ImGuiMCP::TableSetupColumn(
-            "Pagination", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+            "MatchCount", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
         ImGuiMCP::TableSetupColumn(
             "PickerActions",
             ImGuiMCP::ImGuiTableColumnFlags_WidthFixed,
@@ -3343,38 +3678,23 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
 
-        const bool hasPages = page.pageCount != 0;
-        ImGuiMCP::BeginDisabled(!hasPages || page.pageIndex == 0);
-        if (ImGuiMCP::Button("Prev")) {
-            model.previousPage();
+        if (slotRuntime.catalogPreviewActive()) {
+            const auto selected = slotRuntime.catalogPreviewSelection();
+            ImGuiMCP::BeginDisabled(!selected);
+            if (ImGuiMCP::Button("Save Tattoo")) (void)slotRuntime.saveCatalogPreview();
+            ImGuiMCP::EndDisabled();
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::Button("Undo##CatalogPreview")) slotRuntime.undoCatalogPreview();
+            if (slotRuntime.catalogPreviewError()) {
+                ImGuiMCP::SameLine();
+                if (ImGuiMCP::Button("Retry##CatalogPreview"))
+                    slotRuntime.retryCatalogPreview();
+            }
+        } else if (!slotRuntime.catalogPreviewStarting() &&
+                   slotRuntime.catalogPreviewError()) {
+            if (ImGuiMCP::Button("Retry Preview##CatalogPreviewBegin"))
+                slotRuntime.retryCatalogPreview();
         }
-        ImGuiMCP::EndDisabled();
-
-        ImGuiMCP::SameLine();
-        ImGuiMCP::TextUnformatted("Page");
-        ImGuiMCP::SameLine();
-        static CatalogBrowserPageInputState pageInputState;
-        pageInputState.synchronize(page.pageIndex, page.pageCount);
-        ImGuiMCP::SetNextItemWidth(56.0F);
-        ImGuiMCP::InputInt(
-            "##PageNumber",
-            &pageInputState.pendingPageNumber(),
-            0,
-            0);
-        const bool itemActive = ImGuiMCP::IsItemActive();
-        const bool committedOnDeactivate = ImGuiMCP::IsItemDeactivatedAfterEdit();
-        if (const auto requestedPage = pageInputState.finishFrame(
-                itemActive, false, committedOnDeactivate)) {
-            model.setPageNumber(*requestedPage);
-        }
-        ImGuiMCP::SameLine();
-        ImGuiMCP::Text("/ %zu", page.pageCount);
-        ImGuiMCP::SameLine();
-        ImGuiMCP::BeginDisabled(!hasPages || page.pageIndex + 1 >= page.pageCount);
-        if (ImGuiMCP::Button("Next")) {
-            model.nextPage();
-        }
-        ImGuiMCP::EndDisabled();
 
         ImGuiMCP::TableSetColumnIndex(1);
         const auto actionLayout = calculatePickerFooterActionLayout(
@@ -3385,20 +3705,21 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         const float actionOriginX = ImGuiMCP::GetCursorPosX();
         ImGuiMCP::SetCursorPosX(actionOriginX + actionLayout.cancelX);
         if (ImGuiMCP::Button("Cancel")) {
-            workflow.backToSlots();
+            if (!slotRuntime.closeCatalogPreview(false)) workflow.backToSlots();
         }
         ImGuiMCP::SameLine();
         ImGuiMCP::SetCursorPosX(actionOriginX + actionLayout.closeX);
         if (ImGuiMCP::Button("Close")) {
-            open = false;
+            if (!slotRuntime.closeCatalogPreview(true)) open = false;
         }
         ImGuiMCP::EndTable();
     }
     ImGuiMCP::End();
     ImGuiMCP::PopStyleVar();
-    if (!open && close) {
+    if (!open && close && !slotRuntime.closeCatalogPreview(true)) {
         close();
     }
+    dispatchCameraIntent();
 }
 
 }  // namespace stui::native

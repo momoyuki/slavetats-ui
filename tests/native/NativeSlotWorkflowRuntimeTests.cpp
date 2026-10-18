@@ -55,6 +55,190 @@ void expect(bool condition, std::string_view message) {
 
 TattooSlots bodySlots();
 
+void catalogPreviewSerializesSelectionCloseAndSave() {
+    NativeCatalogBrowserModel catalog([] { return stui::repository::TattooCatalogSnapshot{}; });
+    NativeSlotWorkflowModel model(catalog);
+    std::vector<NativeSlotTask> scheduled;
+    int begins{}, paints{}, restores{}, commits{};
+    bool failFirstBegin = true;
+    auto now = std::chrono::steady_clock::time_point{};
+    std::vector<stui::core::CatalogPreviewCommitRequest> saveRequests;
+    NativeSlotWorkflowRuntime runtime(
+        model,
+        []() -> ActorTargetResult { return ActorTarget{}; },
+        [](std::uint32_t actor, TattooArea area) {
+            auto slots = bodySlots(); slots.actorFormId = actor; slots.area = area;
+            return stui::core::TattooSlotsResult(std::move(slots));
+        },
+        [](const ApplyTattooRequest&) -> stui::core::ApplyTattooResult {
+            return std::unexpected(stui::core::ServiceError{ServiceErrorCode::applyFailed,
+                "Legacy Apply must not run"});
+        },
+        [](const RemoveTattooRequest&) -> stui::core::RemoveTattooResult {
+            return std::unexpected(stui::core::ServiceError{ServiceErrorCode::removeFailed,
+                "unused"});
+        },
+        [](const UpdateTattooAppearanceRequest&) -> UpdateTattooAppearanceResult {
+            return std::unexpected(stui::core::ServiceError{ServiceErrorCode::updateFailed,
+                "unused"});
+        },
+        [](const SetTattooLockedRequest&) -> stui::core::SetTattooLockedResult {
+            return std::unexpected(stui::core::ServiceError{ServiceErrorCode::lockFailed,
+                "unused"});
+        },
+        [&scheduled](NativeSlotTask task) { scheduled.push_back(std::move(task)); },
+        [&now] { return now; },
+        {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+        [&begins, &failFirstBegin](const stui::core::CatalogPreviewBeginRequest& request)
+            -> stui::core::CatalogPreviewBeginResult {
+            expect(request.actorFormId == 0x14 && request.slot == 0,
+                "begin must target selected Player slot");
+            if (failFirstBegin) {
+                failFirstBegin = false;
+                return std::unexpected(stui::core::ServiceError{
+                    ServiceErrorCode::previewUnavailable, "Visual target is unavailable"});
+            }
+            return stui::core::CatalogPreviewBeginSuccess{static_cast<std::uint64_t>(++begins)};
+        },
+        [&paints](const stui::core::CatalogPreviewPaintRequest& request)
+            -> stui::core::CatalogPreviewPaintResult {
+            ++paints;
+            expect(request.candidate && request.candidate->name == "Mark",
+                "click must paint the copied catalog candidate");
+            return stui::core::CatalogPreviewPaintSuccess{};
+        },
+        [&restores, &begins](const stui::core::CatalogPreviewRestoreRequest& request)
+            -> stui::core::CatalogPreviewRestoreResult {
+            ++restores;
+            expect(request.sessionId == static_cast<std::uint64_t>(begins),
+                "Close must restore the exact preview session");
+            return stui::core::CatalogPreviewRestoreSuccess{};
+        },
+        [&commits, &saveRequests](const stui::core::CatalogPreviewCommitRequest& request)
+            -> stui::core::CatalogPreviewCommitResult {
+            ++commits;
+            saveRequests.push_back(request);
+            if (commits == 1) return std::unexpected(stui::core::ServiceError{
+                ServiceErrorCode::synchronizeFailed, "Synchronization failed",
+                stui::core::MutationSideEffect::mayHaveOccurred});
+            return stui::core::ApplyTattooSuccess{request.apply.actorFormId,
+                request.apply.area, request.apply.slot, request.apply.section,
+                request.apply.name};
+        });
+    std::size_t runCount{};
+    const auto runNext = [&] {
+        ++runCount;
+        if (scheduled.empty())
+            throw std::runtime_error("expected a scheduled preview task at step " +
+                std::to_string(runCount));
+        auto task = std::move(scheduled.front());
+        scheduled.erase(scheduled.begin());
+        task();
+    };
+    model.start(); runtime.pump(); runNext();
+    expect(model.selectSlot(0), "empty slot should open catalog");
+    runtime.pump(); expect(runtime.catalogPreviewStarting(), "begin should be scheduled");
+    runNext();
+    expect(!runtime.catalogPreviewActive() && runtime.catalogPreviewError() &&
+        runtime.catalogPreviewError()->code == ServiceErrorCode::previewUnavailable,
+        "failed begin should leave Browse open with a retryable error");
+    runtime.pump();
+    expect(scheduled.empty(), "failed begin must not spin without a user retry");
+    runtime.retryCatalogPreview();
+    runtime.pump();
+    expect(runtime.catalogPreviewStarting(), "explicit retry should schedule another begin");
+    runNext(); expect(runtime.catalogPreviewActive(), "retry should open preview");
+    TattooDefinition mark;
+    mark.section = "Pack"; mark.name = "Mark"; mark.area = "Body";
+    mark.texturePath = "mark.dds"; mark.glow = 0x123456;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 0,
+        "open browser without a click must not paint an Actor tattoo");
+    now += 6s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 0,
+        "leaving the browser open without a click must never schedule a repaint");
+    runtime.selectCatalogPreview(mark);
+    expect(runtime.catalogPreviewIsPinned(mark), "clicked card should have a selected border");
+    runtime.pump(); expect(paints == 0, "selection must wait for game-thread task");
+    expect(!model.selectPlayerTarget(), "Actor switch must wait for preview cleanup");
+    expect(runtime.closeCatalogPreview(false), "Cancel should request restoration");
+    runNext(); expect(paints == 1, "in-flight selection should finish first");
+    expect(!scheduled.empty(), "in-flight selection must schedule restoration after menu close");
+    runNext();
+    expect(restores == 1 && !runtime.catalogPreviewActive() &&
+        model.screen() == SlotWorkflowScreen::currentSlots,
+        "Cancel should restore before navigating away");
+    expect(!runtime.catalogPreviewIsPinned(mark), "Cancel should clear the selected border");
+    expect(!model.takeRecentTattooRequest(),
+        "unsaved selection and Cancel must not enter Recently Used history");
+    expect(model.selectSlot(0), "slot should reopen for pending-begin cancellation");
+    runtime.pump();
+    expect(runtime.catalogPreviewStarting(), "second begin should be queued");
+    expect(runtime.closeCatalogPreview(false), "Cancel should cover a queued begin");
+    runNext();
+    expect(!scheduled.empty(), "cancelled begin should queue its own restore");
+    runNext();
+    expect(restores == 2 && !runtime.catalogPreviewActive() &&
+        model.screen() == SlotWorkflowScreen::currentSlots &&
+        !model.takeRecentTattooRequest(),
+        "queued begin must restore without a selection or history write");
+    expect(model.selectSlot(0), "slot should reopen after cancellation");
+    runtime.pump(); runNext();
+    runtime.selectCatalogPreview(mark);
+    runtime.pump(); runNext();
+    now += 499ms;
+    runtime.pump();
+    expect(scheduled.empty(), "selected preview should not repaint before refresh interval");
+    now += 1ms;
+    runtime.pump();
+    expect(scheduled.size() == 1, "selected preview should schedule a bounded repaint");
+    runNext();
+    expect(paints == 3, "refresh should check the same preview after 500ms");
+    expect(runtime.saveCatalogPreview(), "pinned tattoo should queue Save");
+    runtime.pump(); runNext();
+    expect(commits == 1 && runtime.catalogPreviewActive() &&
+        runtime.catalogPreviewError() &&
+        runtime.catalogPreviewError()->code == ServiceErrorCode::synchronizeFailed &&
+        !model.takeRecentTattooRequest(),
+        "failed synchronization should keep the Save retryable without history");
+    expect(runtime.closeCatalogPreview(false), "Close may request a safe exit after failed Save");
+    expect(restores == 2, "Close must not restore the pre-Save visual after a mutation");
+    runtime.retryCatalogPreview();
+    runtime.pump();
+    expect(!scheduled.empty(), "retry should schedule synchronization-only Save");
+    runNext();
+    expect(commits == 2 && saveRequests.size() == 2 &&
+        saveRequests[0].sessionId == saveRequests[1].sessionId &&
+        saveRequests[0].sessionId == 3 &&
+        saveRequests[0].apply.mode == stui::core::ApplyTattooMode::applyAndSynchronize &&
+        saveRequests[1].apply.mode == stui::core::ApplyTattooMode::synchronizeOnly &&
+        saveRequests[1].apply.name == "Mark" &&
+        saveRequests[1].apply.appearance &&
+        saveRequests[1].apply.appearance->glow == 0x123456 && restores == 2,
+        "retry should synchronize the same saved tattoo without another mutation or restore");
+    const auto history = model.takeRecentTattooRequest();
+    expect(history && history->kind == stui::native::RecentTattooRequestKind::record &&
+        history->identity && history->identity->name == "Mark" &&
+        history->identity->area == TattooArea::body,
+        "successful Save should record exactly the selected tattoo");
+    runtime.pump(); runNext();
+    now += 2s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 3,
+        "completed Save must stop periodic preview paint");
+
+    expect(model.selectSlot(0), "slot should reopen before world invalidation");
+    runtime.pump();
+    expect(runtime.catalogPreviewStarting(), "new preview begin should be queued");
+    const int previousBegins = begins;
+    runtime.invalidateCatalogPreview();
+    runNext();
+    expect(begins == previousBegins && !runtime.catalogPreviewStarting() &&
+        !runtime.catalogPreviewActive() && !runtime.catalogPreviewError(),
+        "queued preview begin must not touch a new game world after invalidation");
+}
+
 void nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery() {
     NativeCatalogBrowserModel catalog([] { return stui::repository::TattooCatalogSnapshot{}; });
     NativeSlotWorkflowModel model(catalog);
@@ -1260,6 +1444,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("catalog preview serializes selection, Cancel and Save",
+        catalogPreviewSerializesSelectionCloseAndSave);
     failures += run("nearby scan runs once per open and precedes selected Actor query",
         nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery);
     failures += run("explicit NPC scan runs once and queries selected Actor",

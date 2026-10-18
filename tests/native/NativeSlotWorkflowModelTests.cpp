@@ -157,10 +157,12 @@ void cachesAreaResultsAndPreservesPerAreaPages() {
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
     NativeSlotWorkflowModel model(catalog);
-    completeInitialQuery(model, slots(TattooArea::body, 12));
+    expect(NativeSlotWorkflowModel::kPageSize == 12,
+        "expected twelve slots per four-column page");
+    completeInitialQuery(model, slots(TattooArea::body, 24));
 
     expect(model.slotPageCount() == 2 && model.slotPageIndex() == 0,
-        "expected two six-slot BODY pages");
+        "expected two twelve-slot BODY pages");
     model.nextSlotPage();
     expect(model.slotPageIndex() == 1, "expected BODY second page");
 
@@ -184,7 +186,7 @@ void clampsSlotPagination() {
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
     NativeSlotWorkflowModel model(catalog);
-    completeInitialQuery(model, slots(TattooArea::body, 13));
+    completeInitialQuery(model, slots(TattooArea::body, 25));
 
     model.previousSlotPage();
     expect(model.slotPageIndex() == 0, "expected previous clamped at first slot page");
@@ -946,7 +948,12 @@ void queryFailureRemainsRetryable() {
 }
 
 void editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot() {
-    TattooCatalogSnapshot snapshot = catalogWithEntries(1);
+    auto matchingDefinition = tattoo("Existing", 0);
+    matchingDefinition.texturePath = "marks/existing.dds";
+    TattooCatalogSnapshot snapshot = std::make_shared<const TattooCatalog>(TattooCatalog{
+        .repository = stui::repository::TattooRepository({matchingDefinition}),
+        .sourceCount = 1,
+    });
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     catalog.refresh();
     NativeSlotWorkflowModel model(catalog);
@@ -971,6 +978,9 @@ void editAppearanceRequiresOwnedSlotWithHandleAndCopiesSnapshot() {
     const auto* session = model.editAppearance();
     expect(model.screen() == SlotWorkflowScreen::editAppearance && session,
         "expected Edit Appearance screen with a session");
+    expect(session->favoriteDefinition &&
+            session->favoriteDefinition->sourceId == matchingDefinition.sourceId,
+        "expected Edit Appearance to retain the resolved favorite catalog identity");
     expect(session->actorFormId == 0x14 && session->area == TattooArea::body &&
             session->slot == 1 && session->runtimeHandle == 73 &&
             session->texturePath == "marks/existing.dds" &&
@@ -1904,11 +1914,11 @@ void targetChangeClearsAllCachesPagesAndTransientState() {
     auto snapshot = catalogWithEntries(1);
     NativeCatalogBrowserModel catalog([&snapshot] { return snapshot; });
     NativeSlotWorkflowModel model(catalog);
-    completeInitialQuery(model, slots(TattooArea::body, 12));
+    completeInitialQuery(model, slots(TattooArea::body, 24));
     for (auto area : {TattooArea::body, TattooArea::face, TattooArea::hands, TattooArea::feet}) {
         model.selectArea(area);
         if (const auto query = model.takeSlotQuery()) {
-            model.completeSlotQuery(query->generation, slots(area, 12));
+            model.completeSlotQuery(query->generation, slots(area, 24));
         }
         model.nextSlotPage();
         expect(model.slotPageIndex() == 1, "expected populated old Actor page");

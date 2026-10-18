@@ -28,8 +28,16 @@ factions, distance, or UI state.
 
 ## User behavior
 
-The target header keeps `Player`, `Nearby Actor`, and `Choose NPC`, and adds
-`Followers`. `Followers` opens the same snapshot picker with a follower-only
+**2026-10-16 unified-picker update:** The user requested merging Followers into
+Choose NPC. The browser now exposes Player and Choose NPC only, listing ordinary
+NPCs and Followers with loaded 3D within 2048 world units. Choose NPC toggles
+the list without retargeting. The separate follower mode described below is a
+retained internal contract and historical implementation record, not a visible
+entry point in the current browser.
+
+The target header presents three buttons: `Player`, `Choose NPC`, and
+`Followers`. The redundant Nearby Actor combo is hidden. `Followers` opens
+the same snapshot picker with a follower-only
 view. Search filters copied values without rescanning. Refresh replaces the
 snapshot and keeps the follower-only view. Closing leaves the current target
 unchanged. Selecting a row uses the existing explicit-NPC target transition and
@@ -57,3 +65,9 @@ selection intent.
 - stale scan completions remain ignored;
 - adapter labels and existing Player/nearby/explicit-NPC behavior stay stable;
 - full Debug and Release suites pass.
+
+## Acceptance record
+
+On 2026-10-14, the user confirmed the in-game follower-only list, Search,
+Refresh, Close, exact follower selection, and switching back to Choose
+NPC/Player. PR #18 merged into `main` on 2026-10-15.

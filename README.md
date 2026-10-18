@@ -51,14 +51,13 @@ Launch Skyrim through SKSE in MO2.
 
 ## Usage
 
-Press **F8** by default or choose **SlaveTatsUI > Tattoo Browser** in SKSE Menu
-Framework. With FLICK installed, choose **SlaveTatsUI > Tattoo Browser** in its
-sidebar and press **Open Tattoo Browser**. The configured hotkey toggles the
-native window. The browser opens as a left-side panel so the Actor Target stays
-visible beside it.
+Choose **SlaveTatsUI > Tattoo Browser** in SKSE Menu Framework. With FLICK
+installed, choose the same tool in its sidebar. In the launcher, set the
+browser position to Left or Right and press **Open Tattoo Browser**. A hotkey
+can be configured in the launcher; it defaults to **None**.
 
-Choose the Player or one of the nearby loaded Actors, then manage that Actor Target's
-current slots:
+Choose the Player or use **Choose NPC** to select a nearby loaded Actor, then
+manage that Actor Target's current slots:
 
 - choose an empty slot to browse and apply a tattoo;
 - choose an occupied SlaveTats slot to edit its appearance, lock or unlock it,
@@ -70,11 +69,14 @@ current slots:
   Presets speed up repeated work;
 - appearance controls provide debounced live preview with safe Save,
   Cancel/Close restoration, and synchronization-only retry;
+- the Browse gallery previews a tattoo only when clicked; hover shows a tooltip
+  without changing the Actor, and Save Tattoo commits the selected draft;
 - Refresh reloads current slot state and Sync reapplies visual updates.
 
-Only current-page thumbnails are requested. Loose and BSA-backed DDS textures
-are decoded and uploaded to a bounded D3D11 cache; missing textures render a
-placeholder rather than blocking the menu.
+The scrolling gallery requests thumbnails near visible rows. The launcher can
+prebuild reduced DDS thumbnails for large textures into a bounded disk cache,
+show build progress and disk usage, and clear that cache. The GPU cache is also
+bounded; missing textures render a placeholder rather than blocking the menu.
 
 ## Pack-Declared Material Texture Choices
 

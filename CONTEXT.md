@@ -9,7 +9,7 @@ The combination of section and name that SlaveTats uses to resolve a tattoo defi
 _Avoid_: Source identity, file identity
 
 **Actor Target**:
-The explicit Actor identity whose SlaveTats slots the native workflow currently manages. The target is either the Player or a deliberately selected nearby Actor and is identified by form ID, never by display name or stale UI state.
+The explicit Actor identity whose SlaveTats slots the native workflow currently manages. The target is the Player or a deliberately selected loaded Actor from Nearby Actor, Choose NPC, or Followers, and is identified by form ID, never by display name or stale UI state.
 _Avoid_: Current actor, implicit actor
 
 **Target Generation**:

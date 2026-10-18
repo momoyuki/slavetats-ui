@@ -97,6 +97,113 @@ TattooSlotsResult SlaveTatsService::querySlots(std::uint32_t actorFormId, Tattoo
     return m_runtime.querySlots(actorFormId, area);
 }
 
+CatalogPreviewBeginResult SlaveTatsService::beginCatalogPreview(
+    const CatalogPreviewBeginRequest& request) {
+    if (!m_runtime.apiAvailable()) return std::unexpected(ServiceError{
+        ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    if (!m_runtime.jContainersReady()) return std::unexpected(ServiceError{
+        ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    if (!request.actorFormId) return std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "Actor not found"});
+    if (!isValidArea(request.area)) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidArea, "Invalid tattoo area"});
+    if (request.slot < 0) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidSlot, "Invalid tattoo slot"});
+    return m_runtime.beginCatalogPreview(request);
+}
+
+CatalogPreviewPaintResult SlaveTatsService::paintCatalogPreview(
+    const CatalogPreviewPaintRequest& request) {
+    if (!request.sessionId) return std::unexpected(ServiceError{
+        ServiceErrorCode::previewUnavailable, "Catalog preview session is unavailable"});
+    if (!request.context.actorFormId) return std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "Actor not found"});
+    if (!isValidArea(request.context.area)) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidArea, "Invalid tattoo area"});
+    if (request.context.slot < 0) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidSlot, "Invalid tattoo slot"});
+    if (request.candidate &&
+        (request.candidate->section.empty() || request.candidate->name.empty())) {
+        return std::unexpected(ServiceError{ServiceErrorCode::tattooNotFound,
+            "Tattoo section and name are required"});
+    }
+    if (request.candidate &&
+        (request.candidate->color < 0 || request.candidate->color > 0xFFFFFF ||
+        request.candidate->glow < 0 || request.candidate->glow > 0xFFFFFF ||
+        !std::isfinite(request.candidate->alpha) || request.candidate->alpha < 0.0F ||
+        request.candidate->alpha > 1.0F ||
+        !std::isfinite(request.candidate->glossiness) || request.candidate->glossiness < 0.0F ||
+        !std::isfinite(request.candidate->specularStrength) ||
+        request.candidate->specularStrength < 0.0F ||
+        !std::isfinite(request.candidate->emissiveMult) ||
+        request.candidate->emissiveMult < 0.0F)) {
+        return std::unexpected(ServiceError{ServiceErrorCode::previewFailed,
+            "Invalid catalog preview appearance"});
+    }
+    return m_runtime.paintCatalogPreview(request);
+}
+
+CatalogPreviewRestoreResult SlaveTatsService::restoreCatalogPreview(
+    const CatalogPreviewRestoreRequest& request) {
+    if (!request.sessionId) return std::unexpected(ServiceError{
+        ServiceErrorCode::previewUnavailable, "Catalog preview session is unavailable"});
+    if (!request.context.actorFormId) return std::unexpected(ServiceError{
+        ServiceErrorCode::actorNotFound, "Actor not found"});
+    if (!isValidArea(request.context.area)) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidArea, "Invalid tattoo area"});
+    if (request.context.slot < 0) return std::unexpected(ServiceError{
+        ServiceErrorCode::invalidSlot, "Invalid tattoo slot"});
+    return m_runtime.restoreCatalogPreview(request);
+}
+
+CatalogPreviewCommitResult SlaveTatsService::commitCatalogPreview(
+    const CatalogPreviewCommitRequest& request) {
+    if (!m_runtime.apiAvailable()) return std::unexpected(ServiceError{
+        ServiceErrorCode::slaveTatsUnavailable, "SlaveTatsNG not available"});
+    if (!m_runtime.jContainersReady()) return std::unexpected(ServiceError{
+        ServiceErrorCode::jContainersUnavailable, "JContainers not ready"});
+    if (!request.sessionId) return std::unexpected(ServiceError{
+        ServiceErrorCode::previewUnavailable, "Catalog preview session is unavailable"});
+    if (!request.context.actorFormId ||
+        request.apply.actorFormId != request.context.actorFormId) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::actorNotFound, "Catalog preview Actor does not match Save"});
+    }
+    if (!isValidArea(request.context.area) || request.apply.area != request.context.area) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::invalidArea, "Catalog preview area does not match Save"});
+    }
+    if (request.context.slot < 0 || request.apply.slot != request.context.slot) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::invalidSlot, "Catalog preview slot does not match Save"});
+    }
+    if (request.apply.section.empty() || request.apply.name.empty()) {
+        return std::unexpected(ServiceError{
+            ServiceErrorCode::tattooNotFound, "Tattoo section and name are required"});
+    }
+    if (request.apply.mode == ApplyTattooMode::applyAndSynchronize) {
+        if (request.apply.color < 0 || request.apply.color > 0xFFFFFF ||
+            !std::isfinite(request.apply.alpha) || request.apply.alpha < 0.0F ||
+            request.apply.alpha > 1.0F) {
+            return std::unexpected(ServiceError{
+                ServiceErrorCode::applyFailed, "Invalid catalog preview appearance"});
+        }
+        if (request.apply.appearance) {
+            const auto& a = *request.apply.appearance;
+            const auto invalidStrength = [](const std::optional<float>& value) {
+                return value && (!std::isfinite(*value) || *value < 0.0F);
+            };
+            if ((a.glow && (*a.glow < 0 || *a.glow > 0xFFFFFF)) ||
+                invalidStrength(a.glossiness) || invalidStrength(a.specularStrength) ||
+                invalidStrength(a.emissiveMult)) {
+                return std::unexpected(ServiceError{
+                    ServiceErrorCode::applyFailed, "Invalid advanced catalog preview appearance"});
+            }
+        }
+    }
+    return m_runtime.commitCatalogPreview(request);
+}
+
 ApplyTattooResult SlaveTatsService::applyToSlot(const ApplyTattooRequest& request) {
     if (!m_runtime.apiAvailable()) {
         return std::unexpected(ServiceError{
@@ -151,6 +258,18 @@ ApplyTattooResult SlaveTatsService::applyToSlot(const ApplyTattooRequest& reques
         });
     }
 
+    if (request.appearance) {
+        const auto& a = *request.appearance;
+        const auto invalidStrength = [](const std::optional<float>& value) {
+            return value && (!std::isfinite(*value) || *value < 0.0F);
+        };
+        if ((a.glow && (*a.glow < 0 || *a.glow > 0xFFFFFF)) ||
+            invalidStrength(a.glossiness) || invalidStrength(a.specularStrength) ||
+            invalidStrength(a.emissiveMult)) {
+            return std::unexpected(ServiceError{
+                ServiceErrorCode::applyFailed, "Invalid advanced tattoo appearance"});
+        }
+    }
     return m_runtime.applyToSlot(request);
 }
 

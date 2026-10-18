@@ -3,6 +3,7 @@
 #include "core/ITattooRuntime.h"
 #include "runtime/OverlaySlotConfiguration.h"
 #include "runtime/TattooLoadoutOrchestration.h"
+#include "runtime/CatalogPreviewRuntimeSession.h"
 #include "JContainers/jc_interface.h"
 #include "SlaveTatsNG_Interface.h"
 
@@ -10,6 +11,7 @@
 #include <expected>
 #include <functional>
 #include <optional>
+#include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -45,6 +47,8 @@ public:
     void bindSlaveTats(const slavetats::interface::Addresses* api) noexcept;
     void noteSlaveTatsVersionMismatch(std::uint32_t version) noexcept;
     [[nodiscard]] bool bindJContainers(const jc::root_interface* root);
+    void bindCatalogPreview(CatalogPreviewVisualBindings bindings);
+    void invalidateCatalogPreview() noexcept;
 
     [[nodiscard]] bool apiAvailable() const noexcept override;
     [[nodiscard]] bool jContainersReady() const noexcept override;
@@ -58,6 +62,14 @@ public:
         const core::UpdateTattooAppearanceRequest& request) override;
     core::SetTattooLockedResult setTattooLocked(
         const core::SetTattooLockedRequest& request) override;
+    core::CatalogPreviewBeginResult beginCatalogPreview(
+        const core::CatalogPreviewBeginRequest& request) override;
+    core::CatalogPreviewPaintResult paintCatalogPreview(
+        const core::CatalogPreviewPaintRequest& request) override;
+    core::CatalogPreviewRestoreResult restoreCatalogPreview(
+        const core::CatalogPreviewRestoreRequest& request) override;
+    core::CatalogPreviewCommitResult commitCatalogPreview(
+        const core::CatalogPreviewCommitRequest& request) override;
     core::CaptureTattooLoadoutResult captureLoadout(
         const core::CaptureTattooLoadoutRequest& request) override;
     core::PreviewTattooLoadoutResult previewLoadout(
@@ -94,6 +106,7 @@ private:
     std::optional<SlaveTatsAppearanceBindings> m_appearanceBindings;
     TattooLoadoutRetryRegistry m_loadoutRetries;
     std::uint32_t m_loadoutActorFormId{};
+    std::unique_ptr<CatalogPreviewRuntimeSession> m_catalogPreview;
 };
 
 }  // namespace stui::runtime

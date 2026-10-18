@@ -39,12 +39,21 @@ retryable discovery status; it never changes the active target to another Actor.
 
 ## User behavior
 
+**2026-10-16 presentation update:** The Nearby Actor combo and its retry button
+are hidden in the browser header. The two visible buttons are Player and
+Choose NPC, with one Target identity line. Followers are included in the nearby
+NPC list. NPCs are selected
+through the searchable loaded-Actor picker. The snapshot/runtime contract below
+is retained for compatibility; the original selector behavior is historical.
+
 The target header presents `Player` and a `Nearby Actors` selector. While the
 snapshot is pending it shows `Scanning nearby Actors...`. Once ready, the list
 contains the copied Actor name, form ID, and rounded distance. Selecting an
 entry clears actor-scoped slot state, increments the target generation, and
 queries only that Actor. The selected Actor remains fixed even if the Player
 moves or the old Actor leaves the crosshair.
+The selector remains a single-line combo. Its open popup shows a short,
+scrollable list rather than extending down the main browser panel.
 
 Closing and reopening the browser creates a new snapshot. There is no automatic
 retargeting and no Crosshair Target mode. If a selected Actor unloads before a

@@ -683,6 +683,10 @@ bool NativeSlotWorkflowModel::beginEditAppearance() {
         .edited = appearance,
     };
     if (const auto snapshot = m_catalog.snapshot()) {
+        m_editAppearance->favoriteDefinition =
+            snapshot->repository.findUniqueAppliedDefinition(
+                found->tattoo->domain, found->tattoo->section, found->tattoo->name,
+                found->tattoo->area, found->tattoo->texturePath);
         const auto options = snapshot->repository.materialTextureOptions(
             found->tattoo->domain, found->tattoo->section, found->tattoo->name,
             found->tattoo->area);
@@ -1901,6 +1905,32 @@ std::optional<std::int32_t> NativeSlotWorkflowModel::targetSlot() const noexcept
     return m_targetSlot;
 }
 
+std::optional<core::CatalogPreviewContext>
+NativeSlotWorkflowModel::catalogPreviewContext() const noexcept {
+    if (m_screen != SlotWorkflowScreen::picker || !m_targetSlot || !m_actorTarget ||
+        isActorTargetResolutionInFlight()) return std::nullopt;
+    const auto* current = slots();
+    if (!current || current->actorFormId != m_actorTarget->formId ||
+        current->area != m_selectedArea) return std::nullopt;
+    return core::CatalogPreviewContext{m_actorTarget->formId, m_targetGeneration,
+        m_selectedArea, *m_targetSlot};
+}
+
+void NativeSlotWorkflowModel::setCatalogPreviewActive(bool active) noexcept {
+    m_catalogPreviewActive = active;
+}
+
+void NativeSlotWorkflowModel::finishCatalogPreviewClose(bool closeMenu) {
+    m_catalogPreviewActive = false;
+    backToSlots();
+    if (closeMenu) m_menuCloseRequested = true;
+}
+
+void NativeSlotWorkflowModel::recordCatalogPreviewSaved(
+    repository::RecentTattooIdentity identity) {
+    enqueueRecentTattoo(std::move(identity));
+}
+
 const repository::TattooDefinition* NativeSlotWorkflowModel::previewTattoo() const noexcept {
     return m_previewTattoo ? &*m_previewTattoo : nullptr;
 }
@@ -2216,7 +2246,7 @@ bool NativeSlotWorkflowModel::isMutationInFlight() const noexcept {
 }
 
 bool NativeSlotWorkflowModel::hasAppearanceTransactionWork() const noexcept {
-    return m_menuCloseRequested || (m_editAppearance &&
+    return m_catalogPreviewActive || m_menuCloseRequested || (m_editAppearance &&
         (m_editAppearance->edited != m_editAppearance->original ||
             m_editAppearance->appearanceWritten || m_activeAppearanceGeneration ||
             m_editAppearance->status == LivePreviewStatus::previewError ||

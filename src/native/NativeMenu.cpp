@@ -109,6 +109,7 @@ bool NativeMenu::handleFrameworkHotkey(
 }
 
 void NativeMenu::open() noexcept {
+    syncWindowState();
     if (port_ && window_ != 0) {
         if (openGuard_) {
             try {
@@ -121,6 +122,7 @@ void NativeMenu::open() noexcept {
             }
         }
         port_->setWindowOpen(window_, true);
+        closeNotificationPending_ = true;
         if (openCallback_) {
             try {
                 openCallback_();
@@ -135,6 +137,10 @@ void NativeMenu::setOpenCallback(OpenFunction callback) {
     openCallback_ = std::move(callback);
 }
 
+void NativeMenu::setCloseCallback(OpenFunction callback) {
+    closeCallback_ = std::move(callback);
+}
+
 void NativeMenu::setOpenGuard(OpenGuardFunction guard) {
     openGuard_ = std::move(guard);
 }
@@ -146,7 +152,18 @@ void NativeMenu::setCloseRequestCallback(CloseRequestFunction callback) {
 void NativeMenu::close() noexcept {
     if (port_ && window_ != 0) {
         port_->setWindowOpen(window_, false);
+        if (std::exchange(closeNotificationPending_, false) && closeCallback_) {
+            try {
+                closeCallback_();
+            } catch (...) {
+                lastError_ = MenuRegistrationError::callbackFailed;
+            }
+        }
     }
+}
+
+void NativeMenu::syncWindowState() noexcept {
+    if (closeNotificationPending_ && !isOpen()) close();
 }
 
 bool NativeMenu::isOpen() const noexcept {

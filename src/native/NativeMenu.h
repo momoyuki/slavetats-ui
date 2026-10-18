@@ -27,9 +27,11 @@ public:
         bool isKeyboard, bool isDown, bool matchesBinding, bool canOpen = true) noexcept;
     void open() noexcept;
     void setOpenCallback(OpenFunction callback);
+    void setCloseCallback(OpenFunction callback);
     void setOpenGuard(OpenGuardFunction guard);
     void setCloseRequestCallback(CloseRequestFunction callback);
     void close() noexcept;
+    void syncWindowState() noexcept;
     [[nodiscard]] bool isOpen() const noexcept;
     [[nodiscard]] bool isRegistered() const noexcept;
     [[nodiscard]] std::optional<MenuRegistrationError> lastError() const noexcept;
@@ -43,10 +45,12 @@ private:
     RenderFunction render_;
     LaunchFunction launch_;
     OpenFunction openCallback_;
+    OpenFunction closeCallback_;
     OpenGuardFunction openGuard_;
     CloseRequestFunction closeRequestCallback_;
     std::optional<MenuRegistrationError> lastError_;
     bool registered_{};
+    bool closeNotificationPending_{};
 };
 
 }  // namespace stui::native

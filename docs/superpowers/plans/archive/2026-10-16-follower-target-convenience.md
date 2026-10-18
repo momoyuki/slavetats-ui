@@ -74,8 +74,8 @@ presentation action and reuses the existing picker.
 
 - Implementation: `257a20f`; search/refresh/stale-scan coverage: `31d45ea`;
   scan retry and empty-result coverage: `eb90fd6`.
-- PR #18 is stacked on PR #17 and remains draft pending base integration and
-  hosted verification.
+- PR #18 was retargeted to `main` after PR #17 merged and merged on
+  2026-10-15 after hosted verification.
 - Full Debug and Release builds succeeded; complete CTest suites passed 41/41
   in each configuration after the final test fixture correction.
 - MO2 deployment uses the clean Release build of `31d45ea`. The subsequent
@@ -85,7 +85,7 @@ presentation action and reuses the existing picker.
 - On 2026-10-14, the user confirmed in-game follower-only discovery, Search,
   Refresh, Close, exact follower selection, and switching back to Choose
   NPC/Player. The deployed DLL predates the later NPC scan-error presentation
-  fix; that fix remains covered by adapter tests pending a hosted build.
+  fix; that fix was covered by adapter tests and hosted CI before merge.
 - Release readiness checks passed: CommonLibDependencyTests,
   ReleaseMetadataTests, PackageReleaseTests, ReleaseGuardsTests, and
   WorkflowPolicyTests. The guard tests use fixtures; they do not establish
@@ -97,11 +97,11 @@ presentation action and reuses the existing picker.
 
 - [x] User confirms follower-only discovery, Search, Refresh, Close, exact
   follower selection, and switching back to Choose NPC/Player in game.
-- [ ] Hosted CI passes for the accepted PR head.
-- [ ] Obtain merge approval, merge PR #17 first, and retarget PR #18 to main.
-- [ ] Obtain merge approval for PR #18 after acceptance and hosted verification.
-- [ ] Archive this plan after acceptance; keep roadmap candidates unchecked
-  until the capability is present on the target branch and validation passes.
+- [x] Hosted CI passes for the accepted PR head.
+- [x] Obtain merge approval, merge PR #17 first, and retarget PR #18 to main.
+- [x] Obtain merge approval for PR #18 after acceptance and hosted verification.
+- [x] Archive this plan after follower acceptance and merge. The explicit NPC
+  plan remains active for its deferred in-game safety checks.
 
 Release publication remains governed by the separate semantic-version release
 plan and `RELEASING.md`, including explicit tag/publication approval.

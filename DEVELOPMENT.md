@@ -30,7 +30,7 @@ SlaveTatsRuntime     SlaveTatsService
 - `NativeSlotWorkflowModel` owns Actor Target-scoped slot, picker, preview, and
   edit state.
 - `NativeSlotWorkflowRuntime` schedules game-thread queries and mutations.
-- `NativeThumbnailRuntime` resolves only requested page textures and publishes
+- `NativeThumbnailRuntime` resolves only requested visible-row textures and publishes
   bounded D3D11 shader-resource views.
 - `OfficialMenuFrameworkAdapter` renders the model without owning domain state.
 - `NativeMenu` registers the blocking window and handles launch/toggle behavior.
@@ -113,11 +113,13 @@ replace the hosted check. Release automation and versioning are documented in
 ## Thumbnail Policy
 
 Search and filtering operate on metadata and never decode textures. The current
-catalog or slot page requests only visible thumbnails. Texture resolution checks
+catalog or slot view requests only visible thumbnails. Texture resolution checks
 loose files before the BSA resource reader, then DirectXTex decodes DDS bytes and
-the D3D11 uploader creates shader-resource views. The cache is bounded to 12
-entries with a two-minute idle lifetime. Failures produce placeholders and a
-stage-specific log entry.
+the D3D11 uploader creates shader-resource views. The GPU cache holds up to 64
+entries within a 16 MiB uploaded-image budget and a two-minute idle lifetime.
+The launcher can prebuild 192-pixel DDS files into a separate 256 MiB disk cache;
+Clear Cache runs through a scheduled task outside the render callback. Failures
+produce placeholders and a stage-specific log entry.
 
 ## Contribution Gates
 

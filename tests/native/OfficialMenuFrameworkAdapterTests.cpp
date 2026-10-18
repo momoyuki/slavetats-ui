@@ -92,15 +92,40 @@ void actorTargetIdentityUsesFixedWidthUppercaseFormId() {
                "Unnamed Actor [0xFFFFFFFF]",
         "expected fallback actor name and full-width form ID");
     const ActorTarget player;
-    expect(currentTattoosTitle(&player) == "Current Tattoos - Player",
-        "expected Current Slots title to identify Player");
+    expect(actorTargetTitle(&player) == "Target: Player [0x00000014]",
+        "expected Target title to identify Player");
     const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
-    expect(currentTattoosTitle(&lydia) == "Current Tattoos - Lydia",
-        "expected Current Slots title to use the selected Actor name");
+    expect(actorTargetTitle(&lydia) == "Target: Lydia [0x000A2C8E]",
+        "expected Target title to use the selected Actor name");
     const ActorTarget unnamed{ActorTargetKind::crosshair, 0x1234, ""};
-    expect(currentTattoosTitle(&unnamed) == "Current Tattoos - Unnamed Actor" &&
-               currentTattoosTitle(nullptr) == "Current Tattoos",
+    expect(actorTargetTitle(&unnamed) == "Target: Unnamed Actor [0x00001234]" &&
+               actorTargetTitle(nullptr) == "Target: None",
         "expected unnamed and missing targets never to use a Player title");
+}
+
+void cameraControlFrameStaysOppositeMenuAndBoundsPointer() {
+    using namespace stui::native;
+    const auto frame = calculateBrowserCameraControlFrame(
+        {100.0F, 50.0F}, {1920.0F, 1080.0F}, stui::runtime::MenuSide::right);
+    const auto panel = OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {100.0F, 50.0F}, {1920.0F, 1080.0F}, stui::runtime::MenuSide::right);
+    expect(frame.position.x == 120.0F && frame.position.y == 70.0F &&
+            frame.position.x + frame.size.width <= panel.position.x - 12.0F,
+        "camera frame must use the visible scene opposite a right-side menu");
+    expect(browserCameraFrameContains(frame, {130.0F, 90.0F}) &&
+            !browserCameraFrameContains(frame, {110.0F, 90.0F}) &&
+            !browserCameraFrameContains(frame, {panel.position.x, 90.0F}) &&
+            !browserCameraFrameContains(frame, {130.0F, 49.0F}),
+        "camera gestures must only start inside the visible control rectangle");
+    const auto mirrored = calculateBrowserCameraControlFrame(
+        {100.0F, 50.0F}, {1920.0F, 1080.0F}, stui::runtime::MenuSide::left);
+    expect(mirrored.position.x > frame.position.x &&
+            std::abs(mirrored.size.width - frame.size.width) < 0.01F,
+        "changing menu side must mirror the control frame without resizing it");
+    const auto tiny = calculateBrowserCameraControlFrame(
+        {0, 0}, {100, 60}, stui::runtime::MenuSide::right);
+    expect(tiny.size.width == 0 && !browserCameraFrameContains(tiny, tiny.position),
+        "insufficient scene space must not create an invisible input area");
 }
 
 void actorPickerTitlesDistinguishNpcAndFollowerModes() {
@@ -158,15 +183,15 @@ void editAppearanceHeaderAppendsLivePreviewStatusToActorIdentity() {
     const ActorTarget lydia{ActorTargetKind::crosshair, 0xA2C8E, "Lydia"};
     expect(formatActorTargetIdentityWithPreviewStatus(
                false, &player, LivePreviewStatus::pending) ==
-               "Player [0x00000014] - Preview pending...",
+               "Target: Player [0x00000014] - Preview pending...",
         "expected pending preview status after the Player identity");
     expect(formatActorTargetIdentityWithPreviewStatus(
                false, &lydia, LivePreviewStatus::applied) ==
-               "Lydia [0x000A2C8E] - Preview applied",
+               "Target: Lydia [0x000A2C8E] - Preview applied",
         "expected applied preview status after the crosshair target identity");
     expect(formatActorTargetIdentityWithPreviewStatus(
                false, &player, LivePreviewStatus::clean) ==
-               "Player [0x00000014]",
+               "Target: Player [0x00000014]",
         "expected clean preview state not to add redundant text");
     expect(formatActorTargetIdentityWithPreviewStatus(
                true, &player, LivePreviewStatus::pending) ==
@@ -254,9 +279,21 @@ void actorTargetHeaderIntentsStopFramesOnlyAfterAcceptedChanges() {
         .slots = {{.index = 0, .occupancy = stui::core::SlotOccupancy::slaveTats,
             .tattoo = stui::core::TattooEntry{.runtimeHandle = 73, .slot = 0}}},
     });
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::npcPicker) &&
+            workflow.explicitNpcPickerOpen(), "expected NPC button to open the unified picker");
+    const auto scan = workflow.takeLoadedActorScanRequest();
+    expect(scan.has_value(), "expected one explicit NPC scan");
+    expect(!applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::npcPicker),
+        "expected repeated NPC input blocked while its scan is pending");
+    workflow.completeLoadedActorScan(scan->generation, LoadedActorList{});
+    expect(applyActorTargetHeaderIntent(workflow, ActorTargetHeaderIntent::npcPicker) &&
+            !workflow.explicitNpcPickerOpen() && workflow.actorTarget()->formId == 0x14 &&
+            workflow.slots() && !workflow.takeLoadedActorScanRequest(),
+        "second NPC click must close the picker without retargeting or rescanning");
     expect(workflow.toggleSlotLock(0), "expected pending mutation fixture");
     for (const auto intent : {ActorTargetHeaderIntent::player,
-             ActorTargetHeaderIntent::crosshair, ActorTargetHeaderIntent::refresh}) {
+             ActorTargetHeaderIntent::crosshair, ActorTargetHeaderIntent::refresh,
+             ActorTargetHeaderIntent::npcPicker}) {
         expect(!applyActorTargetHeaderIntent(workflow, intent),
             "expected header input rejected while mutation is pending");
     }
@@ -353,6 +390,11 @@ void foundationLayoutKeepsActorVisibleBesideLeftPanel() {
            "expected left-edge position with margin");
     expect(layout.size.width == 466.0F && layout.size.height == 760.0F,
            "expected actor-visible full-height side panel");
+    const auto right = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
+        {10.0F, 20.0F}, {1000.0F, 800.0F}, stui::runtime::MenuSide::right);
+    expect(right.position.x == 524.0F && right.position.y == 40.0F &&
+            right.size.width == layout.size.width && right.size.height == layout.size.height,
+        "expected right-aligned panel to preserve size and viewport margin");
     const auto ultrawide = stui::native::OfficialMenuFrameworkAdapter::calculateFoundationLayout(
         {0.0F, 0.0F}, {2560.0F, 1080.0F});
     expect(ultrawide.position.x == 20.0F && ultrawide.size.width > 1100.0F &&
@@ -369,6 +411,57 @@ void foundationLayoutKeepsActorVisibleBesideLeftPanel() {
         "expected panel bounds not to exceed a tiny viewport");
 }
 
+void cameraPointerInputUsesOnlySpaceOutsidePanel() {
+    using stui::native::browserCameraPointerInput;
+    stui::native::BrowserCameraGestureState gesture;
+    const auto inside = browserCameraPointerInput(
+        gesture, true, true, true, 15.0F, -8.0F, 1.0F);
+    expect(inside.orbitX == 0.0F && inside.orbitY == 0.0F && inside.zoom == 0.0F,
+        "drag and wheel over the actual menu must not move camera");
+    const auto outside = browserCameraPointerInput(
+        gesture, false, true, true, 15.0F, -8.0F, 0.0F);
+    expect(outside.orbitX == 0.0F && outside.orbitY == 0.0F,
+        "drag started on the menu must not orbit after leaving its bounds");
+    (void)browserCameraPointerInput(gesture, false, false, false, 0.0F, 0.0F, 0.0F);
+    (void)browserCameraPointerInput(gesture, false, true, false, 0.0F, 0.0F, 0.0F);
+    const auto exteriorDrag = browserCameraPointerInput(
+        gesture, false, true, true, 15.0F, -8.0F, 0.0F);
+    expect(exteriorDrag.orbitX == 15.0F && exteriorDrag.orbitY == 8.0F,
+        "drag started outside all UI should orbit camera");
+    (void)browserCameraPointerInput(gesture, false, false, false, 0.0F, 0.0F, 0.0F);
+    const auto noDrag = browserCameraPointerInput(
+        gesture, false, false, false, 15.0F, -8.0F, 1.0F);
+    expect(noDrag.orbitX == 0.0F && noDrag.orbitY == 0.0F,
+        "hover alone must not orbit camera");
+    expect(noDrag.zoom == 1.0F, "wheel outside UI may zoom camera");
+    (void)browserCameraPointerInput(gesture, false, true, false, 0, 0, 0, true);
+    const auto pan = browserCameraPointerInput(gesture, false, true, true, 10, -5, 0, true);
+    expect(pan.panX == 10 && pan.panY == 5 && pan.orbitX == 0 && pan.orbitY == 0,
+        "Alt drag must pan without also orbiting");
+    const auto keys = browserCameraPointerInput(gesture, false, false, false,
+        0, 0, 0, true, 1, 1, 0.02F);
+    expect(keys.orbitX > 0 && keys.panY > 0,
+        "Alt keyboard commands must reach the camera only within its frame");
+    const auto blockedKeys = browserCameraPointerInput(gesture, true, false, false,
+        0, 0, 0, true, 1, 1, 0.02F);
+    expect(blockedKeys.empty(), "UI focus must block keyboard camera commands");
+}
+
+void cameraFocusIsLimitedToThePlayerForInitialQa() {
+    using stui::native::ActorTarget;
+    using stui::native::ActorTargetKind;
+    using stui::native::browserCameraTargetFormId;
+    const ActorTarget player{ActorTargetKind::player, 0x14, "Player"};
+    const ActorTarget npc{ActorTargetKind::nearby, 0x1234, "NPC"};
+    const ActorTarget invalidPlayer{ActorTargetKind::player, 0x1234, "Player"};
+    expect(browserCameraTargetFormId(&player) == 0x14,
+        "Player may receive camera focus");
+    expect(browserCameraTargetFormId(&npc) == 0 &&
+            browserCameraTargetFormId(&invalidPlayer) == 0 &&
+            browserCameraTargetFormId(nullptr) == 0,
+        "NPC, malformed Player and missing targets must release camera focus");
+}
+
 void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
     const auto wide = stui::native::fitCatalogThumbnail(400, 200, 180.0F, 140.0F);
     expect(wide.width == 180.0F && wide.height == 90.0F,
@@ -377,6 +470,11 @@ void thumbnailPresentationFitsWithoutStretchingAndLabelsFailures() {
     const auto tall = stui::native::fitCatalogThumbnail(100, 400, 180.0F, 140.0F);
     expect(tall.width == 35.0F && tall.height == 140.0F,
            "expected tall texture fitted without stretching");
+
+    const auto visible = stui::native::fitVisibleThumbnail(
+        1024, 1024, 0.25F, 0.375F, 0.75F, 0.625F, 180.0F, 140.0F);
+    expect(visible.width == 180.0F && visible.height == 90.0F,
+           "Slot and Browser should fit the visible tattoo rather than transparent margins");
 
     expect(stui::native::catalogThumbnailStatusLabel(
                stui::native::NativeThumbnailStatus::loading) == "Loading",
@@ -438,6 +536,39 @@ void thumbnailGridGroupsTwoCardsIntoEachRow() {
         "expected second card beside first card in row zero");
     expect(third.row == 1 && third.column == 0,
         "expected third card at the start of row one");
+}
+
+void thumbnailGridSupportsSixCardsPerRow() {
+    expect(stui::native::catalogColumnCount(900.0F) == 6,
+        "expected desktop panel to use six columns");
+    expect(stui::native::catalogColumnCount(300.0F) == 2,
+        "expected narrow panel to retain clickable cards");
+    expect(stui::native::catalogColumnCount(100.0F) == 1,
+        "expected tiny panel to retain one column");
+    const auto sixth = stui::native::catalogCardGridPosition(5, 6);
+    const auto seventh = stui::native::catalogCardGridPosition(6, 6);
+    expect(sixth.row == 0 && sixth.column == 5,
+        "expected sixth card at the end of the first row");
+    expect(seventh.row == 1 && seventh.column == 0,
+        "expected seventh card to begin the next row");
+}
+
+void galleryRequestsOnlyNearbyRows() {
+    const auto top = stui::native::catalogVisibleCardRange(0.0F, 320.0F, 160.0F, 6, 1000);
+    expect(top.begin == 0 && top.end == 18,
+        "expected first two rows plus one nearby row");
+    const auto middle = stui::native::catalogVisibleCardRange(1600.0F, 320.0F, 160.0F, 6, 1000);
+    expect(middle.begin == 54 && middle.end == 78,
+        "expected bounded thumbnail window around the scrolled rows");
+}
+
+void browseFooterReservesStableSelectionSpace() {
+    const auto waiting = stui::native::catalogBrowseFooterHeight(40.0F, false);
+    const auto browsing = stui::native::catalogBrowseFooterHeight(40.0F, true);
+    expect(waiting == 80.0F && browsing == 160.0F,
+        "Browse should reserve enough footer space before a tattoo is selected");
+    expect(stui::native::catalogBrowseFooterHeight(-1.0F, true) == 0.0F,
+        "invalid frame height must not grow the footer");
 }
 
 void thumbnailCardWidgetsHaveStableUniqueIds() {
@@ -1278,16 +1409,44 @@ void slotCardsExposeAddReplaceAndDisabledTreatments() {
         "expected external slot disabled treatment");
 }
 
-void slotCardsShowTheirActionsWithoutHover() {
+void slotAreaTabsOnlyForceSelectionWhenModelChanges() {
+    using namespace stui::native;
+    using stui::core::TattooArea;
+    SlotAreaTabSelectionState state;
+    expect(state.synchronize(TattooArea::body) == TattooArea::body,
+        "initial tab must follow the workflow area");
+    expect(!state.synchronize(TattooArea::body),
+        "idle frames must not override a pending user tab click");
+    expect(state.synchronize(TattooArea::face) == TattooArea::face,
+        "a workflow area change must synchronize once");
+    expect(!state.synchronize(TattooArea::face),
+        "a synchronized tab must remain free to switch");
+    expect(state.synchronize(TattooArea::feet) == TattooArea::feet,
+        "programmatic area changes must synchronize too");
+}
+
+void slotCardsOmitActionTextAndKeepReadOnlyStatus() {
     expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::empty) ==
-               "Add Tattoo",
-        "empty slot must show its action");
+               "",
+        "empty slot must not repeat an action label");
     expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::slaveTats) ==
-               "Edit Tattoo",
-        "managed slot must show its action");
+               "",
+        "managed slot must reserve space for the thumbnail");
     expect(stui::native::slotCardStatusLabel(stui::core::SlotOccupancy::external) ==
-               "External - Read Only",
-        "external slot must visibly show its read-only state");
+               "",
+        "external slot must use its indicator instead of text");
+    const auto dot = stui::native::calculateSlotReadOnlyIndicator(
+        stui::core::SlotOccupancy::external, 210.0F, 26.0F);
+    expect(dot && dot->x == 202.0F && dot->y == 13.0F && dot->radius == 4.0F &&
+            dot->color == 0xFF4040EF,
+        "external slot must have a red dot within its top-right header");
+    expect(!stui::native::calculateSlotReadOnlyIndicator(
+               stui::core::SlotOccupancy::empty, 210.0F, 26.0F) &&
+            !stui::native::calculateSlotReadOnlyIndicator(
+               stui::core::SlotOccupancy::slaveTats, 210.0F, 26.0F) &&
+            !stui::native::calculateSlotReadOnlyIndicator(
+               stui::core::SlotOccupancy::external, 8.0F, 4.0F),
+        "owned, empty, and undersized cards must not draw a read-only dot");
 }
 
 void workflowBreadcrumbTracksEveryScreenAndConfirmation() {
@@ -1525,6 +1684,11 @@ void pickerVisiblePathsFollowOnlyTheSixRenderedCards() {
                         "picker/e.dds",
                         "picker/f.dds"},
         "expected thumbnail work only for non-empty paths in six visible Picker cards");
+
+    const auto scrolledPaths = stui::native::collectPickerTexturePaths(page, 4, 7);
+    expect(scrolledPaths == std::vector<std::string>{
+                               "picker/e.dds", "picker/f.dds", "picker/not-visible.dds"},
+        "expected scroll gallery to request only the selected card range");
 }
 
 void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
@@ -1543,7 +1707,11 @@ void nullSnapshotModelHasSafeEmptyPageWithoutImGui() {
         stui::native::NativeSlotWorkflowRuntime&,
         stui::native::NativeCatalogBrowserModel&,
         stui::native::NativeThumbnailRuntime&,
-        const std::function<void()>&) =
+        stui::runtime::MenuSide,
+        const std::function<void(std::uint32_t, stui::native::BrowserCameraPointerInput)>&,
+        const std::function<void()>&,
+        stui::runtime::MenuSideSetting*,
+        const std::function<std::optional<stui::native::BrowserCameraPan>()>&) =
         &stui::native::OfficialMenuFrameworkAdapter::renderFoundation;
     (void)render;
 }
@@ -1557,6 +1725,7 @@ int main() {
         loadoutSummaryGroupsActionsAndPreservedSlotsAcrossAreas();
         std::cout << "PASS grouped loadout actions and preserved slots\n";
         actorTargetIdentityUsesFixedWidthUppercaseFormId();
+        cameraControlFrameStaysOppositeMenuAndBoundsPointer();
         actorPickerTitlesDistinguishNpcAndFollowerModes();
         std::cout << "PASS actor target identity and Current Slots title\n";
         actorTargetStatusAndActionAvailabilityRequireResolvedIdentity();
@@ -1584,6 +1753,11 @@ int main() {
         std::cout << "PASS thumbnail view lookup maps duplicate path variants\n";
         thumbnailGridGroupsTwoCardsIntoEachRow();
         std::cout << "PASS thumbnail grid groups two cards into each row\n";
+        thumbnailGridSupportsSixCardsPerRow();
+        galleryRequestsOnlyNearbyRows();
+        browseFooterReservesStableSelectionSpace();
+        cameraPointerInputUsesOnlySpaceOutsidePanel();
+        cameraFocusIsLimitedToThePlayerForInitialQa();
         thumbnailCardWidgetsHaveStableUniqueIds();
         std::cout << "PASS thumbnail card widgets have stable unique IDs\n";
         favoriteButtonsUseFontAwesomeStarIcons();
@@ -1643,7 +1817,8 @@ int main() {
         sourceOptionsDistinguishDuplicatePackNamesAndPreserveIds();
         std::cout << "PASS source options distinguish duplicate pack names\n";
         slotCardsExposeAddReplaceAndDisabledTreatments();
-        slotCardsShowTheirActionsWithoutHover();
+        slotCardsOmitActionTextAndKeepReadOnlyStatus();
+        slotAreaTabsOnlyForceSelectionWhenModelChanges();
         workflowBreadcrumbTracksEveryScreenAndConfirmation();
         std::cout << "PASS slot cards expose intended treatments\n";
         slotPaginationClampsToSixCardPages();

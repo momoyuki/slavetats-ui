@@ -63,6 +63,17 @@ enum class ApplyTattooMode {
     synchronizeOnly,
 };
 
+struct ApplyTattooAppearanceOverrides {
+    std::optional<std::int32_t> glow;
+    std::optional<float> glossiness;
+    std::optional<float> specularStrength;
+    std::optional<float> emissiveMult;
+    std::optional<std::string> glowTexture;
+    std::optional<std::string> bump;
+
+    bool operator==(const ApplyTattooAppearanceOverrides&) const = default;
+};
+
 struct ApplyTattooRequest {
     std::uint32_t actorFormId{};
     TattooArea area{TattooArea::body};
@@ -73,6 +84,9 @@ struct ApplyTattooRequest {
     std::int32_t color{0x000000};
     float alpha{1.0F};
     ApplyTattooMode mode{ApplyTattooMode::applyAndSynchronize};
+    std::optional<ApplyTattooAppearanceOverrides> appearance;
+
+    bool operator==(const ApplyTattooRequest&) const = default;
 };
 
 struct ApplyTattooSuccess {
@@ -138,6 +152,49 @@ struct SetTattooLockedSuccess {
     bool locked{};
 };
 
+using CatalogPreviewSessionId = std::uint64_t;
+
+struct CatalogPreviewContext {
+    std::uint32_t actorFormId{};
+    std::uint64_t generation{};
+    TattooArea area{TattooArea::body};
+    std::int32_t slot{-1};
+
+    bool operator==(const CatalogPreviewContext&) const = default;
+};
+
+using CatalogPreviewBeginRequest = CatalogPreviewContext;
+
+struct CatalogPreviewBeginSuccess {
+    CatalogPreviewSessionId sessionId{};
+};
+
+struct CatalogPreviewPaintRequest {
+    CatalogPreviewSessionId sessionId{};
+    CatalogPreviewContext context;
+    // Empty candidate clears the hover without ending the browser session.
+    std::optional<TattooEntry> candidate;
+
+    bool operator==(const CatalogPreviewPaintRequest&) const = default;
+};
+
+struct CatalogPreviewPaintSuccess {};
+
+struct CatalogPreviewRestoreRequest {
+    CatalogPreviewSessionId sessionId{};
+    CatalogPreviewContext context;
+
+    bool operator==(const CatalogPreviewRestoreRequest&) const = default;
+};
+
+struct CatalogPreviewRestoreSuccess {};
+
+struct CatalogPreviewCommitRequest {
+    CatalogPreviewSessionId sessionId{};
+    CatalogPreviewContext context;
+    ApplyTattooRequest apply;
+};
+
 enum class ServiceErrorCode {
     slaveTatsUnavailable,
     jContainersUnavailable,
@@ -154,6 +211,9 @@ enum class ServiceErrorCode {
     staleTattooHandle,
     updateFailed,
     lockFailed,
+    previewUnavailable,
+    previewFailed,
+    previewConflict,
 };
 
 enum class MutationSideEffect {
@@ -174,5 +234,9 @@ using RemoveTattooResult = std::expected<RemoveTattooSuccess, ServiceError>;
 using UpdateTattooAppearanceResult =
     std::expected<UpdateTattooAppearanceSuccess, ServiceError>;
 using SetTattooLockedResult = std::expected<SetTattooLockedSuccess, ServiceError>;
+using CatalogPreviewBeginResult = std::expected<CatalogPreviewBeginSuccess, ServiceError>;
+using CatalogPreviewPaintResult = std::expected<CatalogPreviewPaintSuccess, ServiceError>;
+using CatalogPreviewRestoreResult = std::expected<CatalogPreviewRestoreSuccess, ServiceError>;
+using CatalogPreviewCommitResult = ApplyTattooResult;
 
 }  // namespace stui::core

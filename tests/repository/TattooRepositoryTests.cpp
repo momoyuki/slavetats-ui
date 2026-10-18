@@ -512,6 +512,28 @@ void resolvesMaterialTextureOptionsByExactRuntimeIdentity() {
            }, "expected bump default prepended and duplicate removed without reordering");
 }
 
+void resolvesFavoriteIdentityForAppliedTattooOnlyWhenUnique() {
+    auto selected = definition(
+        "marks-a.json", "Pack A", "Marks", "Selected", "marks/selected.dds", "Body");
+    auto unrelated = selected;
+    unrelated.sourceId = "marks-b.json";
+    unrelated.texturePath = "marks/other.dds";
+    TattooRepository unique({selected, unrelated});
+    const auto match = unique.findUniqueAppliedDefinition(
+        "default", "Marks", "Selected", "Body", "marks/selected.dds");
+    expect(match && match->sourceId == selected.sourceId,
+        "expected applied texture to resolve its exact catalog source");
+    expect(!unique.findUniqueAppliedDefinition(
+        "default", "Marks", "Selected", "Body", "marks/missing.dds"),
+        "expected unknown applied texture to have no favorite identity");
+
+    unrelated.texturePath = selected.texturePath;
+    TattooRepository ambiguous({selected, unrelated});
+    expect(!ambiguous.findUniqueAppliedDefinition(
+        "default", "Marks", "Selected", "Body", "marks/selected.dds"),
+        "expected identical tattoos in different sources to remain ambiguous");
+}
+
 void resolvesEmptyMaterialTextureDefaults() {
     auto selected = definition(
         "selected.json", "Pack", "Marks", "Selected", "selected.dds", "Body");
@@ -629,6 +651,9 @@ int main() {
     failures += run(
         "resolves empty material texture defaults",
         resolvesEmptyMaterialTextureDefaults);
+    failures += run(
+        "resolves applied favorite identity only when unique",
+        resolvesFavoriteIdentityForAppliedTattooOnlyWhenUnique);
     failures += run(
         "empty repository returns empty page and facets",
         emptyRepositoryReturnsEmptyPageAndFacets);

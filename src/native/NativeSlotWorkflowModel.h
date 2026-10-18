@@ -94,6 +94,7 @@ enum class LivePreviewStatus {
 enum class AppearanceExitIntent { none, save, cancel, close };
 
 struct AppearanceEditSession {
+    std::optional<repository::TattooDefinition> favoriteDefinition;
     std::uint32_t actorFormId{};
     std::uint64_t targetGeneration{};
     core::TattooArea area{core::TattooArea::body};
@@ -181,7 +182,7 @@ struct TattooLoadoutActorTicket {
 
 class NativeSlotWorkflowModel {
 public:
-    static constexpr std::size_t kPageSize = 6;
+    static constexpr std::size_t kPageSize = 12;
 
     explicit NativeSlotWorkflowModel(NativeCatalogBrowserModel& catalog) noexcept;
 
@@ -332,6 +333,10 @@ public:
     [[nodiscard]] std::size_t slotPageIndex() const noexcept;
     [[nodiscard]] std::size_t slotPageCount() const noexcept;
     [[nodiscard]] std::optional<std::int32_t> targetSlot() const noexcept;
+    [[nodiscard]] std::optional<core::CatalogPreviewContext> catalogPreviewContext() const noexcept;
+    void setCatalogPreviewActive(bool active) noexcept;
+    void finishCatalogPreviewClose(bool closeMenu);
+    void recordCatalogPreviewSaved(repository::RecentTattooIdentity identity);
     [[nodiscard]] const repository::TattooDefinition* previewTattoo() const noexcept;
     [[nodiscard]] const PreviewTattooAppearance* previewAppearance() const noexcept;
     [[nodiscard]] const AppearanceEditSession* editAppearance() const noexcept;
@@ -423,6 +428,7 @@ private:
     ActorPickerMode m_actorPickerMode{ActorPickerMode::all};
     std::string m_explicitNpcSearch;
     std::uint64_t m_targetGeneration{};
+    bool m_catalogPreviewActive{};
     // Runtime work outlives UI navigation that discards its presentation state.
     std::optional<std::uint64_t> m_outstandingMutationGeneration;
     std::array<AreaState, 4> m_areaStates;

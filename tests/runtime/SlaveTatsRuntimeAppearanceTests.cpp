@@ -54,6 +54,9 @@ struct QueryState {
     void* actor{reinterpret_cast<void*>(0x1234)};
     int queryCount{};
     int applyCount{};
+    int appliedTemplate{};
+    int copiedTemplateCount{};
+    bool failSynchronization{};
     int removeCount{};
     bool failNextRemove{};
     int synchronizeCount{};
@@ -223,8 +226,9 @@ std::int32_t getAppliedTattooInSlot(RE::Actor*, RE::BSFixedString, std::int32_t 
     return slot == 0 ? g_queryState->slotTattoo : 0;
 }
 
-std::int32_t addAndGetTattoo(RE::Actor*, int, int, bool, bool, bool) {
+std::int32_t addAndGetTattoo(RE::Actor*, int tattoo, int, bool, bool, bool) {
     ++g_queryState->applyCount;
+    g_queryState->appliedTemplate = tattoo;
     g_queryState->slotTattoo = g_queryState->appliedTattoo;
     return g_queryState->appliedTattoo;
 }
@@ -241,7 +245,7 @@ bool removeTattooFromSlot(RE::Actor*, RE::BSFixedString, int, bool, bool) {
 
 bool synchronizeTattoos(RE::Actor*, bool) {
     ++g_queryState->synchronizeCount;
-    return false;
+    return g_queryState->failSynchronization;
 }
 
 void setActorInteger(void*, RE::TESForm*, RE::BSFixedString, std::int32_t) {
@@ -273,6 +277,10 @@ struct JcminiPointerGuard {
     decltype(jcmini::fn_jval_addToPool) addToPool{jcmini::fn_jval_addToPool};
     decltype(jcmini::fn_jval_cleanPool) cleanPool{jcmini::fn_jval_cleanPool};
     decltype(jcmini::fn_jfdb_setInt) setActorInteger{jcmini::fn_jfdb_setInt};
+    decltype(jcmini::fn_jval_shallowCopy) shallowCopy{jcmini::fn_jval_shallowCopy};
+    decltype(jcmini::fn_jmap_setInt) setMapInt{jcmini::fn_jmap_setInt};
+    decltype(jcmini::fn_jmap_setFlt) setMapFloat{jcmini::fn_jmap_setFlt};
+    decltype(jcmini::fn_jmap_setStr) setMapString{jcmini::fn_jmap_setStr};
 
     explicit JcminiPointerGuard(QueryState& state) {
         g_queryState = &state;
@@ -290,6 +298,10 @@ struct JcminiPointerGuard {
     }
 
     ~JcminiPointerGuard() {
+        jcmini::fn_jval_shallowCopy = shallowCopy;
+        jcmini::fn_jmap_setInt = setMapInt;
+        jcmini::fn_jmap_setFlt = setMapFloat;
+        jcmini::fn_jmap_setStr = setMapString;
         jcmini::g_domain = domain;
         jcmini::fn_jarr_object = arrayObject;
         jcmini::fn_jarr_count = arrayCount;
@@ -1206,6 +1218,70 @@ void synchronizeOnlyMarksAndUsesFailurePolarityWithoutAppearanceWrites() {
         "expected synchronize-only path to mark and synchronize exactly once");
 }
 
+void advancedApplyUsesCopyAndRetriesOnlySynchronization() {
+    CommonLibTestHostGuard hostGuard;
+    QueryState queryState;
+    JcminiPointerGuard guard(queryState);
+    BindingState state;
+    SlaveTatsRuntime runtime(bindingsFor(state));
+    runtime.bindSlaveTats(&queryApi());
+    queryState.availableTattoo = 73;
+    seedAdvancedTattoo(queryState, 73);
+    const auto originalInts = queryState.integers;
+    const auto originalFloats = queryState.floats;
+    const auto originalStrings = queryState.strings;
+    jcmini::fn_jval_shallowCopy = [](void*, std::int32_t source) {
+        ++g_queryState->copiedTemplateCount;
+        constexpr int copy = 500;
+        const auto copyFields = [source](auto& fields) {
+            const auto original = fields;
+            for (const auto& [key, value] : original)
+                if (key.first == source) fields[{500, key.second}] = value;
+        };
+        copyFields(g_queryState->integers);
+        copyFields(g_queryState->floats);
+        copyFields(g_queryState->strings);
+        return copy;
+    };
+    jcmini::fn_jmap_setInt = [](void*, int h, RE::BSFixedString k, int v) {
+        g_queryState->integers[{h,k.c_str()}] = v;
+    };
+    jcmini::fn_jmap_setFlt = [](void*, int h, RE::BSFixedString k, float v) {
+        g_queryState->floats[{h,k.c_str()}] = v;
+    };
+    jcmini::fn_jmap_setStr = [](void*, int h, RE::BSFixedString k, RE::BSFixedString v) {
+        g_queryState->strings[{h,k.c_str()}] = v.c_str();
+    };
+    stui::core::ApplyTattooRequest request{
+        .actorFormId = 0x14, .area = stui::core::TattooArea::body, .slot = 2,
+        .section = originalStrings.at({73,"section"}),
+        .name = originalStrings.at({73,"name"}), .color = 0x123456, .alpha = 0.5F,
+        .appearance = stui::core::ApplyTattooAppearanceOverrides{
+            .glow = 0, .glossiness = 0.0F, .specularStrength = 8.0F,
+            .emissiveMult = 0.0F, .glowTexture = "", .bump = ""},
+    };
+    queryState.failSynchronization = true;
+    const auto failed = runtime.applyToSlot(request);
+    expect(!failed && failed.error().code == ServiceErrorCode::synchronizeFailed,
+        "expected a partial-success apply with failed synchronization");
+    expect(queryState.applyCount == 1 && queryState.copiedTemplateCount == 1 &&
+        queryState.appliedTemplate == 500, "authoritative add must receive exactly one copied handle");
+    for (const auto& [key,value] : originalInts)
+        expect(queryState.integers.at(key) == value, "source integer changed");
+    for (const auto& [key,value] : originalFloats)
+        expect(queryState.floats.at(key) == value, "source float changed");
+    for (const auto& [key,value] : originalStrings)
+        expect(queryState.strings.at(key) == value, "source string changed");
+    expect(queryState.integers.at({500,"glow"}) == 0 &&
+        queryState.floats.at({500,"emissiveMult"}) == 0.0F &&
+        queryState.strings.at({500,"bump"}).empty(), "explicit zero and empty metadata must reach add");
+    request.mode = ApplyTattooMode::synchronizeOnly;
+    queryState.failSynchronization = false;
+    expect(runtime.applyToSlot(request).has_value(), "synchronization-only retry must succeed");
+    expect(queryState.applyCount == 1 && queryState.copiedTemplateCount == 1 &&
+        queryState.synchronizeCount == 2, "retry must not repeat copy or add");
+}
+
 void synchronizeOnlyApplySkipsMutationAndSynchronizesOnce() {
     CommonLibTestHostGuard hostGuard;
     QueryState queryState;
@@ -1327,6 +1403,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("advanced apply copies template and retries synchronization only",
+        advancedApplyUsesCopyAndRetriesOnlySynchronization);
     failures += run("runtime queries preserve advanced snapshot fields",
         runtimeQueriesPreserveAdvancedSnapshotFields);
     failures += run("runtime queries read missing advanced keys with documented defaults",

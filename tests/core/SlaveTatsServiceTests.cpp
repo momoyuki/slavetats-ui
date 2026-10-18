@@ -489,6 +489,40 @@ void boundaryApplyAlphaIsForwarded() {
     expect(runtime.appliedRequest.alpha == 1.0F, "expected upper alpha boundary forwarded unchanged");
 }
 
+void advancedApplyOverridesAreValidatedAndPreserved() {
+    FakeTattooRuntime runtime;
+    SlaveTatsService service(runtime);
+    auto request = validApplyRequest();
+    request.appearance = stui::core::ApplyTattooAppearanceOverrides{
+        .glow = 0x123456, .glossiness = 7.0F, .specularStrength = 0.0F,
+        .emissiveMult = 2.5F, .glowTexture = "custom_glow.dds", .bump = "custom_n.dds"};
+    expect(service.applyToSlot(request).has_value(), "advanced apply must be accepted");
+    expect(runtime.appliedRequest.appearance == request.appearance,
+        "one apply must carry exact quick values and texture metadata");
+    request.appearance->emissiveMult = 0.0F;
+    expect(service.applyToSlot(request).has_value(), "zero emission must remain valid");
+    const int before = runtime.applyCount;
+    request.appearance->glow = -1;
+    expect(!service.applyToSlot(request), "invalid glow must fail");
+    request.appearance->glow = 0;
+    request.appearance->glossiness = std::numeric_limits<float>::quiet_NaN();
+    expect(!service.applyToSlot(request), "nonfinite gloss must fail");
+    request.appearance->glossiness = 0.0F;
+    request.appearance->specularStrength = -0.1F;
+    expect(!service.applyToSlot(request), "negative specular must fail");
+    request.appearance->specularStrength = 0.0F;
+    request.appearance->emissiveMult = std::numeric_limits<float>::infinity();
+    expect(!service.applyToSlot(request), "infinite emission must fail");
+    request.appearance->emissiveMult = -1.0F;
+    expect(!service.applyToSlot(request), "negative emission must fail");
+    expect(runtime.applyCount == before, "invalid appearance must never reach runtime");
+    request.mode = ApplyTattooMode::synchronizeOnly;
+    expect(service.applyToSlot(request).has_value(), "sync-only must not validate old appearance");
+    request = validApplyRequest();
+    expect(service.applyToSlot(request).has_value() && !runtime.appliedRequest.appearance,
+        "legacy callers must leave all advanced pack defaults untouched");
+}
+
 void validApplyRequestIsForwardedExactlyOnce() {
     FakeTattooRuntime runtime;
     runtime.applyResult = stui::core::ApplyTattooSuccess{
@@ -1050,6 +1084,7 @@ int main() {
     failures += run("out-of-range apply alpha is rejected", outOfRangeApplyAlphaIsRejected);
     failures += run("boundary apply alpha is forwarded", boundaryApplyAlphaIsForwarded);
     failures += run("valid apply request is forwarded exactly once", validApplyRequestIsForwardedExactlyOnce);
+    failures += run("advanced apply overrides are validated and preserved", advancedApplyOverridesAreValidatedAndPreserved);
     failures += run("synchronize-only apply bypasses mutation validation",
         synchronizeOnlyApplyBypassesMutationValidation);
     failures += run("apply runtime failure is returned unchanged", applyRuntimeFailureIsReturnedUnchanged);

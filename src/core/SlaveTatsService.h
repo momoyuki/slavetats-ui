@@ -16,6 +16,10 @@ public:
     RemoveTattooResult removeFromSlot(const RemoveTattooRequest& request);
     UpdateTattooAppearanceResult updateAppearance(const UpdateTattooAppearanceRequest& request);
     SetTattooLockedResult setTattooLocked(const SetTattooLockedRequest& request);
+    CatalogPreviewBeginResult beginCatalogPreview(const CatalogPreviewBeginRequest& request);
+    CatalogPreviewPaintResult paintCatalogPreview(const CatalogPreviewPaintRequest& request);
+    CatalogPreviewRestoreResult restoreCatalogPreview(const CatalogPreviewRestoreRequest& request);
+    CatalogPreviewCommitResult commitCatalogPreview(const CatalogPreviewCommitRequest& request);
     CaptureTattooLoadoutResult captureLoadout(const CaptureTattooLoadoutRequest& request);
     PreviewTattooLoadoutResult previewLoadout(const PreviewTattooLoadoutRequest& request);
     RestoreTattooLoadoutResult restoreLoadout(const RestoreTattooLoadoutRequest& request);

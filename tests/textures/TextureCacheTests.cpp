@@ -130,6 +130,35 @@ void preservesLegacyNoExpiryBehaviorByDefault() {
     expect(cache.size() == 1, "expected maximum TTL to preserve legacy no-expiry behavior");
 }
 
+void limitsCachedBytesAndKeepsRecentEntries() {
+    stui::textures::TextureCache<int> cache(10,
+        stui::textures::TextureCacheDuration::max(), 7,
+        [](const int& value) { return static_cast<std::size_t>(value); });
+    cache.getOrLoad("a", [] { return std::make_shared<int>(3); });
+    cache.getOrLoad("b", [] { return std::make_shared<int>(4); });
+    expect(cache.get("a") != nullptr, "recent entry should be readable");
+    cache.getOrLoad("c", [] { return std::make_shared<int>(3); });
+    expect(cache.get("b") == nullptr, "byte budget should evict least recent entry");
+    expect(cache.bytes() == 6 && cache.size() == 2,
+        "cached bytes should account for retained entries only");
+}
+
+void doesNotRetainOversizedEntryAndResetsByteAccounting() {
+    using namespace std::chrono_literals;
+    const auto start = stui::textures::TextureCacheTimePoint{};
+    stui::textures::TextureCache<int> cache(10, 2min, 7,
+        [](const int& value) { return static_cast<std::size_t>(value); });
+    auto large = cache.getOrLoad("large", [] { return std::make_shared<int>(8); }, start);
+    expect(large && cache.size() == 0 && cache.bytes() == 0,
+        "oversized image should be available without entering cache");
+    cache.getOrLoad("small", [] { return std::make_shared<int>(4); }, start);
+    cache.pruneExpired(start + 2min);
+    expect(cache.bytes() == 0, "expiry should release byte accounting");
+    cache.getOrLoad("small", [] { return std::make_shared<int>(4); }, start);
+    cache.clear();
+    expect(cache.bytes() == 0, "clear should reset byte accounting");
+}
+
 }  // namespace
 
 int main() {
@@ -140,5 +169,8 @@ int main() {
     run("access refreshes idle TTL", refreshesIdleExpiryWhenTextureIsAccessed);
     run("clear removes cache lookup state", clearsLookupState);
     run("maximum TTL disables idle expiry", preservesLegacyNoExpiryBehaviorByDefault);
+    run("cache honors byte budget and recency", limitsCachedBytesAndKeepsRecentEntries);
+    run("oversized and expired entries do not consume cache budget",
+        doesNotRetainOversizedEntryAndResetsByteAccounting);
     return 0;
 }
