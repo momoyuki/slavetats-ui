@@ -8,8 +8,9 @@ documented separately in [DEPLOY.md](DEPLOY.md).
 SlaveTats UI follows Semantic Versioning. Source files contain
 `MAJOR.MINOR.PATCH`; Git tags add the leading `v` and any pre-release suffix.
 
-The current base version is `1.8.0`. Its first public test tag is
-`v1.8.0-beta.1`. Increment the suffix for another beta, remove it for the stable
+The current base version is `1.8.0`. The first public test tag,
+`v1.8.0-beta.1`, is already published. The proposed next tag is
+`v1.8.0-beta.2`. Increment the suffix for another beta, remove it for the stable
 `v1.8.0` release, increment PATCH for compatible fixes, and increment MINOR for
 compatible features.
 
@@ -48,20 +49,20 @@ acceptance.
 2. Validate the proposed tag:
 
    ```powershell
-   .\scripts\release\Validate-ReleaseTag.ps1 -Tag v1.8.0-beta.1
+   .\scripts\release\Validate-ReleaseTag.ps1 -Tag v1.8.0-beta.2
    ```
 
 3. Present the exact annotated-tag command and obtain explicit approval.
-4. Create annotated tag `v1.8.0-beta.1` from the accepted `main` commit:
+4. Create annotated tag `v1.8.0-beta.2` from the accepted `main` commit:
 
    ```powershell
-   git tag -a v1.8.0-beta.1 -m "SlaveTats UI 1.8.0 Beta 1"
+   git tag -a v1.8.0-beta.2 -m "SlaveTats UI 1.8.0 Beta 2"
    ```
 
 5. Obtain separate publication approval before pushing the tag.
 
    ```powershell
-   git push origin v1.8.0-beta.1
+   git push origin v1.8.0-beta.2
    ```
 
 6. Verify the GitHub Release ZIP, checksum, archive layout, and MO2 smoke test.
@@ -89,5 +90,5 @@ test, packaging, artifact transfer, and publication failures. Download both the
 ZIP and `.sha256` asset and compare the sidecar value with:
 
 ```powershell
-Get-FileHash .\SlaveTatsUI-1.8.0-beta.1.zip -Algorithm SHA256
+Get-FileHash .\SlaveTatsUI-1.8.0-beta.2.zip -Algorithm SHA256
 ```

@@ -1,5 +1,9 @@
 # Player Camera Inspection Controls Implementation Plan
 
+> 2026-10-18 acceptance: The user reported no issues with the first camera
+> gesture on Left and Right with SmoothCam. This records the requested final
+> in-game pass without asserting that every exploratory case below was rerun.
+
 > **For agentic workers:** Use executing-plans inline, with a fresh final review.
 
 **Goal:** Preserve opening-view continuity while adding bone-aware focus, pan,

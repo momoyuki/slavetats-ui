@@ -1,5 +1,10 @@
 # Scrollable Tattoo Grid Implementation Plan
 
+> Archived after the user's 2026-10-18 acceptance of the 192-pixel prebuilt
+> gallery and the approved vNext.5 interaction. Direct VRAM measurement remains
+> a separate performance follow-up; historical hover-preview tasks below were
+> superseded by the click-to-preview plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the six-item Browse page with a responsive, vertically scrolling thumbnail gallery.

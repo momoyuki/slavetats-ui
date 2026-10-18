@@ -1,5 +1,9 @@
 # Catalog Hover Preview Implementation Plan
 
+> Archived after the user reported no problems across the requested final
+> quicksave/autosave/co-save, NPC Preview, and camera test groups on 2026-10-18.
+> Acceptance is based on the user's in-game report.
+
 > 2026-10-17 interaction update: Hover now changes only the card outline and
 > tooltip. Clicking a card selects and starts visual preview. While a clicked
 > selection remains active, the runtime checks its visual paint every 500
@@ -77,9 +81,9 @@ existing hover-preview research/spec.
 - [x] Confirm installed runtime ABI and actual node/material availability in game (2026-10-17).
 - [x] Establish exact synchronous shader-property capture/set/restore API, texture ownership,
   empty overlay behavior and durable registry exclusion. Record unavailable capabilities.
-- [ ] Complete runtime quicksave/autosave and co-save QA for the enabled backend;
-  never emulate capability with persistent writes. The normal save/load cycle
-  passed in game, but these specific cases remain unverified.
+- [x] Complete runtime quicksave/autosave and co-save QA for the enabled backend;
+  never emulate capability with persistent writes. The user reported no issue
+  in all requested save/co-save test groups on 2026-10-18.
 
 ### Task 2: Full appearance commit transport
 
@@ -125,18 +129,21 @@ src/main.cpp and corresponding tests.
 
 - [x] Fresh review, full Debug/Release builds and CTest; git diff --check.
 - [x] Deploy only a verified candidate with game stopped, backup and hash.
-- [ ] Complete in-game quicksave/autosave/co-save/reload proof for live preview.
+- [x] Complete in-game quicksave/autosave/co-save/reload proof for live preview.
 - [x] Record actual completion and remaining capability gates without marking UI ready prematurely.
 
 The 2026-10-18 final offline pass built Debug and Release and passed all 55
 CTest targets in each configuration. A separate read-only review found no code
-defect in the cache and Preview follow-ups. The remaining acceptance is in
-Skyrim: quicksave/autosave with Browse open and co-save readback, NPC-specific
-Preview behavior, in-use indicators, first camera gesture and the other camera
-cases listed in the camera plans, plus a direct VRAM observation for the gallery.
-The earlier normal save/load Preview check, 192-pixel scrolling and quality,
-camera close/restore, and SmoothCam checks passed in game. Do not mark vNext.5
-complete until the remaining checks have explicit results.
+defect in the cache and Preview follow-ups. The earlier normal save/load
+Preview check, 192-pixel scrolling and quality, camera close/restore, and
+SmoothCam checks passed in game.
+On 2026-10-18, the user reported no problems and explicitly confirmed that
+their final test covered all three requested groups: quicksave/autosave and
+co-save during Preview, NPC Preview with Undo/Cancel/In Use, and first camera
+gesture on both sides with SmoothCam. This closes the approved vNext.5
+interaction. Direct VRAM measurement remains a separate performance follow-up;
+no numeric result was reported. The acceptance is a user report, not an
+independent inspection of co-save bytes by the project.
 The deployed Release DLL SHA-256 is
 `624809F14B6A5B9A8FCF4EE4D77C9E085F9FF584C4428D198E2243D9991FDBBD`;
 the previous DLL is backed up beside it as

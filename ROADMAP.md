@@ -191,8 +191,11 @@ selection spec.
 
 ## vNext.5 — Visual Tattoo Browser
 
-**Status:** Implementation and automated verification complete on
-`codex/ui-improvements-stability`; final in-game acceptance pending.
+**Status:** Complete for the approved vNext.5 interaction on
+`codex/ui-improvements-stability`. The user reported no issues in the final
+in-game pass on 2026-10-18, including all three requested Preview, NPC, and
+camera test groups. Direct VRAM measurement remains a separate performance
+follow-up; no numeric VRAM result was reported.
 
 The 2026-10-16 UI refinement consolidates nearby NPCs and Followers into one
 Choose NPC picker beside Player, with an explicit 2048-unit discovery radius.
@@ -201,11 +204,11 @@ The catalog preview now uses click-to-preview and selection, with
 Ink/Glow/Glossy draft controls and explicit Save/Undo semantics. The approved
 transaction and nonpersistent visual-backend contract is recorded in
 `docs/superpowers/specs/2026-10-16-catalog-hover-preview-design.md`; implementation
-is deployed for in-game testing. Hover shows only the card tooltip and outline;
-it does not change the Actor. The user confirmed a Preview save/load cycle on
-2026-10-18. Specific quicksave, autosave, co-save, NPC behavior, in-use card
-indicator and other Preview cases remain separate acceptance checks. Active plan:
-`docs/superpowers/plans/active/2026-10-16-catalog-hover-preview.md`.
+was deployed and accepted in game. Hover shows only the card tooltip and outline;
+it does not change the Actor. The user confirmed a Preview save/load cycle and
+later reported that quicksave/autosave/co-save, NPC Preview with Undo/Cancel/In Use,
+and camera checks had no problems on 2026-10-18. Acceptance record:
+`docs/superpowers/plans/archive/2026-10-16-catalog-hover-preview.md`.
 
 **Design:** `docs/superpowers/specs/2026-10-15-scrollable-tattoo-grid-design.md`,
 `docs/superpowers/specs/2026-10-15-browser-position-and-camera-design.md`
@@ -217,24 +220,25 @@ existing SKSE Menu Framework browser with the Actor visible beside it.
 The catalog gallery now fits each DDS's visible alpha region into its card,
 with padding and a zoom limit; source textures and applied tattoos are unchanged.
 The user accepted 192-pixel cached thumbnails after prebuilding and scrolling
-in game on 2026-10-18. Direct VRAM measurement remains open.
+in game on 2026-10-18. Direct VRAM measurement was not part of the reported
+test result and remains a separate performance follow-up.
 
 Clicking a tattoo shows an uncommitted preview on the exact Actor Target;
 Undo or Close restores the prior visual state. The actor-scoped transaction
-and save/co-save safety design are implemented; the remaining in-game cases
-need acceptance. The browser position can be selected as Left or Right in the
+and save/co-save safety design are implemented and passed the user's final
+in-game checks. The browser position can be selected as Left or Right in the
 Menu Framework launcher. Camera compatibility is a separate slice: SmoothCam
-ownership and a game-thread turntable must be implemented and validated together.
+ownership and a game-thread turntable were implemented and validated together.
 The first camera QA pass is limited to Player; selecting an NPC restores normal
 camera control while the NPC tattoo workflow remains available.
 The Player camera now has one initial framing request aimed at the open control
 area opposite the configured browser side, retaining the captured angle and
 distance. The user confirmed the Left and Right menu positions in-game.
 The user confirmed camera close/restore and SmoothCam behavior in game on
-2026-10-18; first-gesture continuity and the remaining camera cases still need
-their own results recorded.
+2026-10-18. The final pass also covered the first gesture on both menu sides
+with SmoothCam without a reported issue.
 
-**Next camera follow-up (implemented in worktree; in-game acceptance pending):**
+**Camera follow-up (implemented and accepted in game):**
 On the first Player browser opening in a game session, use the configured
 initial Center composition (the current side-aware Whole body framing until a future setting
 exists). On later openings, restore the last browser orbit, pan/focus, and zoom
@@ -244,7 +248,7 @@ a new game starts, or the game process exits. Closing the browser must still
 restore the captured game camera. Do not persist a raw camera pointer or world-space position, and
 do not extend this behavior to NPC camera control in the Player-first slice.
 The camera spec defines the capture point and invalidation; SmoothCam handoff
-still needs in-game acceptance. This session recall needs no new setting;
+was included in the user's final in-game pass. This session recall needs no new setting;
 user-adjustable initial framing is now in scope after the user's 2026-10-17
 screenshot feedback. The launcher stores bounded horizontal offsets separately
 for Left and Right. They affect the first automatic composition for a side when
@@ -252,10 +256,20 @@ no session view is remembered; later openings recall that side's last view.
 
 ---
 
+## Next delivery — v1.8.0 Beta 2
+
+**Status:** Local integration review in progress. The accepted vNext.5 branch
+is six commits ahead of `main`; `v1.8.0-beta.1` is already published. The
+focused [integration plan](docs/superpowers/plans/active/2026-10-18-vnext5-integration-beta2.md)
+tracks branch review, a pull request, hosted CI, separate merge and tag approval,
+and a smoke test of the hosted artifact. This delivery adds no new UI setting.
+
+---
+
 ## Future UI settings to evaluate
 
-These are candidates, not committed milestones. Revisit them after vNext.5
-in-game acceptance; the [SlavetatsUIPzx settings comparison](docs/superpowers/research/2026-10-17-slavetatsuipzx-settings.md)
+These are candidates, not committed milestones. Evaluate them against the
+accepted vNext.5 interaction; the [SlavetatsUIPzx settings comparison](docs/superpowers/research/2026-10-17-slavetatsuipzx-settings.md)
 records the reference behavior and source links.
 
 - **Click preview toggle:** Consider an off switch if users need to select catalog

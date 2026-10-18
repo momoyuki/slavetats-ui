@@ -38,10 +38,11 @@ recoverable.
 1. Compare the built and deployed DLL hashes with `Get-FileHash`.
 2. Launch Skyrim through SKSE in MO2.
 3. Inspect `SlaveTatsUI.log` for native menu registration and dependency errors.
-4. Press the configured hotkey and confirm it opens and closes the native menu.
+4. Open the SlaveTatsUI launcher through SKSE Menu Framework. If a hotkey has
+   been configured, confirm it opens and closes the native menu.
 5. Verify current slots, catalog navigation, thumbnails, and one non-destructive
    catalog interaction on the Player.
-6. Open the nearby Actor selector, choose a loaded Actor, confirm its identity
+6. Open **Choose NPC**, choose a loaded Actor, confirm its identity
    is shown, and verify its slots load without changing the Player.
 
 An old browser-view directory or legacy thumbnail cache may be removed manually

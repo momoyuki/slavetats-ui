@@ -1,5 +1,11 @@
 # Browser Position and Camera Compatibility Implementation Plan
 
+> 2026-10-18 acceptance: The user reported no issues in the requested final
+> first-gesture checks on both menu sides with SmoothCam. Earlier close/restore
+> and SmoothCam checks also passed. Other exploratory camera and VRAM checks
+> below were not individually reported and remain optional follow-ups rather
+> than claims of measured results.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let users place the browser on either side and inspect the target through camera controls compatible with SmoothCam.
