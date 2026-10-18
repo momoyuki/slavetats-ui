@@ -215,6 +215,29 @@ void hoverExitKeepsSessionForNextTattoo() {
         "paint after close must reject stale session");
 }
 
+void worldInvalidationRejectsOldPreviewOperations() {
+    Fixture fixture;
+    auto session = fixture.makeSession();
+    const core::CatalogPreviewBeginRequest context{0x14, 8, core::TattooArea::body, 0};
+    const auto begun = session.begin(context);
+    expect(begun.has_value(), "preview should begin before world invalidation");
+    expect(session.paint({begun->sessionId, context, candidate()}).has_value(),
+        "preview should paint before world invalidation");
+    const int writesBeforeInvalidation = fixture.writes;
+    session.invalidate();
+    const core::CatalogPreviewCommitRequest commit{begun->sessionId, context,
+        core::ApplyTattooRequest{.actorFormId = 0x14, .area = core::TattooArea::body,
+            .slot = 0, .section = "Pack", .name = "Mark"}};
+    expect(!session.paint({begun->sessionId, context, candidate()}) &&
+        !session.restore({begun->sessionId, context}) && !session.commit(commit),
+        "old world preview operations must reject after invalidation");
+    expect(fixture.writes == writesBeforeInvalidation && fixture.applies == 0,
+        "old world completion must not write a visual or authoritative tattoo");
+    const auto next = session.begin(context);
+    expect(next && next->sessionId != begun->sessionId,
+        "new world preview must receive a different session token");
+}
+
 void saveChecksSlotAndRetriesSynchronizationOnly() {
     Fixture fixture;
     auto session = fixture.makeSession();
@@ -268,6 +291,7 @@ int main() {
     rejectsSaveAfterVisualTargetIsRebuilt();
     rejectsAuthoritativeTattooChangesWithSameHandleAndName();
     hoverExitKeepsSessionForNextTattoo();
+    worldInvalidationRejectsOldPreviewOperations();
     saveChecksSlotAndRetriesSynchronizationOnly();
     std::cout << "CatalogPreviewRuntimeSessionTests passed\n";
 }

@@ -2,7 +2,9 @@
 
 **Date:** 2026-10-16
 **Milestone:** vNext.5 — Visual Tattoo Browser
-**Status:** Approved for implementation in chat on 2026-10-16; backend validation pending.
+**Status:** Implemented for in-game testing. The user accepted a normal
+Preview save/load cycle on 2026-10-18; quicksave, autosave, co-save inspection,
+NPC-specific cases, and the remaining acceptance matrix are pending.
 
 ## Intent and user requirements
 
@@ -215,14 +217,15 @@ plus sync-only retry; no history for unsaved selection; save/co-save/load isolat
 Camera work and side composition stay separate. No global appearance persistence,
 new texture-path editor, favorite/lock controls or multi-slot preview is included.
 The quick Glossy fallback and post-Save destination are implementation defaults
-within the approved interaction. Nonpersistent backend feasibility remains a
-technical prerequisite, not a UX preference delegated to the user. State/commit
-foundations and read-only diagnostics are implemented; live painting/UI integration
-is not yet enabled or accepted.
+within the approved interaction. Nonpersistent backend feasibility was
+established for the installed runtime. State/commit foundations and live
+painting/UI integration are implemented and deployed for testing. The normal
+save/load cycle passed in game, but the remaining save/co-save and NPC cases
+still require separate evidence before the complete Preview contract is accepted.
 
 Builder check: a fresh reviewer found no important unanswered planning questions
-in the interaction/runtime contract. The installed-backend and save/load proof
-remain explicit implementation prerequisites.
+in the interaction/runtime contract. The remaining save/co-save proof is an
+explicit acceptance requirement.
 
 ## References
 

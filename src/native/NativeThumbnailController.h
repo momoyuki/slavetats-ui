@@ -68,9 +68,9 @@ public:
     void retryDeviceUnavailable();
     [[nodiscard]] std::vector<NativeThumbnailView> views() const;
     void clear();
+    [[nodiscard]] static std::string canonicalizeTexturePath(std::string_view texturePath);
 
 private:
-    [[nodiscard]] static std::string canonicalizeTexturePath(std::string_view texturePath);
     [[nodiscard]] bool isQueuedLocked(std::string_view texturePath) const;
     [[nodiscard]] bool isVisibleLocked(std::string_view texturePath) const;
     void queueIfEligibleLocked(std::string_view texturePath);

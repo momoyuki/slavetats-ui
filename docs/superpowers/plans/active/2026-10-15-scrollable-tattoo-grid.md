@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-scrollable-tattoo-grid-design.md`
 
+The gallery and disk-cache implementation are complete. Current
+click-to-preview behavior is tracked in
+`2026-10-16-catalog-hover-preview.md`; historical hover-preview tasks below
+do not describe the shipped interaction. Final in-game acceptance is tracked
+in the browser/camera and preview plans.
+
 ## Global Constraints
 
 - Preserve actor-scoped workflow and SlaveTatsNG authority.

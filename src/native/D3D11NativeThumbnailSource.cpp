@@ -1,4 +1,5 @@
 #include "native/D3D11NativeThumbnailSource.h"
+#include "textures/DdsDecoder.h"
 
 #include <chrono>
 #include <utility>
@@ -165,7 +166,8 @@ bool D3D11NativeThumbnailSource::prepareDiskCache(std::string_view texturePath) 
     if (!m_diskCache) return false;
     {
         std::scoped_lock lock(m_mutex);
-        if (m_diskCache->load(texturePath)) return true;
+        if (auto cached = m_diskCache->load(texturePath);
+            cached && textures::decodeDds(*cached)) return true;
     }
     textures::TextureResolveResult resolved =
         std::unexpected(textures::TextureResolveError::readFailed);
@@ -176,7 +178,8 @@ bool D3D11NativeThumbnailSource::prepareDiskCache(std::string_view texturePath) 
         if (!thumbnail) return false;
         std::scoped_lock lock(m_mutex);
         m_diskCache->store(resolved->normalizedPath, *thumbnail);
-        return m_diskCache->load(resolved->normalizedPath).has_value();
+        const auto stored = m_diskCache->load(resolved->normalizedPath);
+        return stored && textures::decodeDds(*stored).has_value();
     } catch (...) {
         return false;
     }

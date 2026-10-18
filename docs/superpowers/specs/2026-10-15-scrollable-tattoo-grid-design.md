@@ -48,6 +48,10 @@ The Outfit Gallery video shared on 2026-10-15 is a visual reference for the over
   completed/total/failure counts plus current disk usage. Building creates
   disk DDS files without uploading textures to GPU; Clear is unavailable
   while a build is active.
+  The build queue deduplicates texture paths across ASCII case and slash style
+  before scheduling game-thread work.
+  A prebuild validates existing DDS cache entries and regenerates corrupt ones
+  from their source texture instead of counting unreadable files as complete.
   The 192-pixel size is an in-game quality experiment between the responsive
   128-pixel cache and the sharper 256-pixel version. It uses a new cache key
   so older entries cannot be reused. Typical RGBA thumbnails use about 144 KiB

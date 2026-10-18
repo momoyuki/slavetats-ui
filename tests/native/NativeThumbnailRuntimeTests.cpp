@@ -319,7 +319,8 @@ void sourceFailureInTaskCompletesRequestAndAllowsQueueProgress() {
 
 void buildsDiskCacheOneEntryPerPump() {
     RuntimeFixture fixture;
-    fixture.runtime->startDiskCacheBuild({"a.dds", "a.dds", "b.dds"});
+    fixture.runtime->startDiskCacheBuild({"a.dds", "a.dds", "A.DDS",
+        "b\\part.dds", "B/part.dds"});
     expect(fixture.runtime->diskCacheBuildStatus().total == 2,
         "build should deduplicate texture paths");
     fixture.runtime->pumpDiskCacheBuild();
@@ -334,7 +335,8 @@ void buildsDiskCacheOneEntryPerPump() {
     const auto status = fixture.runtime->diskCacheBuildStatus();
     expect(status.completed == 2 && !status.active && status.failed == 0,
         "build should report completed progress");
-    expect(fixture.source->preparedPaths == std::vector<std::string>{"a.dds", "b.dds"},
+    expect(fixture.source->preparedPaths ==
+            std::vector<std::string>{"a.dds", "b\\part.dds"},
         "build should process each unique path once");
     expect(fixture.runtime->diskCacheBytes() == 65536,
         "runtime should expose disk usage");

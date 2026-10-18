@@ -123,7 +123,8 @@ void NativeThumbnailRuntime::startDiskCacheBuild(std::vector<std::string> textur
     m_buildPaths.clear();
     m_buildPaths.reserve(texturePaths.size());
     for (auto& path : texturePaths) {
-        if (!path.empty() && unique.insert(path).second)
+        if (!path.empty() && unique.insert(
+                NativeThumbnailController::canonicalizeTexturePath(path)).second)
             m_buildPaths.push_back(std::move(path));
     }
     ++m_buildGeneration;

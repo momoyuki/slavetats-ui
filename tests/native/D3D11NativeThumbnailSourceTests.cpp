@@ -347,6 +347,26 @@ void prebuildWritesDiskWithoutUploadingGpuTexture() {
         "second prebuild should reuse disk entry");
 }
 
+void prebuildRepairsCorruptDiskEntry() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeLargeBc3Dds();
+    std::size_t archiveReads{};
+    stui::textures::ThumbnailDiskCache cache(directory.path() / "cache",
+        directory.path() / "loose");
+    cache.store("Pack/large.dds", std::vector<std::uint8_t>{1, 2, 3, 4});
+    D3D11NativeThumbnailSource source(directory.path() / "loose", device.Get(),
+        12, 2min, [&](std::string_view) {
+            ++archiveReads;
+            return TextureBytesResult(dds);
+        }, {}, directory.path() / "cache");
+    expect(source.prepareDiskCache("Pack/large.dds"),
+        "prebuild should replace a corrupt cache entry");
+    expect(archiveReads == 1, "repair should read the source DDS once");
+    expect(source.load("Pack/large.dds", [] { return true; }, {}).has_value() &&
+        archiveReads == 1, "repaired entry should load without another archive read");
+}
+
 void reportsDiskLookupAndUploadTiming() {
     TemporaryDirectory directory;
     const auto device = createDevice();
@@ -473,6 +493,8 @@ int main() {
         diskCacheInvalidatesLooseChangesAndPreservesOtherFilesOnClear);
     failures += run("prebuild writes disk without GPU upload",
         prebuildWritesDiskWithoutUploadingGpuTexture);
+    failures += run("prebuild repairs corrupt disk entry",
+        prebuildRepairsCorruptDiskEntry);
     failures += run("reports disk lookup and upload timing",
         reportsDiskLookupAndUploadTiming);
     failures += run("prebuilt BC7 loads small texture",

@@ -2,8 +2,8 @@
 
 > 2026-10-17 interaction update: Hover now changes only the card outline and
 > tooltip. Clicking a card selects and starts visual preview. While a clicked
-> selection remains active, the runtime may reassert its visual paint every two
-> seconds because in-game testing showed the visual can revert after about five
+> selection remains active, the runtime checks its visual paint every 500
+> milliseconds because in-game testing showed the visual can revert after about five
 > seconds. The earlier hover-specific tasks below document the original design;
 > the current behavior is defined in the linked spec.
 
@@ -36,6 +36,16 @@
 > Quicksave, autosave, co-save inspection and NPC-specific cases remain listed
 > separately until their individual results are recorded.
 
+> 2026-10-18 offline world-boundary follow-up: Queued begin work is discarded
+> after preview invalidation. An invalidated visual session rejects old Paint,
+> Restore and Save tokens without another visual or authoritative write. These
+> checks run without requiring a new in-game test.
+
+> 2026-10-18 Save retry coverage: The queued UI-runtime path now verifies a
+> completed tattoo mutation followed by synchronization failure. Close leaves
+> the original visual untouched, Retry requests synchronization-only for the
+> same Actor/slot/tattoo, and Recently Used is recorded only after success.
+
 > **For agentic workers:** Use executing-plans inline; a fresh reviewer checks the final change.
 
 **Goal:** Click-to-preview catalog tattoos, retain exact quick appearance, Save once, and cancel without persistent preview writes.
@@ -67,9 +77,9 @@ existing hover-preview research/spec.
 - [x] Confirm installed runtime ABI and actual node/material availability in game (2026-10-17).
 - [x] Establish exact synchronous shader-property capture/set/restore API, texture ownership,
   empty overlay behavior and durable registry exclusion. Record unavailable capabilities.
-- [ ] Require runtime save/co-save QA before enabling a backend; never emulate capability
-  with persistent writes. If no supported interface exists, complete independent tested
-  foundations below and leave live painting unavailable with a concrete blocker.
+- [ ] Complete runtime quicksave/autosave and co-save QA for the enabled backend;
+  never emulate capability with persistent writes. The normal save/load cycle
+  passed in game, but these specific cases remain unverified.
 
 ### Task 2: Full appearance commit transport
 
@@ -94,29 +104,43 @@ CMakeLists.txt.
   revision tracking. Save captures pinned effective values, never hovered candidate.
 - [x] Tests first for stale completion, busy latest-wins, failed restore, cancellation
   barrier, target/session scope, commit+sync failure and no history for hover.
-- [ ] Keep runtime tokens separate from UI/catalog identity and route all writes through service.
+- [x] Keep runtime tokens separate from UI/catalog identity and route all writes through service.
 
-### Task 4: Runtime and UI integration (requires Task 1 capability)
+### Task 4: Runtime and UI integration (requires verified backend capability)
 
 Files: src/core/ITattooRuntime.h, src/core/SlaveTatsService.{h,cpp},
 src/runtime/SlaveTatsRuntime.{h,cpp}, src/native/NativeSlotWorkflowModel.{h,cpp},
 src/native/NativeSlotWorkflowRuntime.cpp, src/native/OfficialMenuFrameworkAdapter.cpp,
 src/main.cpp and corresponding tests.
-- [ ] Add typed begin/paint/restore/commit contracts with backend capability reporting.
-- [ ] Revalidate actor, area, slot, locked/external state and original membership on each operation.
-- [ ] Serialize latest paint with non-supersedable Save/restore barriers; tests cover
+- [x] Add typed begin/paint/restore/commit contracts with backend capability reporting.
+- [x] Revalidate actor, area, slot, locked/external state and original membership on each operation.
+- [x] Serialize latest paint with non-supersedable Save/restore barriers; tests cover
   rapid hover and late old-Actor completion after cancel, unload and game-load invalidation.
-- [ ] Add fixed footer Ink/Glow/Glossy, Save Tattoo/Undo/status; hover does not navigate.
+- [x] Add fixed footer Ink/Glow/Glossy, Save Tattoo/Undo/status; hover does not navigate.
   Pin enables Save after latest pinned revision succeeds; preserve existing fallback workflow.
-- [ ] Native backend tests prove no authoritative/registry writes until commit, exact restoration
+- [x] Native backend tests prove no authoritative/registry writes until commit, exact restoration
   including missing/empty nodes and full advanced materials.
 
 ### Task 5: Verification and acceptance
 
-- [ ] Fresh review, full Debug/Release builds and CTest; git diff --check.
-- [ ] Deploy only a verified candidate with game stopped, backup and hash.
-- [ ] In-game save/quicksave/autosave/co-save/reload proof before enabling live preview.
-- [ ] Record actual completion and remaining capability gates without marking UI ready prematurely.
+- [x] Fresh review, full Debug/Release builds and CTest; git diff --check.
+- [x] Deploy only a verified candidate with game stopped, backup and hash.
+- [ ] Complete in-game quicksave/autosave/co-save/reload proof for live preview.
+- [x] Record actual completion and remaining capability gates without marking UI ready prematurely.
+
+The 2026-10-18 final offline pass built Debug and Release and passed all 55
+CTest targets in each configuration. A separate read-only review found no code
+defect in the cache and Preview follow-ups. The remaining acceptance is in
+Skyrim: quicksave/autosave with Browse open and co-save readback, NPC-specific
+Preview behavior, in-use indicators, first camera gesture and the other camera
+cases listed in the camera plans, plus a direct VRAM observation for the gallery.
+The earlier normal save/load Preview check, 192-pixel scrolling and quality,
+camera close/restore, and SmoothCam checks passed in game. Do not mark vNext.5
+complete until the remaining checks have explicit results.
+The deployed Release DLL SHA-256 is
+`624809F14B6A5B9A8FCF4EE4D77C9E085F9FF584C4428D198E2243D9991FDBBD`;
+the previous DLL is backed up beside it as
+`SlaveTatsUI.dll.backup-20261018-vnext5`.
 
 ## Ledger
 

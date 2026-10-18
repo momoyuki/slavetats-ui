@@ -191,7 +191,8 @@ selection spec.
 
 ## vNext.5 — Visual Tattoo Browser
 
-**Status:** In progress on `codex/ui-improvements`
+**Status:** Implementation and automated verification complete on
+`codex/ui-improvements-stability`; final in-game acceptance pending.
 
 The 2026-10-16 UI refinement consolidates nearby NPCs and Followers into one
 Choose NPC picker beside Player, with an explicit 2048-unit discovery radius.
@@ -219,9 +220,9 @@ The user accepted 192-pixel cached thumbnails after prebuilding and scrolling
 in game on 2026-10-18. Direct VRAM measurement remains open.
 
 Clicking a tattoo shows an uncommitted preview on the exact Actor Target;
-Undo or Close restores the prior visual state. This requires
-its own actor-scoped transaction and save/co-save safety design before runtime
-implementation. The browser position can be selected as Left or Right in the
+Undo or Close restores the prior visual state. The actor-scoped transaction
+and save/co-save safety design are implemented; the remaining in-game cases
+need acceptance. The browser position can be selected as Left or Right in the
 Menu Framework launcher. Camera compatibility is a separate slice: SmoothCam
 ownership and a game-thread turntable must be implemented and validated together.
 The first camera QA pass is limited to Player; selecting an NPC restores normal
@@ -229,8 +230,6 @@ camera control while the NPC tattoo workflow remains available.
 The Player camera now has one initial framing request aimed at the open control
 area opposite the configured browser side, retaining the captured angle and
 distance. The user confirmed the Left and Right menu positions in-game.
-First-gesture continuity, close/restore, and the SmoothCam handoff still need
-separate acceptance.
 The user confirmed camera close/restore and SmoothCam behavior in game on
 2026-10-18; first-gesture continuity and the remaining camera cases still need
 their own results recorded.

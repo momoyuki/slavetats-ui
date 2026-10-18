@@ -62,7 +62,7 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     int begins{}, paints{}, restores{}, commits{};
     bool failFirstBegin = true;
     auto now = std::chrono::steady_clock::time_point{};
-    std::optional<stui::core::CatalogPreviewCommitRequest> saved;
+    std::vector<stui::core::CatalogPreviewCommitRequest> saveRequests;
     NativeSlotWorkflowRuntime runtime(
         model,
         []() -> ActorTargetResult { return ActorTarget{}; },
@@ -114,15 +114,23 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
                 "Close must restore the exact preview session");
             return stui::core::CatalogPreviewRestoreSuccess{};
         },
-        [&commits, &saved](const stui::core::CatalogPreviewCommitRequest& request)
+        [&commits, &saveRequests](const stui::core::CatalogPreviewCommitRequest& request)
             -> stui::core::CatalogPreviewCommitResult {
-            ++commits; saved = request;
+            ++commits;
+            saveRequests.push_back(request);
+            if (commits == 1) return std::unexpected(stui::core::ServiceError{
+                ServiceErrorCode::synchronizeFailed, "Synchronization failed",
+                stui::core::MutationSideEffect::mayHaveOccurred});
             return stui::core::ApplyTattooSuccess{request.apply.actorFormId,
                 request.apply.area, request.apply.slot, request.apply.section,
                 request.apply.name};
         });
+    std::size_t runCount{};
     const auto runNext = [&] {
-        expect(!scheduled.empty(), "expected a scheduled preview task");
+        ++runCount;
+        if (scheduled.empty())
+            throw std::runtime_error("expected a scheduled preview task at step " +
+                std::to_string(runCount));
         auto task = std::move(scheduled.front());
         scheduled.erase(scheduled.begin());
         task();
@@ -189,20 +197,46 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     expect(paints == 3, "refresh should check the same preview after 500ms");
     expect(runtime.saveCatalogPreview(), "pinned tattoo should queue Save");
     runtime.pump(); runNext();
-    runtime.pump(); runNext();
-    expect(commits == 1 && saved && saved->sessionId == 3 &&
-        saved->apply.name == "Mark" && saved->apply.appearance &&
-        saved->apply.appearance->glow == 0x123456 && restores == 2,
-        "Save should commit the pin once without a cancellation restore");
+    expect(commits == 1 && runtime.catalogPreviewActive() &&
+        runtime.catalogPreviewError() &&
+        runtime.catalogPreviewError()->code == ServiceErrorCode::synchronizeFailed &&
+        !model.takeRecentTattooRequest(),
+        "failed synchronization should keep the Save retryable without history");
+    expect(runtime.closeCatalogPreview(false), "Close may request a safe exit after failed Save");
+    expect(restores == 2, "Close must not restore the pre-Save visual after a mutation");
+    runtime.retryCatalogPreview();
+    runtime.pump();
+    expect(!scheduled.empty(), "retry should schedule synchronization-only Save");
+    runNext();
+    expect(commits == 2 && saveRequests.size() == 2 &&
+        saveRequests[0].sessionId == saveRequests[1].sessionId &&
+        saveRequests[0].sessionId == 3 &&
+        saveRequests[0].apply.mode == stui::core::ApplyTattooMode::applyAndSynchronize &&
+        saveRequests[1].apply.mode == stui::core::ApplyTattooMode::synchronizeOnly &&
+        saveRequests[1].apply.name == "Mark" &&
+        saveRequests[1].apply.appearance &&
+        saveRequests[1].apply.appearance->glow == 0x123456 && restores == 2,
+        "retry should synchronize the same saved tattoo without another mutation or restore");
     const auto history = model.takeRecentTattooRequest();
     expect(history && history->kind == stui::native::RecentTattooRequestKind::record &&
         history->identity && history->identity->name == "Mark" &&
         history->identity->area == TattooArea::body,
         "successful Save should record exactly the selected tattoo");
+    runtime.pump(); runNext();
     now += 2s;
     runtime.pump();
     expect(scheduled.empty() && paints == 3,
         "completed Save must stop periodic preview paint");
+
+    expect(model.selectSlot(0), "slot should reopen before world invalidation");
+    runtime.pump();
+    expect(runtime.catalogPreviewStarting(), "new preview begin should be queued");
+    const int previousBegins = begins;
+    runtime.invalidateCatalogPreview();
+    runNext();
+    expect(begins == previousBegins && !runtime.catalogPreviewStarting() &&
+        !runtime.catalogPreviewActive() && !runtime.catalogPreviewError(),
+        "queued preview begin must not touch a new game world after invalidation");
 }
 
 void nearbyScanRunsOncePerOpenAndPrecedesSelectedActorQuery() {
