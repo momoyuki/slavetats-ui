@@ -194,8 +194,9 @@ selection spec.
 **Status:** Complete for the approved vNext.5 interaction on
 `codex/ui-improvements-stability`. The user reported no issues in the final
 in-game pass on 2026-10-18, including all three requested Preview, NPC, and
-camera test groups. Direct VRAM measurement remains a separate performance
-follow-up; no numeric VRAM result was reported.
+camera test groups. On 2026-10-28 the user reported that RAM/VRAM testing
+passed; no numerical measurements were supplied. Revisit performance if
+needed during actual use.
 
 The 2026-10-16 UI refinement consolidates nearby NPCs and Followers into one
 Choose NPC picker beside Player, with an explicit 2048-unit discovery radius.
@@ -220,8 +221,8 @@ existing SKSE Menu Framework browser with the Actor visible beside it.
 The catalog gallery now fits each DDS's visible alpha region into its card,
 with padding and a zoom limit; source textures and applied tattoos are unchanged.
 The user accepted 192-pixel cached thumbnails after prebuilding and scrolling
-in game on 2026-10-18. Direct VRAM measurement was not part of the reported
-test result and remains a separate performance follow-up.
+in game on 2026-10-18. The user reported RAM/VRAM testing passed on
+2026-10-28, without supplying numerical measurements.
 
 Clicking a tattoo shows an uncommitted preview on the exact Actor Target;
 Undo or Close restores the prior visual state. The actor-scoped transaction
@@ -258,8 +259,8 @@ no session view is remembered; later openings recall that side's last view.
 
 ## Next delivery — v1.8.0 Beta 2
 
-**Status:** Local integration review in progress. The accepted vNext.5 branch
-is six commits ahead of `main`; `v1.8.0-beta.1` is already published. The
+**Status:** PR #21 merged and hosted CI passed. `v1.8.0-beta.1` is already
+published; Beta 2 release preparation remains. The
 focused [integration plan](docs/superpowers/plans/active/2026-10-18-vnext5-integration-beta2.md)
 tracks branch review, a pull request, hosted CI, separate merge and tag approval,
 and a smoke test of the hosted artifact. This delivery adds no new UI setting.
