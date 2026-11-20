@@ -23,6 +23,7 @@ public:
             std::mutex mutex;
             std::condition_variable ready;
             bool expired{};
+            bool started{};
             bool complete{};
             TextureBytesResult result = std::unexpected(TextureResolveError::readFailed);
         };
@@ -32,7 +33,9 @@ public:
                 {
                     std::scoped_lock lock(pending->mutex);
                     if (pending->expired) return;
+                    pending->started = true;
                 }
+                pending->ready.notify_one();
                 TextureBytesResult result = std::unexpected(TextureResolveError::readFailed);
                 try { result = read(path); } catch (...) {}
                 {
@@ -44,9 +47,17 @@ public:
             });
         } catch (...) { return std::unexpected(TextureResolveError::readFailed); }
         std::unique_lock lock(pending->mutex);
-        if (!pending->ready.wait_for(lock, m_timeout, [&] { return pending->complete; })) {
-            pending->expired = true;
-            return std::unexpected(TextureResolveError::temporarilyUnavailable);
+        // Queue budget covers only admission delay. Once the engine task starts,
+        // wait for the transfer so late bytes are not discarded and retried forever.
+        if (!pending->ready.wait_for(lock, m_timeout,
+                [&] { return pending->complete || pending->started; })) {
+            if (!pending->started) {
+                pending->expired = true;
+                return std::unexpected(TextureResolveError::temporarilyUnavailable);
+            }
+        }
+        if (!pending->complete) {
+            pending->ready.wait(lock, [&] { return pending->complete; });
         }
         return std::move(pending->result);
     }

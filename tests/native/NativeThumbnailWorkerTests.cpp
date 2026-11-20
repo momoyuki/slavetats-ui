@@ -41,6 +41,23 @@ int main() {
         expect(!timedOut && timedOut.error() == stui::textures::TextureResolveError::temporarilyUnavailable && scheduled.size() == 1, "archive wait must time out without blocking forever");
         scheduled.front()();
         expect(reads == 0, "expired queued archive task must not read engine resources");
+
+        // In-flight transfer that exceeds the queue budget must still return bytes.
+        std::thread engineThread;
+        stui::textures::ScheduledTextureArchiveReader inFlight(
+            [&](auto task) {
+                engineThread = std::thread(std::move(task));
+            },
+            [](std::string_view) -> stui::textures::TextureBytesResult {
+                std::this_thread::sleep_for(40ms);
+                return std::vector<std::uint8_t>{7, 8};
+            },
+            10ms);
+        const auto inFlightResult = inFlight.read("slow.dds");
+        if (engineThread.joinable()) engineThread.join();
+        expect(inFlightResult && (*inFlightResult)[0] == 7 && (*inFlightResult)[1] == 8,
+            "started archive reads must complete instead of discarding late bytes");
+
         stui::textures::ScheduledTextureArchiveReader immediate(
             [](auto task) { task(); },
             [&](std::string_view path) -> stui::textures::TextureBytesResult { expect(path == "ok.dds", "path preserved"); return std::vector<std::uint8_t>{9}; });

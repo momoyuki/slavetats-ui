@@ -20,7 +20,7 @@ Reduce unnecessary render/game-thread work across the existing browser without w
 - D3D11 device-only creation follows Microsoft guidance: https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-render-multi-thread-intro . No immediate-context calls are moved to workers. Single-threaded devices show placeholders.
 - Reuse the existing MIT-licensed Microsoft DirectXTex dependency; no external implementation is copied and no new dependency is added. Reference: https://github.com/microsoft/DirectXTex .
 - Raw DDS reads and input are capped at 128 MiB (including headers, so normal 4K RGBA is accepted). Header preflight rejects arrays/cubes/volume, more than 16M source pixels and source mip allocations above 128 MiB. BC7 conversion uses at most 64 MiB RGBA plus small output/accumulators; transient totals include the bounded input/source chain.
-- Archive tasks have a finite wait. Queue delay is retryable cancellation, not a permanently broken image. Expired queued tasks do not touch engine resources.
+- Archive tasks have a finite wait. Queue delay is retryable cancellation, not a permanently broken image. Once an engine read has started, wait for that transfer instead of discarding late bytes. Expired queued tasks do not touch engine resources.
 - Startup filesystem JSON scan/indexing uses an owned worker and atomically publishes the complete catalog. Menu refresh observes completion without blocking startup; initial UI can briefly show no catalog.
 - Render cache lookups use try-lock; cache usage is an atomic estimate. Worker maintenance can serialize disk operations without stalling render.
 
