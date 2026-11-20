@@ -20,6 +20,7 @@
 #include "runtime/AppearancePresetStore.h"
 #include "runtime/TattooLoadoutStore.h"
 #include "runtime/HotkeyBinding.h"
+#include "runtime/LanguageSetting.h"
 #include "runtime/MenuSideSetting.h"
 #include "runtime/ThumbnailCacheSetting.h"
 #include "runtime/ThumbnailBackgroundSetting.h"
@@ -222,6 +223,7 @@ native::BrowserCameraCoordinator g_browserCameraCoordinator(
     });
 native::FlickLauncher* g_flickLauncher{};
 std::unique_ptr<runtime::HotkeyBinding> g_hotkeyBinding;
+std::unique_ptr<runtime::LanguageSetting> g_languageSetting;
 std::unique_ptr<runtime::MenuSideSetting> g_menuSideSetting;
 std::unique_ptr<runtime::ThumbnailCacheSetting> g_thumbnailCacheSetting;
 std::unique_ptr<runtime::ThumbnailBackgroundSetting> g_thumbnailBackgroundSetting;
@@ -532,6 +534,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
     if (!g_pluginConfig) {
         logger::warn("SlaveTatsUI: configuration path unavailable; persistence disabled");
     }
+    if (!localization::catalog().load("Data/SKSE/Plugins/SlaveTatsUI/translations")) {
+        logger::warn("SlaveTatsUI: missing or invalid translation entries; using English fallback where needed");
+    }
+    g_languageSetting = std::make_unique<runtime::LanguageSetting>(g_pluginConfig);
+    if (!g_languageSetting->load()) {
+        logger::warn("SlaveTatsUI: invalid or unavailable language setting; using English");
+    }
+    localization::selectLanguage(g_languageSetting->language());
     g_hotkeyBinding = std::make_unique<runtime::HotkeyBinding>(g_pluginConfig);
     if (!g_hotkeyBinding->load()) {
         logger::warn("SlaveTatsUI: failed to load hotkey configuration; hotkey disabled");
@@ -599,7 +609,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
                 });
                 if (!cleared) logger::warn("SlaveTatsUI: failed to clear saved Player browser views");
                 return cleared;
-            });
+            }, g_languageSetting.get());
     });
     nativeMenu.setOpenGuard([] {
         auto* ui = RE::UI::GetSingleton();

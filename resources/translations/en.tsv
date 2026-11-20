@@ -1,0 +1,249 @@
+# language-name: English
+# English source text	Translation; UTF-8, \n = newline, \t = tab, \\ = backslash
+Saving or loading loadouts...	Saving or loading loadouts...
+No loadouts saved.	No loadouts saved.
+Loadout limit reached. Overwrite, rename or delete an existing loadout.	Loadout limit reached. Overwrite, rename or delete an existing loadout.
+Loadout applied	Loadout applied
+Preflight rejected	Preflight rejected
+Synchronization pending	Synchronization pending
+Rollback synchronization pending	Rollback synchronization pending
+Rollback complete	Rollback complete
+Rollback incomplete	Rollback incomplete
+Loadout failed	Loadout failed
+{}: {}	{}: {}
+{} / Slot {}: {}	{} / Slot {}: {}
+Apply Loadout	Apply Loadout
+Rename	Rename
+Overwrite	Overwrite
+Delete	Delete
+Save Loadout	Save Loadout
+Unnamed Actor	Unnamed Actor
+{} - {:.0f} units	{} - {:.0f} units
+Choose Follower	Choose Follower
+Choose NPC	Choose NPC
+Scanning loaded Actors...	Scanning loaded Actors...
+No loaded followers found.	No loaded followers found.
+No loaded NPC matches the search.	No loaded NPC matches the search.
+Target: None	Target: None
+Target:\s	Target:\s
+Scanning nearby Actors...	Scanning nearby Actors...
+No nearby Actor found	No nearby Actor found
+Unavailable	Unavailable
+Current Slots / Loadouts	Current Slots / Loadouts
+Current Slots / Loadouts / Preview	Current Slots / Loadouts / Preview
+Current Slots / Loadouts / Restore	Current Slots / Loadouts / Restore
+Current Slots / Loadouts / Confirm Overwrite	Current Slots / Loadouts / Confirm Overwrite
+Current Slots / Loadouts / Confirm Delete	Current Slots / Loadouts / Confirm Delete
+Current Slots	Current Slots
+Current Slots / Slot Actions	Current Slots / Slot Actions
+Current Slots / Browse	Current Slots / Browse
+Current Slots / Browse / Preview	Current Slots / Browse / Preview
+Current Slots / Edit Appearance	Current Slots / Edit Appearance
+Current Slots / Slot Actions / Confirm Remove	Current Slots / Slot Actions / Confirm Remove
+BODY	BODY
+FACE	FACE
+HANDS	HANDS
+FEET	FEET
+No active Actor	No active Actor
+{} / {} / Slot {}	{} / {} / Slot {}
+Retry Slot\s	Retry Slot\s
+Apply to Slot\s	Apply to Slot\s
+Save	Save
+Preview pending...	Preview pending...
+Updating preview...	Updating preview...
+Preview applied	Preview applied
+Restoring original appearance...	Restoring original appearance...
+ -\s	 -\s
+Retry Restore Sync	Retry Restore Sync
+Retry Restore	Retry Restore
+Retry Preview Sync	Retry Preview Sync
+Retry Preview	Retry Preview
+Remove from Slot\s	Remove from Slot\s
+Retry Remove Slot\s	Retry Remove Slot\s
+Retry Sync Slot\s	Retry Sync Slot\s
+Unlock tattoo	Unlock tattoo
+Lock tattoo	Lock tattoo
+All Domains	All Domains
+Glow	Glow
+Bump	Bump
+Gloss	Gloss
+None	None
+Current (unlisted)	Current (unlisted)
+No appearance presets saved.	No appearance presets saved.
+20 preset limit reached	20 preset limit reached
+Updating appearance presets...	Updating appearance presets...
+\nIn use: Slots\s	\nIn use: Slots\s
+Loading	Loading
+Missing	Missing
+Broken	Broken
+The tattoo catalog is empty. Refresh the catalog to browse tattoos.	The tattoo catalog is empty. Refresh the catalog to browse tattoos.
+No tattoos match the current filters.	No tattoos match the current filters.
+No applied tattoos match the current filters.	No applied tattoos match the current filters.
+No favorite tattoos match the current filters.	No favorite tattoos match the current filters.
+No favorite applied tattoos match the current filters.	No favorite applied tattoos match the current filters.
+No recently used tattoos match the current filters.	No recently used tattoos match the current filters.
+No favorite recently used tattoos match the current filters.	No favorite recently used tattoos match the current filters.
+No applied recently used tattoos match the current filters.	No applied recently used tattoos match the current filters.
+No favorite applied recently used tattoos match the current filters.	No favorite applied recently used tattoos match the current filters.
+No thumbnail	No thumbnail
+Player	Player
+Search	Search
+Refresh NPC List	Refresh NPC List
+Close NPC Picker	Close NPC Picker
+Retry NPC Scan	Retry NPC Scan
+Loadouts:\s	Loadouts:\s
+Retry	Retry
+Loadout	Loadout
+Select loadout	Select loadout
+Load	Load
+Save Current	Save Current
+Manage	Manage
+Reading fresh Actor state...	Reading fresh Actor state...
+Tattoo Browser	Tattoo Browser
+Saved Tattoo Loadouts	Saved Tattoo Loadouts
+Save managed tattoos from all four areas. External overlays are omitted.	Save managed tattoos from all four areas. External overlays are omitted.
+Name	Name
+Delete...	Delete...
+Overwrite the selected loadout with the captured four-area state?	Overwrite the selected loadout with the captured four-area state?
+Delete this saved loadout? Actor tattoos will remain unchanged.	Delete this saved loadout? Actor tattoos will remain unchanged.
+Exact restore removes managed tattoos absent from this loadout.	Exact restore removes managed tattoos absent from this loadout.
+Add: %zu / Replace: %zu / Remove: %zu	Add: %zu / Replace: %zu / Remove: %zu
+Appearance: %zu / Unchanged: %zu / Preserved: %zu	Appearance: %zu / Unchanged: %zu / Preserved: %zu
+Preflight rejected. Resolve these conflicts and run Load again:	Preflight rejected. Resolve these conflicts and run Load again:
+Restoring loadout... Please wait.	Restoring loadout... Please wait.
+Restore failed. The original managed tattoos were recovered and verified.	Restore failed. The original managed tattoos were recovered and verified.
+Restore failed and recovery could not be verified. Inspect the affected slots.	Restore failed and recovery could not be verified. Inspect the affected slots.
+Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.	Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.
+Cancel	Cancel
+Close	Close
+Back	Back
+Retry Synchronization	Retry Synchronization
+Refresh Slots	Refresh Slots
+Tattoos	Tattoos
+Refresh	Refresh
+Loading tattoo slots...	Loading tattoo slots...
+Slot %d	Slot %d
+Slot %d - Read Only: managed by another overlay mod	Slot %d - Read Only: managed by another overlay mod
+Slot %d - %s	Slot %d - %s
+Add a tattoo to Slot %d	Add a tattoo to Slot %d
+Loadouts	Loadouts
+Prev	Prev
+Page	Page
+Next	Next
+Remove Tattoo?	Remove Tattoo?
+Tattoo Slot Actions	Tattoo Slot Actions
+Domain: %s	Domain: %s
+Removing tattoo...	Removing tattoo...
+This will clear the selected SlaveTats slot.	This will clear the selected SlaveTats slot.
+Replace	Replace
+Edit Appearance	Edit Appearance
+Remove	Remove
+Preview Tattoo	Preview Tattoo
+Applying tattoo...	Applying tattoo...
+Color	Color
+Alpha	Alpha
+Favorited	Favorited
+Favorite	Favorite
+Favorites: %s	Favorites: %s
+Retry favorite save	Retry favorite save
+Saving appearance...	Saving appearance...
+Appearance Preset	Appearance Preset
+Select preset	Select preset
+Preset	Preset
+Save Preset	Save Preset
+Save Appearance Preset	Save Appearance Preset
+Manage Appearance Preset	Manage Appearance Preset
+Appearance Presets: {}	Appearance Presets: {}
+Save the current appearance values as:	Save the current appearance values as:
+Overwrite Appearance Preset	Overwrite Appearance Preset
+Overwrite '{}' with the current appearance?	Overwrite '{}' with the current appearance?
+Delete Appearance Preset	Delete Appearance Preset
+Delete '{}' permanently?	Delete '{}' permanently?
+Basic	Basic
+Material / Emission	Material / Emission
+Glow Color	Glow Color
+Emission Strength	Emission Strength
+Emission Strength Value	Emission Strength Value
+Glossiness	Glossiness
+Glossiness Value	Glossiness Value
+Specular Strength	Specular Strength
+Specular Strength Value	Specular Strength Value
+Glow Texture	Glow Texture
+Bump Texture	Bump Texture
+Glow Texture:	Glow Texture:
+Bump Texture:	Bump Texture:
+Open SlaveTatsUI when you are ready to browse tattoos.	Open SlaveTatsUI when you are ready to browse tattoos.
+Hotkey	Hotkey
+Could not save the hotkey setting.	Could not save the hotkey setting.
+Browser position	Browser position
+Left	Left
+Right	Right
+Could not save the browser position.	Could not save the browser position.
+Opening frame X offset (Left)	Opening frame X offset (Left)
+Opening frame X offset (Right)	Opening frame X offset (Right)
+Could not save the initial camera position.	Could not save the initial camera position.
+Initial Pan X (Left)	Initial Pan X (Left)
+Initial Pan X (Right)	Initial Pan X (Right)
+Initial Pan Y (Left)	Initial Pan Y (Left)
+Initial Pan Y (Right)	Initial Pan Y (Right)
+Could not save the initial camera Pan.	Could not save the initial camera Pan.
+Build Thumbnail Cache	Build Thumbnail Cache
+Building Thumbnail Cache: %zu / %zu	Building Thumbnail Cache: %zu / %zu
+Please keep this menu open until the build is complete.	Please keep this menu open until the build is complete.
+Thumbnail Cache ready. You can open the Tattoo Browser.	Thumbnail Cache ready. You can open the Tattoo Browser.
+Thumbnail Cache build complete: %zu / %zu (%zu failed)	Thumbnail Cache build complete: %zu / %zu (%zu failed)
+No tattoo textures found. Thumbnail Cache was not built.	No tattoo textures found. Thumbnail Cache was not built.
+Thumbnail Cache: %.1f MiB used	Thumbnail Cache: %.1f MiB used
+Clear Thumbnail Cache	Clear Thumbnail Cache
+Clearing thumbnail cache...	Clearing thumbnail cache...
+Could not clear the thumbnail cache.	Could not clear the thumbnail cache.
+Thumbnail cache cleared.	Thumbnail cache cleared.
+Open Tattoo Browser	Open Tattoo Browser
+Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down	Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down
+Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom	Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom
+Whole body	Whole body
+Face	Face
+Body	Body
+Hands	Hands
+Feet	Feet
+Center	Center
+Reset View	Reset View
+Current Pan X %.1f  Y %.1f	Current Pan X %.1f  Y %.1f
+Initial Pan X %.1f  Y %.1f	Initial Pan X %.1f  Y %.1f
+Use current Pan as initial	Use current Pan as initial
+Applies when this side has no remembered session view.	Applies when this side has no remembered session view.
+Could not save initial Pan.	Could not save initial Pan.
+Target: %s	Target: %s
+Filters	Filters
+Thumbnail BG: Black	Thumbnail BG: Black
+Thumbnail BG: White	Thumbnail BG: White
+%zu tattoos	%zu tattoos
+All sections	All sections
+All sources	All sources
+Applied	Applied
+Applied only	Applied only
+Favorites	Favorites
+Favorites only	Favorites only
+Recent	Recent
+Recently used only	Recently used only
+Material	Material
+Glow only	Glow only
+Bump only	Bump only
+Gloss only	Gloss only
+Domain	Domain
+Source	Source
+Section	Section
+Recently Used: %s	Recently Used: %s
+Retry recent history	Retry recent history
+Preview: %s	Preview: %s
+Selected: %s - not saved	Selected: %s - not saved
+Click a tattoo to preview and select.	Click a tattoo to preview and select.
+Ink	Ink
+Glossy	Glossy
+Preparing live preview...	Preparing live preview...
+Live preview unavailable: %s	Live preview unavailable: %s
+Save Tattoo	Save Tattoo
+Undo	Undo
+Language	Language
+Could not save the language setting.	Could not save the language setting.
+Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.	Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.

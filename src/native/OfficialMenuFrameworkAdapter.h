@@ -24,6 +24,7 @@
 
 namespace stui::runtime {
 class HotkeyBinding;
+class LanguageSetting;
 }
 
 namespace stui::native {
@@ -612,7 +613,8 @@ public:
         runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
         runtime::ThumbnailCacheSetting& cacheSetting,
         NativeThumbnailRuntime& thumbnails, NativeCatalogBrowserModel& catalog,
-        const std::function<bool()>& clearSavedCameraViews = {});
+        const std::function<bool()>& clearSavedCameraViews = {},
+        runtime::LanguageSetting* language = nullptr);
     static void renderFoundation(
         NativeSlotWorkflowModel& workflow,
         NativeSlotWorkflowRuntime& slotRuntime,

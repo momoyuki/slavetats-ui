@@ -74,11 +74,22 @@ locally deployed binary. A pre-release contains:
 SlaveTatsUI/
 |-- SKSE/
 |   `-- Plugins/
-|       `-- SlaveTatsUI.dll
+|       |-- SlaveTatsUI.dll
+|       `-- SlaveTatsUI/
+|           `-- translations/
+|               |-- en.tsv
+|               |-- zh-CN.tsv
+|               |-- ko.tsv
+|               `-- ja.tsv
 |-- LICENSE
 |-- THIRD_PARTY_NOTICES.md
 `-- README.md
 ```
+
+The four built-in catalogs are required. Packaging also includes additional
+`resources/translations/*.tsv` files with a safe locale filename: an ASCII
+letter followed by at most 31 ASCII letters, digits, hyphens or underscores.
+These files use the same `SKSE/Plugins/SlaveTatsUI/translations/` destination.
 
 ## Recovery
 

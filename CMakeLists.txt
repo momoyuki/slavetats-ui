@@ -37,6 +37,21 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(GNUInstallDirs)
 include(CTest)
 
+add_library(SlaveTatsUILocalization STATIC src/localization/TranslationCatalog.cpp)
+target_include_directories(SlaveTatsUILocalization PUBLIC src)
+if(MSVC)
+    target_compile_options(SlaveTatsUILocalization PRIVATE /utf-8)
+endif()
+if(BUILD_TESTING)
+    add_executable(TranslationCatalogTests tests/localization/TranslationCatalogTests.cpp)
+    target_link_libraries(TranslationCatalogTests PRIVATE SlaveTatsUILocalization)
+    if(MSVC)
+        target_compile_options(TranslationCatalogTests PRIVATE /utf-8)
+    endif()
+    add_test(NAME TranslationCatalogTests COMMAND TranslationCatalogTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/translations")
+endif()
+
 if(BUILD_TESTING)
     add_executable(CatalogPreviewCommitTests tests/native/CatalogPreviewCommitTests.cpp src/native/CatalogPreviewModel.cpp)
     target_include_directories(CatalogPreviewCommitTests PRIVATE src)
@@ -166,6 +181,7 @@ set(sources
     src/core/TattooLoadoutPlanner.cpp
     src/runtime/OverlaySlotConfiguration.cpp
     src/runtime/ApplicationRuntime.cpp
+    src/runtime/LanguageSetting.cpp
     src/runtime/HotkeyBinding.cpp
     src/runtime/ThumbnailBackgroundSetting.cpp
     src/runtime/ThumbnailCacheSetting.cpp
@@ -215,6 +231,7 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
     nlohmann_json::nlohmann_json
+    SlaveTatsUILocalization
     d3d11
     Microsoft::DirectXTex
 )
@@ -283,6 +300,14 @@ if(BUILD_TESTING)
     target_include_directories(MenuSideSettingTests PRIVATE src)
     target_link_libraries(MenuSideSettingTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME MenuSideSettingTests COMMAND MenuSideSettingTests)
+
+    add_executable(LanguageSettingTests
+        tests/runtime/LanguageSettingTests.cpp
+        src/runtime/LanguageSetting.cpp
+        src/runtime/PluginConfigFile.cpp)
+    target_include_directories(LanguageSettingTests PRIVATE src)
+    target_link_libraries(LanguageSettingTests PRIVATE nlohmann_json::nlohmann_json SlaveTatsUILocalization)
+    add_test(NAME LanguageSettingTests COMMAND LanguageSettingTests)
 
     add_executable(HotkeyBindingTests
         src/runtime/HotkeyBinding.cpp
@@ -450,8 +475,12 @@ if(BUILD_TESTING)
     target_include_directories(FlickLauncherTests PRIVATE src)
     add_test(NAME FlickLauncherTests COMMAND FlickLauncherTests)
 
+    add_library(RecordingMenuFramework SHARED tests/support/RecordingMenuFramework.cpp)
+    set_target_properties(RecordingMenuFramework PROPERTIES OUTPUT_NAME "SKSEMenuFramework")
+
     add_executable(OfficialMenuFrameworkAdapterTests
         src/textures/TextureResolver.cpp
+        src/runtime/LanguageSetting.cpp
         src/native/OfficialMenuFrameworkAdapter.cpp
         src/native/CatalogPreviewModel.cpp
         src/runtime/HotkeyBinding.cpp
@@ -471,8 +500,12 @@ if(BUILD_TESTING)
     target_compile_definitions(OfficialMenuFrameworkAdapterTests PRIVATE
         SLAVETATSUI_VERSION="${PROJECT_VERSION}"
         SLAVETATSUI_GIT_REVISION="${SLAVETATSUI_GIT_REVISION}"
+        SLAVETATSUI_TRANSLATIONS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/translations"
     )
-    target_link_libraries(OfficialMenuFrameworkAdapterTests PRIVATE CommonLibSSE::CommonLibSSE nlohmann_json::nlohmann_json)
+    target_link_libraries(OfficialMenuFrameworkAdapterTests PRIVATE CommonLibSSE::CommonLibSSE nlohmann_json::nlohmann_json SlaveTatsUILocalization RecordingMenuFramework)
+    if(MSVC)
+        target_compile_options(OfficialMenuFrameworkAdapterTests PRIVATE /utf-8)
+    endif()
     add_test(NAME OfficialMenuFrameworkAdapterTests COMMAND OfficialMenuFrameworkAdapterTests)
 
     add_executable(SlaveTatsUICoreTests

@@ -1,0 +1,249 @@
+# language-name: Japanese
+# English source text	Translation; UTF-8, \n = newline, \t = tab, \\ = backslash
+Saving or loading loadouts...	構成を保存または読み込み中...
+No loadouts saved.	保存された構成はありません。
+Loadout limit reached. Overwrite, rename or delete an existing loadout.	構成数の上限です。既存の構成を上書き、名前変更、または削除してください。
+Loadout applied	構成を適用しました
+Preflight rejected	事前検証で拒否されました
+Synchronization pending	同期を待機中
+Rollback synchronization pending	ロールバックの同期を待機中
+Rollback complete	ロールバック完了
+Rollback incomplete	ロールバック未完了
+Loadout failed	構成の適用に失敗しました
+{}: {}	{}: {}
+{} / Slot {}: {}	{} / スロット {}: {}
+Apply Loadout	構成を適用
+Rename	名前を変更
+Overwrite	上書き
+Delete	削除
+Save Loadout	構成を保存
+Unnamed Actor	名前のないアクター
+{} - {:.0f} units	{} - {:.0f} ユニット
+Choose Follower	フォロワーを選択
+Choose NPC	NPCを選択
+Scanning loaded Actors...	読み込み済みアクターを検索中...
+No loaded followers found.	読み込み済みのフォロワーが見つかりません。
+No loaded NPC matches the search.	検索に一致する読み込み済みNPCがいません。
+Target: None	対象: なし
+Target:\s	対象:\s
+Scanning nearby Actors...	周囲のアクターを検索中...
+No nearby Actor found	周囲のアクターが見つかりません
+Unavailable	利用できません
+Current Slots / Loadouts	現在のスロット / 構成
+Current Slots / Loadouts / Preview	現在のスロット / 構成 / プレビュー
+Current Slots / Loadouts / Restore	現在のスロット / 構成 / 復元
+Current Slots / Loadouts / Confirm Overwrite	現在のスロット / 構成 / 上書きの確認
+Current Slots / Loadouts / Confirm Delete	現在のスロット / 構成 / 削除の確認
+Current Slots	現在のスロット
+Current Slots / Slot Actions	現在のスロット / スロット操作
+Current Slots / Browse	現在のスロット / 一覧
+Current Slots / Browse / Preview	現在のスロット / 一覧 / プレビュー
+Current Slots / Edit Appearance	現在のスロット / 外観を編集
+Current Slots / Slot Actions / Confirm Remove	現在のスロット / スロット操作 / 除去の確認
+BODY	体
+FACE	顔
+HANDS	手
+FEET	足
+No active Actor	有効なアクターがいません
+{} / {} / Slot {}	{} / {} / スロット {}
+Retry Slot\s	スロットを再試行\s
+Apply to Slot\s	適用先スロット\s
+Save	保存
+Preview pending...	プレビューを待機中...
+Updating preview...	プレビューを更新中...
+Preview applied	プレビューを適用しました
+Restoring original appearance...	元の外観を復元中...
+ -\s	 -\s
+Retry Restore Sync	復元の同期を再試行
+Retry Restore	復元を再試行
+Retry Preview Sync	プレビューの同期を再試行
+Retry Preview	プレビューを再試行
+Remove from Slot\s	除去するスロット\s
+Retry Remove Slot\s	除去を再試行するスロット\s
+Retry Sync Slot\s	同期を再試行するスロット\s
+Unlock tattoo	タトゥーのロックを解除
+Lock tattoo	タトゥーをロック
+All Domains	すべてのドメイン
+Glow	発光
+Bump	バンプ
+Gloss	光沢
+None	なし
+Current (unlisted)	現在の値（一覧にありません）
+No appearance presets saved.	保存された外観プリセットはありません。
+20 preset limit reached	プリセット数の上限（20個）です
+Updating appearance presets...	外観プリセットを更新中...
+\nIn use: Slots\s	\n使用中のスロット\s
+Loading	読み込み中
+Missing	見つかりません
+Broken	破損しています
+The tattoo catalog is empty. Refresh the catalog to browse tattoos.	タトゥーのカタログが空です。カタログを更新してください。
+No tattoos match the current filters.	現在のフィルターに一致するタトゥーがありません。
+No applied tattoos match the current filters.	現在のフィルターに一致する適用済みタトゥーがありません。
+No favorite tattoos match the current filters.	現在のフィルターに一致するお気に入りのタトゥーがありません。
+No favorite applied tattoos match the current filters.	現在のフィルターに一致する適用済みのお気に入りがありません。
+No recently used tattoos match the current filters.	現在のフィルターに一致する最近使ったタトゥーがありません。
+No favorite recently used tattoos match the current filters.	現在のフィルターに一致する最近使ったお気に入りがありません。
+No applied recently used tattoos match the current filters.	現在のフィルターに一致する適用済みの最近使ったタトゥーがありません。
+No favorite applied recently used tattoos match the current filters.	現在のフィルターに一致する適用済みの最近使ったお気に入りがありません。
+No thumbnail	サムネイルなし
+Player	プレイヤー
+Search	検索
+Refresh NPC List	NPC一覧を更新
+Close NPC Picker	NPC選択を閉じる
+Retry NPC Scan	NPC検索を再試行
+Loadouts:\s	構成:\s
+Retry	再試行
+Loadout	構成
+Select loadout	構成を選択
+Load	読み込む
+Save Current	現在の状態を保存
+Manage	管理
+Reading fresh Actor state...	最新のアクター状態を読み込み中...
+Tattoo Browser	タトゥーブラウザー
+Saved Tattoo Loadouts	保存されたタトゥー構成
+Save managed tattoos from all four areas. External overlays are omitted.	4部位の管理対象タトゥーを保存します。外部オーバーレイは除外されます。
+Name	名前
+Delete...	削除...
+Overwrite the selected loadout with the captured four-area state?	選択した構成を取得済みの4部位の状態で上書きしますか？
+Delete this saved loadout? Actor tattoos will remain unchanged.	保存された構成を削除しますか？アクターのタトゥーは変更されません。
+Exact restore removes managed tattoos absent from this loadout.	完全復元では、この構成に含まれない管理対象タトゥーを除去します。
+Add: %zu / Replace: %zu / Remove: %zu	追加: %zu / 置換: %zu / 除去: %zu
+Appearance: %zu / Unchanged: %zu / Preserved: %zu	外観: %zu / 変更なし: %zu / 保持: %zu
+Preflight rejected. Resolve these conflicts and run Load again:	事前検証で拒否されました。競合を解決して再度読み込んでください:
+Restoring loadout... Please wait.	構成を復元中... お待ちください。
+Restore failed. The original managed tattoos were recovered and verified.	復元に失敗しました。元の管理対象タトゥーを回復し、検証しました。
+Restore failed and recovery could not be verified. Inspect the affected slots.	復元に失敗し、回復を検証できませんでした。該当スロットを確認してください。
+Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.	戻る前に現在のスロットを更新する必要があります。失敗した場合はスロットを更新してください。
+Cancel	キャンセル
+Close	閉じる
+Back	戻る
+Retry Synchronization	同期を再試行
+Refresh Slots	スロットを更新
+Tattoos	タトゥー
+Refresh	更新
+Loading tattoo slots...	タトゥースロットを読み込み中...
+Slot %d	スロット %d
+Slot %d - Read Only: managed by another overlay mod	スロット %d - 読み取り専用: 別のオーバーレイMODが管理中
+Slot %d - %s	スロット %d - %s
+Add a tattoo to Slot %d	スロット %d にタトゥーを追加
+Loadouts	構成
+Prev	前へ
+Page	ページ
+Next	次へ
+Remove Tattoo?	タトゥーを除去しますか？
+Tattoo Slot Actions	タトゥースロット操作
+Domain: %s	ドメイン: %s
+Removing tattoo...	タトゥーを除去中...
+This will clear the selected SlaveTats slot.	選択したSlaveTatsスロットを空にします。
+Replace	置換
+Edit Appearance	外観を編集
+Remove	除去
+Preview Tattoo	タトゥーのプレビュー
+Applying tattoo...	タトゥーを適用中...
+Color	色
+Alpha	不透明度
+Favorited	お気に入り登録済み
+Favorite	お気に入り
+Favorites: %s	お気に入り: %s
+Retry favorite save	お気に入りの保存を再試行
+Saving appearance...	外観を保存中...
+Appearance Preset	外観プリセット
+Select preset	プリセットを選択
+Preset	プリセット
+Save Preset	プリセットを保存
+Save Appearance Preset	外観プリセットを保存
+Manage Appearance Preset	外観プリセットを管理
+Appearance Presets: {}	外観プリセット: {}
+Save the current appearance values as:	現在の外観の保存名:
+Overwrite Appearance Preset	外観プリセットを上書き
+Overwrite '{}' with the current appearance?	'{}'を現在の外観で上書きしますか？
+Delete Appearance Preset	外観プリセットを削除
+Delete '{}' permanently?	'{}'を完全に削除しますか？
+Basic	基本
+Material / Emission	材質 / 発光
+Glow Color	発光色
+Emission Strength	発光強度
+Emission Strength Value	発光強度の値
+Glossiness	光沢度
+Glossiness Value	光沢度の値
+Specular Strength	鏡面反射強度
+Specular Strength Value	鏡面反射強度の値
+Glow Texture	発光テクスチャ
+Bump Texture	バンプテクスチャ
+Glow Texture:	発光テクスチャ:
+Bump Texture:	バンプテクスチャ:
+Open SlaveTatsUI when you are ready to browse tattoos.	タトゥーを見るにはSlaveTatsUIを開いてください。
+Hotkey	ホットキー
+Could not save the hotkey setting.	ホットキー設定を保存できませんでした。
+Browser position	ブラウザーの位置
+Left	左
+Right	右
+Could not save the browser position.	ブラウザーの位置を保存できませんでした。
+Opening frame X offset (Left)	開始時の画面Xオフセット（左）
+Opening frame X offset (Right)	開始時の画面Xオフセット（右）
+Could not save the initial camera position.	初期カメラ位置を保存できませんでした。
+Initial Pan X (Left)	初期パンX（左）
+Initial Pan X (Right)	初期パンX（右）
+Initial Pan Y (Left)	初期パンY（左）
+Initial Pan Y (Right)	初期パンY（右）
+Could not save the initial camera Pan.	初期カメラのパンを保存できませんでした。
+Build Thumbnail Cache	サムネイルキャッシュを作成
+Building Thumbnail Cache: %zu / %zu	サムネイルキャッシュを作成中: %zu / %zu
+Please keep this menu open until the build is complete.	作成が完了するまでメニューを開いたままにしてください。
+Thumbnail Cache ready. You can open the Tattoo Browser.	サムネイルキャッシュの準備ができました。タトゥーブラウザーを開けます。
+Thumbnail Cache build complete: %zu / %zu (%zu failed)	サムネイルキャッシュの作成完了: %zu / %zu（失敗 %zu）
+No tattoo textures found. Thumbnail Cache was not built.	タトゥーテクスチャが見つからないため、キャッシュを作成しませんでした。
+Thumbnail Cache: %.1f MiB used	サムネイルキャッシュ: %.1f MiB 使用中
+Clear Thumbnail Cache	サムネイルキャッシュを消去
+Clearing thumbnail cache...	サムネイルキャッシュを消去中...
+Could not clear the thumbnail cache.	サムネイルキャッシュを消去できませんでした。
+Thumbnail cache cleared.	サムネイルキャッシュを消去しました。
+Open Tattoo Browser	タトゥーブラウザーを開く
+Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down	Alt+ドラッグ: パン | Alt+A/D: 回転 | Alt+W/S: 上下
+Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom	ドラッグ: 回転 | Alt+ドラッグ: パン | ホイール: ズーム
+Whole body	全身
+Face	顔
+Body	体
+Hands	手
+Feet	足
+Center	中央
+Reset View	視点をリセット
+Current Pan X %.1f  Y %.1f	現在のパン X %.1f  Y %.1f
+Initial Pan X %.1f  Y %.1f	初期パン X %.1f  Y %.1f
+Use current Pan as initial	現在のパンを初期値にする
+Applies when this side has no remembered session view.	この側の視点がセッションに記憶されていない場合に適用します。
+Could not save initial Pan.	初期パンを保存できませんでした。
+Target: %s	対象: %s
+Filters	フィルター
+Thumbnail BG: Black	サムネイル背景: 黒
+Thumbnail BG: White	サムネイル背景: 白
+%zu tattoos	タトゥー %zu 個
+All sections	すべてのセクション
+All sources	すべてのソース
+Applied	適用済み
+Applied only	適用済みのみ
+Favorites	お気に入り
+Favorites only	お気に入りのみ
+Recent	最近使用
+Recently used only	最近使ったもののみ
+Material	材質
+Glow only	発光のみ
+Bump only	バンプのみ
+Gloss only	光沢のみ
+Domain	ドメイン
+Source	ソース
+Section	セクション
+Recently Used: %s	最近使用: %s
+Retry recent history	履歴の保存を再試行
+Preview: %s	プレビュー: %s
+Selected: %s - not saved	選択中: %s - 未保存
+Click a tattoo to preview and select.	タトゥーをクリックしてプレビューし、選択してください。
+Ink	インク
+Glossy	光沢
+Preparing live preview...	ライブプレビューを準備中...
+Live preview unavailable: %s	ライブプレビューを利用できません: %s
+Save Tattoo	タトゥーを保存
+Undo	元に戻す
+Language	言語
+Could not save the language setting.	言語設定を保存できませんでした。
+Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.	SKSE Menu Frameworkの設定で中国語・韓国語・日本語のグリフを有効にし、対応フォントを選択してください。

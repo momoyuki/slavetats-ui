@@ -20,8 +20,18 @@
 #include <vector>
 
 #include "SKSEMenuFramework.h"
+#include "native/LocalizedImGui.h"
+#include "runtime/LanguageSetting.h"
 
 namespace stui::native {
+using localization::tr;
+namespace ui = localizedUi;
+
+template <class... Args>
+std::string translatedFormat(const char* source, Args&&... args) {
+    return std::vformat(tr(source), std::make_format_args(args...));
+}
+
 namespace {
 runtime::MenuSide g_renderMenuSide = runtime::MenuSide::left;
 }
@@ -57,8 +67,8 @@ std::string_view loadoutResultLabel(core::TattooLoadoutRestoreState state) noexc
     return "Loadout failed";
 }
 std::string formatLoadoutSlotReason(core::TattooArea area, std::int32_t slot, std::string_view reason) {
-    return slot < 0 ? std::format("{}: {}", slotAreaLabel(area), reason)
-        : std::format("{} / Slot {}: {}", slotAreaLabel(area), slot, reason);
+    return slot < 0 ? std::format("{}: {}", tr(slotAreaLabel(area).data()), reason)
+        : translatedFormat("{} / Slot {}: {}", tr(slotAreaLabel(area).data()), slot, reason);
 }
 LoadoutFooterPresentation loadoutFooterPresentation(TattooLoadoutScreen screen, bool primaryEnabled) noexcept {
     if (screen == TattooLoadoutScreen::restoring) return {};
@@ -128,7 +138,7 @@ bool inputTextString(const char* label, std::string& value) {
     if (value.capacity() == 0) {
         value.reserve(32);
     }
-    return ImGuiMCP::InputText(
+    return ui::InputText(
         label,
         value.data(),
         value.capacity() + 1,
@@ -189,20 +199,20 @@ OfficialMenuFrameworkAdapter::OfficialMenuFrameworkAdapter(MenuFrameworkBindings
 
 std::string formatActorTargetIdentity(const ActorTarget& target) {
     return std::format("{} [0x{:08X}]",
-        target.displayName.empty() ? "Unnamed Actor" : target.displayName,
+        target.displayName.empty() ? tr("Unnamed Actor") : target.displayName,
         target.formId);
 }
 
 std::string formatNearbyActorSelectorLabel(
     const NearbyActorCandidate& candidate, std::size_t index) {
-    return std::format("{} - {:.0f} units##NearbyActor{}",
-        formatActorTargetIdentity(candidate.target), candidate.distance, index);
+    return translatedFormat("{} - {:.0f} units",
+        formatActorTargetIdentity(candidate.target), candidate.distance) + std::format("##NearbyActor{}", index);
 }
 
 std::string formatLoadedActorSelectorLabel(
     const LoadedActorCandidate& candidate, std::size_t index) {
-    return std::format("{} - {:.0f} units##ExplicitNpc{}",
-        formatActorTargetIdentity(candidate.target), candidate.distance, index);
+    return translatedFormat("{} - {:.0f} units",
+        formatActorTargetIdentity(candidate.target), candidate.distance) + std::format("##ExplicitNpc{}", index);
 }
 
 std::string_view actorPickerTitle(ActorPickerMode mode) noexcept {
@@ -221,9 +231,9 @@ std::string_view loadedActorPickerStatusMessage(
 
 std::string actorTargetTitle(const ActorTarget* target) {
     if (!target) {
-        return "Target: None";
+        return tr("Target: None");
     }
-    return "Target: " + formatActorTargetIdentity(*target);
+    return std::string(tr("Target: ")) + formatActorTargetIdentity(*target);
 }
 
 std::string_view actorTargetStatusLabel(bool resolving, const ActorTarget* target) noexcept {
@@ -428,13 +438,13 @@ std::vector<std::string> collectVisibleSlotTexturePaths(
 
 std::string formatSlotTargetLabel(
     const ActorTarget* actor, core::TattooArea area, std::int32_t slot) {
-    const std::string_view name = !actor ? "No active Actor" :
-        actor->displayName.empty() ? "Unnamed Actor" : std::string_view(actor->displayName);
-    return std::format("{} / {} / Slot {}", name, slotAreaLabel(area), slot);
+    const std::string_view name = !actor ? tr("No active Actor") :
+        actor->displayName.empty() ? tr("Unnamed Actor") : std::string_view(actor->displayName);
+    return translatedFormat("{} / {} / Slot {}", name, tr(slotAreaLabel(area).data()), slot);
 }
 
 std::string previewApplyButtonLabel(std::int32_t slot, bool retry) {
-    return std::string(retry ? "Retry Slot " : "Apply to Slot ") +
+    return std::string(retry ? tr("Retry Slot ") : tr("Apply to Slot ")) +
         std::to_string(slot);
 }
 
@@ -486,13 +496,13 @@ std::string formatActorTargetIdentityWithPreviewStatus(
     const auto targetStatus = actorTargetStatusLabel(resolving, target);
     std::string text = targetStatus.empty() && target
         ? actorTargetTitle(target)
-        : std::string(targetStatus);
+        : std::string(tr(targetStatus.data()));
     const auto previewStatusText = livePreviewStatusLabel(previewStatus);
     if (!previewStatusText.empty()) {
         if (!text.empty()) {
             text += " - ";
         }
-        text += previewStatusText;
+        text += tr(previewStatusText.data());
     }
     return text;
 }
@@ -555,13 +565,13 @@ bool dispatchMenuCloseRequest(
 std::string removeButtonLabel(std::int32_t slot, RemoveButtonState state) {
     switch (state) {
     case RemoveButtonState::initial:
-        return "Remove from Slot " + std::to_string(slot);
+        return tr("Remove from Slot ") + std::to_string(slot);
     case RemoveButtonState::retryRemove:
-        return "Retry Remove Slot " + std::to_string(slot);
+        return tr("Retry Remove Slot ") + std::to_string(slot);
     case RemoveButtonState::retrySynchronization:
-        return "Retry Sync Slot " + std::to_string(slot);
+        return tr("Retry Sync Slot ") + std::to_string(slot);
     }
-    return "Remove from Slot " + std::to_string(slot);
+    return tr("Remove from Slot ") + std::to_string(slot);
 }
 
 bool isRemoveConfirmationEnabled(
@@ -1181,7 +1191,7 @@ std::string formatCatalogTattooTooltip(
         return tooltip;
     }
 
-    tooltip += "\nIn use: Slots ";
+    tooltip += tr("\nIn use: Slots ");
     for (std::size_t index = 0; index < inUseSlots.size(); ++index) {
         if (index != 0) {
             tooltip += ", ";
@@ -1415,11 +1425,11 @@ void renderSlotImage(
         return;
     }
     if (slot.occupancy == core::SlotOccupancy::external && !slot.externalThumbnail) {
-        ImGuiMCP::TextUnformatted("Unavailable");
+        ui::TextUnformatted(tr("Unavailable"));
         return;
     }
     if (slot.occupancy == core::SlotOccupancy::slaveTats && (!slot.tattoo || slot.tattoo->texturePath.empty())) {
-        ImGuiMCP::TextUnformatted("No thumbnail");
+        ui::TextUnformatted(tr("No thumbnail"));
         return;
     }
 
@@ -1459,14 +1469,14 @@ void renderSlotImage(
         return;
     }
     if (slot.occupancy == core::SlotOccupancy::external) {
-        ImGuiMCP::TextUnformatted(!thumbnail || thumbnail->status == NativeThumbnailStatus::placeholder ||
-            thumbnail->status == NativeThumbnailStatus::loading ? "Loading" : "Unavailable");
+        ui::TextUnformatted(tr(!thumbnail || thumbnail->status == NativeThumbnailStatus::placeholder ||
+            thumbnail->status == NativeThumbnailStatus::loading ? "Loading" : "Unavailable"));
         return;
     }
     if (thumbnail) {
         const auto label = catalogThumbnailStatusLabel(thumbnail->status);
         if (!label.empty()) {
-            ImGuiMCP::TextUnformatted(label.data());
+            ui::TextUnformatted(tr(label.data()));
         }
     }
 }
@@ -1480,7 +1490,7 @@ bool renderActorTargetHeader(
         kind, resolving, workflow.isMutationInFlight());
     ActorTargetHeaderIntent intent = ActorTargetHeaderIntent::none;
     ImGuiMCP::BeginDisabled(!controls.playerEnabled);
-    if (ImGuiMCP::Button("Player")) {
+    if (ui::Button("Player")) {
         intent = ActorTargetHeaderIntent::player;
     }
     ImGuiMCP::EndDisabled();
@@ -1488,7 +1498,7 @@ bool renderActorTargetHeader(
     const bool chooseNpcEnabled =
         !workflow.isActorTargetResolutionInFlight() && !workflow.isMutationInFlight();
     ImGuiMCP::BeginDisabled(!chooseNpcEnabled);
-    if (ImGuiMCP::Button("Choose NPC")) {
+    if (ui::Button("Choose NPC")) {
         intent = ActorTargetHeaderIntent::npcPicker;
     }
     ImGuiMCP::EndDisabled();
@@ -1500,7 +1510,7 @@ bool renderActorTargetHeader(
     if (workflow.explicitNpcPickerOpen()) {
         const auto pickerTitle = actorPickerTitle(workflow.actorPickerMode());
         ImGuiMCP::Separator();
-        ImGuiMCP::TextUnformatted(pickerTitle.data());
+        ui::TextUnformatted(tr(pickerTitle.data()));
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
         auto search = workflow.explicitNpcSearch();
         if (inputTextString("Search##ExplicitNpc", search)) {
@@ -1524,20 +1534,19 @@ bool renderActorTargetHeader(
             workflow.actorPickerMode(), workflow.isActorTargetResolutionInFlight(),
             !results.empty(), workflow.error());
         if (!pickerStatus.empty()) {
-            ImGuiMCP::TextWrapped("%.*s", static_cast<int>(pickerStatus.size()),
-                pickerStatus.data());
+            ui::TextWrapped("%s", tr(pickerStatus.data()));
         }
         ImGuiMCP::BeginDisabled(workflow.isActorTargetResolutionInFlight());
-        if (ImGuiMCP::Button("Refresh NPC List")) {
+        if (ui::Button("Refresh NPC List")) {
             (void)workflow.refreshExplicitNpcTargetList();
         }
         ImGuiMCP::EndDisabled();
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Close NPC Picker")) {
+        if (ui::Button("Close NPC Picker")) {
             workflow.closeExplicitNpcPicker();
         }
         if (workflow.explicitNpcScanRetryAvailable()) {
-            if (ImGuiMCP::Button("Retry NPC Scan")) {
+            if (ui::Button("Retry NPC Scan")) {
                 (void)workflow.retryExplicitNpcScan();
             }
         }
@@ -1547,11 +1556,11 @@ bool renderActorTargetHeader(
     const auto* target = workflow.actorTarget();
     const auto identity = formatActorTargetIdentityWithPreviewStatus(
         resolving, target, previewStatus);
-    ImGuiMCP::TextUnformatted(identity.c_str());
+    ui::TextUnformatted(identity.c_str());
     if (workflow.screen() != SlotWorkflowScreen::currentSlots ||
         workflow.tattooLoadoutScreen() != TattooLoadoutScreen::none) {
-        ImGuiMCP::TextWrapped("%s", workflowBreadcrumb(
-            workflow.screen(), workflow.tattooLoadoutScreen()).data());
+        ui::TextWrapped("%s", tr(workflowBreadcrumb(
+            workflow.screen(), workflow.tattooLoadoutScreen()).data()));
         ImGuiMCP::Separator();
     }
     return false;
@@ -1559,12 +1568,12 @@ bool renderActorTargetHeader(
 
 void renderLoadoutStoreStatus(NativeSlotWorkflowModel& workflow) {
     const auto status = loadoutStatusMessage(workflow.tattooLoadouts().size(), workflow.tattooLoadoutStorePending());
-    if (!status.empty()) ImGuiMCP::TextUnformatted(status.data());
+    if (!status.empty()) ui::TextUnformatted(tr(status.data()));
     if (const auto* error = workflow.tattooLoadoutStoreError()) {
-        const auto message = "Loadouts: " + error->message;
-        ImGuiMCP::TextWrapped("%s", message.c_str());
+        const auto message = tr("Loadouts: ") + error->message;
+        ui::TextWrapped("%s", message.c_str());
         ImGuiMCP::BeginDisabled(workflow.tattooLoadoutStorePending());
-        if (ImGuiMCP::Button("Retry##LoadoutStore"))
+        if (ui::Button("Retry##LoadoutStore"))
             (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::retryStore);
         ImGuiMCP::EndDisabled();
     }
@@ -1578,7 +1587,7 @@ void renderLoadoutControls(NativeSlotWorkflowModel& workflow) {
     const bool actorEnabled = actorTargetActionsEnabled(workflow.isActorTargetResolutionInFlight(), workflow.actorTarget()) &&
         !workflow.isMutationInFlight();
     ImGuiMCP::BeginDisabled(pending || loadouts.empty() || workflow.isMutationInFlight());
-    if (ImGuiMCP::BeginCombo("Loadout", selected ? labels[*selected].c_str() : "Select loadout")) {
+    if (ui::BeginCombo("Loadout", selected ? labels[*selected].c_str() : tr("Select loadout"))) {
         for (std::size_t index = 0; index < labels.size(); ++index) {
             ImGuiMCP::PushID(static_cast<int>(index));
             if (ImGuiMCP::Selectable(labels[index].c_str(), selected == index)) workflow.selectTattooLoadout(index);
@@ -1588,17 +1597,17 @@ void renderLoadoutControls(NativeSlotWorkflowModel& workflow) {
     }
     ImGuiMCP::EndDisabled();
     ImGuiMCP::BeginDisabled(pending || !actorEnabled || !selected);
-    if (ImGuiMCP::Button("Load##Loadout")) (void)workflow.requestTattooLoadoutPreview();
+    if (ui::Button("Load##Loadout")) (void)workflow.requestTattooLoadoutPreview();
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
     ImGuiMCP::BeginDisabled(pending || !actorEnabled);
-    if (ImGuiMCP::Button("Save Current")) (void)workflow.requestTattooLoadoutCapture();
+    if (ui::Button("Save Current")) (void)workflow.requestTattooLoadoutCapture();
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
     ImGuiMCP::BeginDisabled(pending || !selected || workflow.isMutationInFlight());
-    if (ImGuiMCP::Button("Manage##Loadouts")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::manage);
+    if (ui::Button("Manage##Loadouts")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::manage);
     ImGuiMCP::EndDisabled();
-    if (workflow.tattooLoadoutActorPending()) ImGuiMCP::TextUnformatted("Reading fresh Actor state...");
+    if (workflow.tattooLoadoutActorPending()) ui::TextUnformatted(tr("Reading fresh Actor state..."));
     renderLoadoutStoreStatus(workflow);
 }
 
@@ -1613,14 +1622,14 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
     const auto screen = workflow.tattooLoadoutScreen();
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin("Tattoo Browser##SlaveTatsUI",
+    ui::Begin("Tattoo Browser##SlaveTatsUI",
         workflow.tattooLoadoutCanDismiss() ? &open : nullptr,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse | ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse);
     if (renderActorTargetHeader(workflow)) {
         ImGuiMCP::End(); ImGuiMCP::PopStyleVar(); return;
     }
-    ImGuiMCP::TextUnformatted("Saved Tattoo Loadouts");
+    ui::TextUnformatted(tr("Saved Tattoo Loadouts"));
     const auto selected = workflow.selectedTattooLoadout();
     if (selected) ImGuiMCP::TextUnformatted(workflow.tattooLoadouts()[*selected].name.c_str());
     const float startY = ImGuiMCP::GetCursorPosY();
@@ -1629,13 +1638,13 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
     bool primaryEnabled = !pending;
     if (ImGuiMCP::BeginChild("LoadoutContent", {0, content.contentHeight})) {
         renderLoadoutStoreStatus(workflow);
-        if (const auto* error = workflow.error()) ImGuiMCP::TextWrapped("%s", error->message.c_str());
+        if (const auto* error = workflow.error()) ui::TextWrapped("%s", error->message.c_str());
         if (screen == TattooLoadoutScreen::captureSummary) {
-            ImGuiMCP::TextUnformatted("Save managed tattoos from all four areas. External overlays are omitted.");
+            ui::TextUnformatted(tr("Save managed tattoos from all four areas. External overlays are omitted."));
             if (const auto* capture = workflow.tattooLoadoutCapture()) {
                 const auto counts = loadoutCaptureCounts(*capture);
                 for (std::size_t index = 0; index < counts.size(); ++index)
-                    ImGuiMCP::Text("%s: %zu", slotAreaLabel(static_cast<core::TattooArea>(index)).data(), counts[index]);
+                    ui::Text("%s: %zu", tr(slotAreaLabel(static_cast<core::TattooArea>(index)).data()), counts[index]);
             }
             ImGuiMCP::BeginDisabled(pending);
             (void)inputTextString("Name##Loadout", workflow.tattooLoadoutName());
@@ -1644,50 +1653,50 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
         } else if (screen == TattooLoadoutScreen::manage) {
             ImGuiMCP::BeginDisabled(pending);
             (void)inputTextString("Name##RenameLoadout", workflow.tattooLoadoutName());
-            if (ImGuiMCP::Button("Delete...")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::requestDelete);
+            if (ui::Button("Delete...")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::requestDelete);
             ImGuiMCP::EndDisabled();
             primaryEnabled = primaryEnabled && workflow.tattooLoadoutName().find_first_not_of(" \t\r\n") != std::string::npos;
         } else if (screen == TattooLoadoutScreen::overwriteConfirmation) {
-            ImGuiMCP::TextWrapped("Overwrite the selected loadout with the captured four-area state?");
+            ui::TextWrapped("Overwrite the selected loadout with the captured four-area state?");
         } else if (screen == TattooLoadoutScreen::deleteConfirmation) {
-            ImGuiMCP::TextWrapped("Delete this saved loadout? Actor tattoos will remain unchanged.");
+            ui::TextWrapped("Delete this saved loadout? Actor tattoos will remain unchanged.");
         } else if (screen == TattooLoadoutScreen::preview) {
             const auto* preview = workflow.tattooLoadoutPreview();
             primaryEnabled = primaryEnabled && preview && preview->blockers.empty();
-            ImGuiMCP::TextWrapped("Exact restore removes managed tattoos absent from this loadout.");
+            ui::TextWrapped("Exact restore removes managed tattoos absent from this loadout.");
             if (preview && preview->blockers.empty()) {
                 const auto summary = summarizeLoadoutPlan(preview->plan);
                 for (std::size_t index = 0; index < summary.size(); ++index) {
                     const auto& area = summary[index];
-                    ImGuiMCP::SeparatorText(slotAreaLabel(static_cast<core::TattooArea>(index)).data());
-                    ImGuiMCP::Text("Add: %zu / Replace: %zu / Remove: %zu", area.add, area.replace, area.remove);
-                    ImGuiMCP::Text("Appearance: %zu / Unchanged: %zu / Preserved: %zu", area.appearance, area.unchanged, area.preserved);
+                    ui::SeparatorText(slotAreaLabel(static_cast<core::TattooArea>(index)).data());
+                    ui::Text("Add: %zu / Replace: %zu / Remove: %zu", area.add, area.replace, area.remove);
+                    ui::Text("Appearance: %zu / Unchanged: %zu / Preserved: %zu", area.appearance, area.unchanged, area.preserved);
                 }
             } else if (preview) {
-                ImGuiMCP::TextUnformatted("Preflight rejected. Resolve these conflicts and run Load again:");
+                ui::TextUnformatted(tr("Preflight rejected. Resolve these conflicts and run Load again:"));
                 for (const auto& blocker : preview->blockers) {
                     const auto reason = formatLoadoutSlotReason(blocker.area, blocker.slot, blocker.message);
-                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                    ui::TextWrapped("%s", reason.c_str());
                 }
             }
         } else if (screen == TattooLoadoutScreen::restoring) {
-            ImGuiMCP::TextUnformatted("Restoring loadout... Please wait.");
+            ui::TextUnformatted(tr("Restoring loadout... Please wait."));
         } else if (screen == TattooLoadoutScreen::result) {
             if (const auto* result = workflow.tattooLoadoutResult()) {
-                ImGuiMCP::TextUnformatted(loadoutResultLabel(result->state).data());
+                ui::TextUnformatted(tr(loadoutResultLabel(result->state).data()));
                 if (result->state == core::TattooLoadoutRestoreState::rollbackComplete)
-                    ImGuiMCP::TextWrapped("Restore failed. The original managed tattoos were recovered and verified.");
+                    ui::TextWrapped("Restore failed. The original managed tattoos were recovered and verified.");
                 if (result->state == core::TattooLoadoutRestoreState::rollbackIncomplete)
-                    ImGuiMCP::TextWrapped("Restore failed and recovery could not be verified. Inspect the affected slots.");
+                    ui::TextWrapped("Restore failed and recovery could not be verified. Inspect the affected slots.");
                 if (!result->synchronizationRetryAvailable && !workflow.tattooLoadoutCanDismiss())
-                    ImGuiMCP::TextWrapped("Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.");
+                    ui::TextWrapped("Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.");
                 for (const auto& blocker : result->blockers) {
                     const auto reason = formatLoadoutSlotReason(blocker.area, blocker.slot, blocker.message);
-                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                    ui::TextWrapped("%s", reason.c_str());
                 }
                 for (const auto& slot : result->affectedSlots) {
                     const auto reason = formatLoadoutSlotReason(slot.area, slot.slot, slot.message);
-                    ImGuiMCP::TextWrapped("%s", reason.c_str());
+                    ui::TextWrapped("%s", reason.c_str());
                 }
             }
         }
@@ -1699,17 +1708,17 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
     const auto padding = style ? style->FramePadding.x * 2 : 16.0F;
     const auto rightLabel = footer.cancel ? "Cancel" : "Close";
     if (ImGuiMCP::BeginTable("LoadoutFooter", 3, ImGuiMCP::ImGuiTableFlags_SizingStretchProp | ImGuiMCP::ImGuiTableFlags_NoPadOuterX)) {
-        ImGuiMCP::TableSetupColumn("Back", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ImGuiMCP::CalcTextSize("Back").x + padding);
+        ImGuiMCP::TableSetupColumn("Back", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ui::CalcTextSize("Back").x + padding);
         ImGuiMCP::TableSetupColumn("Actions", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
-        ImGuiMCP::TableSetupColumn("Close", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ImGuiMCP::CalcTextSize(rightLabel).x + padding);
+        ImGuiMCP::TableSetupColumn("Close", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, ui::CalcTextSize(rightLabel).x + padding);
         ImGuiMCP::TableNextRow(); ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::BeginDisabled(pending || !workflow.tattooLoadoutCanDismiss());
-        if (footer.back && ImGuiMCP::Button("Back")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::back);
+        if (footer.back && ui::Button("Back")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::back);
         ImGuiMCP::EndDisabled();
         ImGuiMCP::TableSetColumnIndex(1);
         if (!footer.primary.empty()) {
             ImGuiMCP::BeginDisabled(!footer.primaryEnabled);
-            if (ImGuiMCP::Button(footer.primary.data())) {
+            if (ui::Button(footer.primary.data())) {
                 if (screen == TattooLoadoutScreen::preview) (void)workflow.confirmTattooLoadoutRestore();
                 else (void)workflow.applyTattooLoadoutIntent(
                     screen == TattooLoadoutScreen::manage ? TattooLoadoutIntent::rename :
@@ -1720,17 +1729,17 @@ void renderLoadoutScreen(NativeSlotWorkflowModel& workflow, const std::function<
         }
         if (const auto* result = workflow.tattooLoadoutResult(); result && result->synchronizationRetryAvailable && result->retryId) {
             ImGuiMCP::BeginDisabled(pending);
-            if (ImGuiMCP::Button("Retry Synchronization")) (void)workflow.retryTattooLoadoutSynchronization();
+            if (ui::Button("Retry Synchronization")) (void)workflow.retryTattooLoadoutSynchronization();
             ImGuiMCP::EndDisabled();
         } else if (workflow.tattooLoadoutResult()) {
             ImGuiMCP::BeginDisabled(pending);
-            if (ImGuiMCP::Button("Refresh Slots")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::refreshSlots);
+            if (ui::Button("Refresh Slots")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::refreshSlots);
             ImGuiMCP::EndDisabled();
         }
         ImGuiMCP::TableSetColumnIndex(2);
         ImGuiMCP::BeginDisabled(pending || !workflow.tattooLoadoutCanDismiss());
-        if (footer.cancel && ImGuiMCP::Button("Cancel")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::cancel);
-        if (footer.close && ImGuiMCP::Button("Close")) open = false;
+        if (footer.cancel && ui::Button("Cancel")) (void)workflow.applyTattooLoadoutIntent(TattooLoadoutIntent::cancel);
+        if (footer.close && ui::Button("Close")) open = false;
         ImGuiMCP::EndDisabled();
         ImGuiMCP::EndTable();
     }
@@ -1756,7 +1765,7 @@ void renderCurrentSlots(
         {layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin(
+    ui::Begin(
         "Tattoo Browser##SlaveTatsUI",
         &open,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse |
@@ -1775,7 +1784,7 @@ void renderCurrentSlots(
     SlotPageRange page;
     bool tattoosTab = false;
     if (ImGuiMCP::BeginTabBar("CurrentSlotsTabs")) {
-        if (ImGuiMCP::BeginTabItem("Tattoos")) {
+        if (ui::BeginTabItem("Tattoos")) {
             tattoosTab = true;
             constexpr std::array<core::TattooArea, 4> areas{
                 core::TattooArea::body,
@@ -1787,12 +1796,12 @@ void renderCurrentSlots(
                 static SlotAreaTabSelectionState areaTabState;
                 const auto forcedArea = areaTabState.synchronize(workflow.selectedArea());
                 for (std::size_t index = 0; index < areas.size(); ++index) {
-                    const auto label = std::string(slotAreaLabel(areas[index])) + "##SlotArea" +
+                    const auto label = std::string(tr(slotAreaLabel(areas[index]).data())) + "###SlotArea" +
                         std::to_string(index);
                     const auto flags = forcedArea == areas[index]
                         ? ImGuiMCP::ImGuiTabItemFlags_SetSelected
                         : ImGuiMCP::ImGuiTabItemFlags_None;
-                    if (ImGuiMCP::BeginTabItem(label.c_str(), nullptr, flags)) {
+                    if (ui::BeginTabItem(label.c_str(), nullptr, flags)) {
                         if ((!forcedArea || forcedArea == areas[index]) &&
                             areas[index] != workflow.selectedArea()) {
                             workflow.selectArea(areas[index]);
@@ -1801,7 +1810,7 @@ void renderCurrentSlots(
                     }
                 }
                 ImGuiMCP::BeginDisabled(!targetActionsEnabled);
-                if (ImGuiMCP::TabItemButton("Refresh##SlotAreaRefresh")) {
+                if (ui::TabItemButton("Refresh##SlotAreaRefresh")) {
                     workflow.refreshSelectedArea();
                 }
                 ImGuiMCP::EndDisabled();
@@ -1823,7 +1832,7 @@ void renderCurrentSlots(
                 : SlotPageRange{};
 
             if (const auto* error = workflow.error()) {
-                ImGuiMCP::TextUnformatted(error->message.c_str());
+                ui::TextUnformatted(error->message.c_str());
             }
 
             const auto gridLayout = calculateCatalogBrowserGridLayout(
@@ -1841,8 +1850,8 @@ void renderCurrentSlots(
                             ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
                     const auto status = actorTargetStatusLabel(
                         workflow.isActorTargetResolutionInFlight(), workflow.actorTarget());
-                    ImGuiMCP::TextUnformatted(
-                        status.empty() ? "Loading tattoo slots..." : status.data());
+                    ui::TextUnformatted(
+                        tr(status.empty() ? "Loading tattoo slots..." : status.data()));
                 }
                 ImGuiMCP::EndChild();
             } else if (ImGuiMCP::BeginTable(
@@ -1875,7 +1884,7 @@ void renderCurrentSlots(
                                 ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
                         const auto cardOrigin = ImGuiMCP::GetCursorScreenPos();
                         const float cardWidth = ImGuiMCP::GetContentRegionAvail().x;
-                        ImGuiMCP::Text("Slot %d", slot.index);
+                        ui::Text("Slot %d", slot.index);
                         if (const auto dot = calculateSlotReadOnlyIndicator(
                                 slot.occupancy, cardWidth, ImGuiMCP::GetTextLineHeight())) {
                             ImGuiMCP::ImDrawListManager::AddCircleFilled(
@@ -1887,7 +1896,7 @@ void renderCurrentSlots(
                             cardOrigin.x, cardOrigin.y + ImGuiMCP::GetFrameHeightWithSpacing()});
                         const auto status = slotCardStatusLabel(slot.occupancy);
                         if (!status.empty()) {
-                            ImGuiMCP::TextWrapped("%s", status.data());
+                            ui::TextWrapped("%s", status.data());
                         }
                         const auto imageRegion = ImGuiMCP::GetContentRegionAvail();
                         const auto imageScreenOrigin = ImGuiMCP::GetCursorScreenPos();
@@ -1928,12 +1937,12 @@ void renderCurrentSlots(
                     }
                     if (ImGuiMCP::IsItemHovered(ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled)) {
                         if (slot.occupancy == core::SlotOccupancy::external) {
-                            ImGuiMCP::SetTooltip(
+                            ui::SetTooltip(
                                 "Slot %d - Read Only: managed by another overlay mod. Thumbnail shows the source image.", slot.index);
                         } else if (slot.tattoo) {
-                            ImGuiMCP::SetTooltip("Slot %d - %s", slot.index, slot.tattoo->name.c_str());
+                            ui::SetTooltip("Slot %d - %s", slot.index, slot.tattoo->name.c_str());
                         } else {
-                            ImGuiMCP::SetTooltip("Add a tattoo to Slot %d", slot.index);
+                            ui::SetTooltip("Add a tattoo to Slot %d", slot.index);
                         }
                     }
                 }
@@ -1941,7 +1950,7 @@ void renderCurrentSlots(
             }
             ImGuiMCP::EndTabItem();
         }
-        if (ImGuiMCP::BeginTabItem("Loadouts")) {
+        if (ui::BeginTabItem("Loadouts")) {
             renderLoadoutControls(workflow);
             ImGuiMCP::EndTabItem();
         }
@@ -1952,7 +1961,7 @@ void renderCurrentSlots(
         ImGuiMCP::GetCursorPosY(),
         ImGuiMCP::GetContentRegionAvail().y,
         footerHeight));
-    const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
+    const float closeButtonWidth = ui::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
     if (ImGuiMCP::BeginTable(
             "SlotFooter",
@@ -1966,12 +1975,12 @@ void renderCurrentSlots(
         ImGuiMCP::TableSetColumnIndex(0);
         if (tattoosTab) {
             ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex == 0);
-            if (ImGuiMCP::Button("Prev##Slots")) {
+            if (ui::Button("Prev##Slots")) {
                 workflow.previousSlotPage();
             }
             ImGuiMCP::EndDisabled();
             ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted("Page");
+            ui::TextUnformatted(tr("Page"));
             ImGuiMCP::SameLine();
             static CatalogBrowserPageInputState slotPageInputState;
             slotPageInputState.synchronize(page.pageIndex, page.pageCount);
@@ -1988,17 +1997,17 @@ void renderCurrentSlots(
                 workflow.setSlotPageNumber(*requestedPage);
             }
             ImGuiMCP::SameLine();
-            ImGuiMCP::Text("/ %zu", page.pageCount);
+            ui::Text("/ %zu", page.pageCount);
             ImGuiMCP::SameLine();
             ImGuiMCP::BeginDisabled(page.pageCount == 0 || page.pageIndex + 1 >= page.pageCount);
-            if (ImGuiMCP::Button("Next##Slots")) {
+            if (ui::Button("Next##Slots")) {
                 workflow.nextSlotPage();
             }
             ImGuiMCP::EndDisabled();
         }
 
         ImGuiMCP::TableSetColumnIndex(1);
-        if (ImGuiMCP::Button("Close")) {
+        if (ui::Button("Close")) {
             open = false;
         }
         ImGuiMCP::EndTable();
@@ -2042,7 +2051,7 @@ void renderSlotActions(
         {layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin(
+    ui::Begin(
         "Tattoo Browser##SlaveTatsUI",
         &open,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse |
@@ -2068,25 +2077,25 @@ void renderSlotActions(
     const bool confirming =
         workflow.screen() == SlotWorkflowScreen::removeConfirmation;
     const bool removing = workflow.screen() == SlotWorkflowScreen::removing;
-    ImGuiMCP::TextUnformatted(
-        confirming || removing ? "Remove Tattoo?" : "Tattoo Slot Actions");
+    ui::TextUnformatted(
+        tr(confirming || removing ? "Remove Tattoo?" : "Tattoo Slot Actions"));
     if (target) {
         const auto targetLabel = formatSlotTargetLabel(
             workflow.actorTarget(), workflow.selectedArea(), *target);
-        ImGuiMCP::TextUnformatted(targetLabel.c_str());
+        ui::TextUnformatted(targetLabel.c_str());
     }
     if (slot && slot->tattoo) {
-        ImGuiMCP::Text("%s / %s",
+        ui::Text("%s / %s",
             slot->tattoo->section.c_str(),
             slot->tattoo->name.c_str());
-        ImGuiMCP::Text("Domain: %s", domainPresentationLabel(slot->tattoo->domain).data());
+        ui::Text("Domain: %s", domainPresentationLabel(slot->tattoo->domain).data());
     }
     if (const auto* error = workflow.error()) {
-        ImGuiMCP::TextUnformatted(error->message.c_str());
+        ui::TextUnformatted(error->message.c_str());
     } else if (removing) {
-        ImGuiMCP::TextUnformatted("Removing tattoo...");
+        ui::TextUnformatted(tr("Removing tattoo..."));
     } else if (confirming) {
-        ImGuiMCP::TextUnformatted("This will clear the selected SlaveTats slot.");
+        ui::TextUnformatted(tr("This will clear the selected SlaveTats slot."));
     }
 
     const float footerHeight = ImGuiMCP::GetFrameHeightWithSpacing();
@@ -2115,9 +2124,9 @@ void renderSlotActions(
         ImGuiMCP::GetContentRegionAvail().y,
         footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
-    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+    const float cancelButtonWidth = ui::CalcTextSize("Cancel").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
-    const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
+    const float closeButtonWidth = ui::CalcTextSize("Close").x +
         (style ? style->FramePadding.x * 2.0F : 16.0F);
     if (ImGuiMCP::BeginTable(
             "SlotActionsFooter",
@@ -2147,7 +2156,7 @@ void renderSlotActions(
             }
             const auto removeLabel = removeButtonLabel(target.value_or(-1), buttonState);
             ImGuiMCP::BeginDisabled(!canRemove);
-            if (ImGuiMCP::Button(removeLabel.c_str())) {
+            if (ui::Button((removeLabel + "###RemoveTattooAction").c_str())) {
                 (void)workflow.confirmRemove();
             }
             ImGuiMCP::EndDisabled();
@@ -2155,13 +2164,13 @@ void renderSlotActions(
             const bool locked = slot && slot->tattoo && slot->tattoo->locked;
             const auto lockPresentation = slotLockActionPresentation(locked);
             const bool lockStateChangeInFlight = workflow.isLockStateChangeInFlight();
-            if (ImGuiMCP::Button("Back")) {
+            if (ui::Button("Back")) {
                 workflow.backToSlots();
             }
             ImGuiMCP::SameLine();
             ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
                 !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
-            if (ImGuiMCP::Button("Replace")) {
+            if (ui::Button("Replace")) {
                 (void)workflow.replaceSelectedSlot();
             }
             ImGuiMCP::EndDisabled();
@@ -2171,7 +2180,7 @@ void renderSlotActions(
             if (canEditAppearance) {
                 ImGuiMCP::SameLine();
                 ImGuiMCP::BeginDisabled(!targetActionsEnabled || lockStateChangeInFlight);
-                if (ImGuiMCP::Button("Edit Appearance")) {
+                if (ui::Button("Edit Appearance")) {
                     (void)workflow.beginEditAppearance();
                 }
                 ImGuiMCP::EndDisabled();
@@ -2179,7 +2188,7 @@ void renderSlotActions(
             ImGuiMCP::SameLine();
             ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
                 !lockPresentation.mutationsEnabled || lockStateChangeInFlight);
-            if (ImGuiMCP::Button("Remove")) {
+            if (ui::Button("Remove")) {
                 (void)workflow.requestRemove();
             }
             ImGuiMCP::EndDisabled();
@@ -2187,13 +2196,13 @@ void renderSlotActions(
         ImGuiMCP::TableSetColumnIndex(1);
         if (confirming || removing) {
             ImGuiMCP::BeginDisabled(removing);
-            if (ImGuiMCP::Button("Cancel")) {
+            if (ui::Button("Cancel")) {
                 workflow.cancelRemove();
             }
             ImGuiMCP::EndDisabled();
         }
         ImGuiMCP::TableSetColumnIndex(2);
-        if (ImGuiMCP::Button("Close")) {
+        if (ui::Button("Close")) {
             open = false;
         }
         ImGuiMCP::EndTable();
@@ -2225,7 +2234,7 @@ void renderPreview(
         {layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin(
+    ui::Begin(
         "Tattoo Browser##SlaveTatsUI",
         &open,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse |
@@ -2254,20 +2263,20 @@ void renderPreview(
     thumbnails.synchronize(std::move(epoch), paths);
     thumbnails.pump();
     const auto thumbnailViews = thumbnails.views();
-    ImGuiMCP::TextUnformatted("Preview Tattoo");
+    ui::TextUnformatted(tr("Preview Tattoo"));
     if (target) {
         const auto targetLabel = formatSlotTargetLabel(
             workflow.actorTarget(), workflow.selectedArea(), *target);
-        ImGuiMCP::TextUnformatted(targetLabel.c_str());
+        ui::TextUnformatted(targetLabel.c_str());
     }
     if (preview) {
-        ImGuiMCP::Text("%s / %s", preview->section.c_str(), preview->name.c_str());
+        ui::Text("%s / %s", preview->section.c_str(), preview->name.c_str());
     }
     const bool applying = workflow.screen() == SlotWorkflowScreen::applying;
     if (const auto* error = workflow.error()) {
-        ImGuiMCP::TextUnformatted(error->message.c_str());
+        ui::TextUnformatted(error->message.c_str());
     } else if (applying) {
-        ImGuiMCP::TextUnformatted("Applying tattoo...");
+        ui::TextUnformatted(tr("Applying tattoo..."));
     }
 
     TattooColorComponents colorComponents =
@@ -2279,13 +2288,13 @@ void renderPreview(
     };
     float alpha = appearance ? appearance->alpha : 1.0F;
     ImGuiMCP::BeginDisabled(!targetActionsEnabled || applying || !appearance);
-    const bool colorChanged = ImGuiMCP::ColorEdit3(
+    const bool colorChanged = ui::ColorEdit3(
         "Color",
         pickerColor,
         ImGuiMCP::ImGuiColorEditFlags_DisplayHex |
             ImGuiMCP::ImGuiColorEditFlags_Uint8);
     const bool alphaChanged =
-        ImGuiMCP::SliderFloat("Alpha", &alpha, 0.0F, 1.0F, "%.2f");
+        ui::SliderFloat("Alpha", &alpha, 0.0F, 1.0F, "%.2f");
     if (colorChanged || alphaChanged) {
         colorComponents = TattooColorComponents{
             .red = pickerColor[0],
@@ -2343,9 +2352,9 @@ void renderPreview(
         footerHeight));
     const auto* style = ImGuiMCP::GetStyle();
     const float horizontalButtonPadding = style ? style->FramePadding.x * 2.0F : 16.0F;
-    const float backButtonWidth = ImGuiMCP::CalcTextSize("Back").x + horizontalButtonPadding;
-    const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x + horizontalButtonPadding;
-    const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
+    const float backButtonWidth = ui::CalcTextSize("Back").x + horizontalButtonPadding;
+    const float cancelButtonWidth = ui::CalcTextSize("Cancel").x + horizontalButtonPadding;
+    const float closeButtonWidth = ui::CalcTextSize("Close").x +
         horizontalButtonPadding;
     if (ImGuiMCP::BeginTable(
             "PreviewFooter",
@@ -2363,7 +2372,7 @@ void renderPreview(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::BeginDisabled(applying);
-        if (ImGuiMCP::Button("Back")) {
+        if (ui::Button("Back")) {
             workflow.backToPicker();
         }
         ImGuiMCP::EndDisabled();
@@ -2373,18 +2382,18 @@ void renderPreview(
         const auto applyLabel = previewApplyButtonLabel(
             target.value_or(-1), workflow.error() != nullptr);
         ImGuiMCP::BeginDisabled(!canApply);
-        if (ImGuiMCP::Button(applyLabel.c_str())) {
+        if (ui::Button((applyLabel + "###ApplyTattooAction").c_str())) {
             (void)workflow.confirmApply();
         }
         ImGuiMCP::EndDisabled();
         ImGuiMCP::TableSetColumnIndex(2);
         ImGuiMCP::BeginDisabled(applying);
-        if (ImGuiMCP::Button("Cancel")) {
+        if (ui::Button("Cancel")) {
             workflow.cancelPreview();
         }
         ImGuiMCP::EndDisabled();
         ImGuiMCP::TableSetColumnIndex(3);
-        if (ImGuiMCP::Button("Close")) {
+        if (ui::Button("Close")) {
             open = false;
         }
         ImGuiMCP::EndTable();
@@ -2416,7 +2425,7 @@ void renderEditAppearance(
         {layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin(
+    ui::Begin(
         "Tattoo Browser##SlaveTatsUI",
         &open,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse |
@@ -2456,32 +2465,32 @@ void renderEditAppearance(
     thumbnails.pump();
     const auto thumbnailViews = thumbnails.views();
     const bool saving = workflow.screen() == SlotWorkflowScreen::savingAppearance;
-    ImGuiMCP::TextUnformatted("Edit Appearance");
+    ui::TextUnformatted(tr("Edit Appearance"));
     if (session) {
         const auto targetLabel = formatSlotTargetLabel(
             workflow.actorTarget(), session->area, session->slot);
-        ImGuiMCP::TextUnformatted(targetLabel.c_str());
+        ui::TextUnformatted(targetLabel.c_str());
         if (session->favoriteDefinition) {
             const auto& favoriteTattoo = *session->favoriteDefinition;
             const bool favorited = catalog.isFavorite(favoriteTattoo);
             ImGuiMCP::SameLine();
             ImGuiMCP::BeginDisabled(workflow.favoritePending());
-            if (ImGuiMCP::Button(favorited ? "Favorited" : "Favorite")) {
+            if (ui::Button(favorited ? "Favorited" : "Favorite")) {
                 (void)workflow.requestFavorite(favoriteTattoo, !favorited);
             }
             ImGuiMCP::EndDisabled();
         }
     }
     if (const auto* favoriteError = workflow.favoriteError()) {
-        ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
-        if (ImGuiMCP::Button("Retry favorite save")) {
+        ui::Text("Favorites: %s", favoriteError->message.c_str());
+        if (ui::Button("Retry favorite save")) {
             (void)workflow.retryFavorite();
         }
     }
     if (const auto* error = workflow.error()) {
-        ImGuiMCP::TextUnformatted(error->message.c_str());
+        ui::TextUnformatted(error->message.c_str());
     } else if (saving) {
-        ImGuiMCP::TextUnformatted("Saving appearance...");
+        ui::TextUnformatted(tr("Saving appearance..."));
     }
 
     TattooColorComponents colorComponents =
@@ -2519,12 +2528,12 @@ void renderEditAppearance(
                 ? AppearancePresetUiState::limitReached
                 : AppearancePresetUiState::ready;
 
-    ImGuiMCP::SeparatorText("Appearance Preset");
+    ui::SeparatorText("Appearance Preset");
     const char* selectedPresetLabel = hasSelectedAppearancePreset
         ? appearancePresets[*selectedAppearancePreset].name.c_str()
-        : "Select preset";
+        : tr("Select preset");
     ImGuiMCP::BeginDisabled(appearancePresetPending || appearancePresets.empty());
-    if (ImGuiMCP::BeginCombo("Preset", selectedPresetLabel)) {
+    if (ui::BeginCombo("Preset", selectedPresetLabel)) {
         for (std::size_t index = 0; index < appearancePresets.size(); ++index) {
             const bool selected = selectedAppearancePreset == index;
             if (ImGuiMCP::Selectable(appearancePresets[index].name.c_str(), selected)) {
@@ -2540,7 +2549,7 @@ void renderEditAppearance(
 
     ImGuiMCP::BeginDisabled(
         appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
-    if (ImGuiMCP::Button("Load")) {
+    if (ui::Button("Load")) {
         (void)workflow.loadAppearancePreset(
             appearancePresets[*selectedAppearancePreset]);
     }
@@ -2550,38 +2559,38 @@ void renderEditAppearance(
     static std::string renamedPresetName;
     ImGuiMCP::SameLine();
     ImGuiMCP::BeginDisabled(appearancePresetPending || !targetActionsEnabled || !session);
-    if (ImGuiMCP::Button("Save Preset")) {
+    if (ui::Button("Save Preset")) {
         presetName.clear();
-        ImGuiMCP::OpenPopup("Save Appearance Preset");
+        ui::OpenPopup("Save Appearance Preset");
     }
     ImGuiMCP::EndDisabled();
     ImGuiMCP::SameLine();
     ImGuiMCP::BeginDisabled(
         appearancePresetPending || !hasSelectedAppearancePreset || !targetActionsEnabled);
-    if (ImGuiMCP::Button("Manage")) {
+    if (ui::Button("Manage")) {
         renamedPresetName = appearancePresets[*selectedAppearancePreset].name;
-        ImGuiMCP::OpenPopup("Manage Appearance Preset");
+        ui::OpenPopup("Manage Appearance Preset");
     }
     ImGuiMCP::EndDisabled();
 
     const auto statusMessage = appearancePresetStatusMessage(presetState);
     if (!statusMessage.empty()) {
-        ImGuiMCP::TextUnformatted(statusMessage.data());
+        ui::TextUnformatted(tr(statusMessage.data()));
     }
     if (appearancePresetError) {
-        const auto message = std::format(
+        const auto message = translatedFormat(
             "Appearance Presets: {}", appearancePresetError->message);
-        ImGuiMCP::TextUnformatted(message.c_str());
+        ui::TextUnformatted(message.c_str());
         if (workflow.appearancePresetRetryAvailable()) {
             ImGuiMCP::SameLine();
-            if (ImGuiMCP::Button("Retry##AppearancePreset")) {
+            if (ui::Button("Retry##AppearancePreset")) {
                 (void)workflow.retryAppearancePreset();
             }
         }
     }
 
-    if (ImGuiMCP::BeginPopupModal("Save Appearance Preset")) {
-        ImGuiMCP::TextUnformatted("Save the current appearance values as:");
+    if (ui::BeginPopupModal("Save Appearance Preset")) {
+        ui::TextUnformatted(tr("Save the current appearance values as:"));
         ImGuiMCP::SetNextItemWidth(320.0F);
         (void)inputTextString("Name##SaveAppearancePreset", presetName);
         auto candidateName = std::string_view(presetName);
@@ -2603,20 +2612,20 @@ void renderEditAppearance(
             (overwritesExisting || canCreateAppearancePreset(
                 appearancePresets.size(), appearancePresetPending));
         ImGuiMCP::BeginDisabled(!createEnabled);
-        if (ImGuiMCP::Button("Save##ConfirmAppearancePreset")) {
+        if (ui::Button("Save##ConfirmAppearancePreset")) {
             if (workflow.requestCreateAppearancePreset(presetName)) {
                 ImGuiMCP::CloseCurrentPopup();
             }
         }
         ImGuiMCP::EndDisabled();
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Cancel##SaveAppearancePreset")) {
+        if (ui::Button("Cancel##SaveAppearancePreset")) {
             ImGuiMCP::CloseCurrentPopup();
         }
         ImGuiMCP::EndPopup();
     }
 
-    if (ImGuiMCP::BeginPopupModal("Manage Appearance Preset")) {
+    if (ui::BeginPopupModal("Manage Appearance Preset")) {
         if (hasSelectedAppearancePreset) {
             ImGuiMCP::TextUnformatted(
                 appearancePresets[*selectedAppearancePreset].name.c_str());
@@ -2624,45 +2633,45 @@ void renderEditAppearance(
             (void)inputTextString("Name##RenameAppearancePreset", renamedPresetName);
             if (appearancePresetError &&
                 !workflow.appearancePresetRetryAvailable()) {
-                ImGuiMCP::TextUnformatted(appearancePresetError->message.c_str());
+                ui::TextUnformatted(appearancePresetError->message.c_str());
             }
             ImGuiMCP::BeginDisabled(renamedPresetName.empty());
-            if (ImGuiMCP::Button("Rename")) {
+            if (ui::Button("Rename")) {
                 if (workflow.requestRenameAppearancePreset(renamedPresetName)) {
                     ImGuiMCP::CloseCurrentPopup();
                 }
             }
             ImGuiMCP::EndDisabled();
             ImGuiMCP::SameLine();
-            if (ImGuiMCP::Button("Delete")) {
+            if (ui::Button("Delete")) {
                 if (workflow.requestDeleteAppearancePreset()) {
                     ImGuiMCP::CloseCurrentPopup();
                 }
             }
             ImGuiMCP::SameLine();
         }
-        if (ImGuiMCP::Button("Cancel##ManageAppearancePreset")) {
+        if (ui::Button("Cancel##ManageAppearancePreset")) {
             ImGuiMCP::CloseCurrentPopup();
         }
         ImGuiMCP::EndPopup();
     }
 
     if (workflow.appearancePresetOverwriteConfirmation() &&
-        !ImGuiMCP::IsPopupOpen("Overwrite Appearance Preset")) {
-        ImGuiMCP::OpenPopup("Overwrite Appearance Preset");
+        !ui::IsPopupOpen("Overwrite Appearance Preset")) {
+        ui::OpenPopup("Overwrite Appearance Preset");
     }
-    if (ImGuiMCP::BeginPopupModal("Overwrite Appearance Preset")) {
+    if (ui::BeginPopupModal("Overwrite Appearance Preset")) {
         const auto* overwrite = workflow.appearancePresetOverwriteConfirmation();
-        const auto message = std::format(
+        const auto message = translatedFormat(
             "Overwrite '{}' with the current appearance?",
             overwrite ? overwrite->name : std::string{});
-        ImGuiMCP::TextUnformatted(message.c_str());
-        if (ImGuiMCP::Button("Overwrite")) {
+        ui::TextUnformatted(message.c_str());
+        if (ui::Button("Overwrite")) {
             (void)workflow.confirmAppearancePresetOverwrite();
             ImGuiMCP::CloseCurrentPopup();
         }
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Cancel##OverwriteAppearancePreset")) {
+        if (ui::Button("Cancel##OverwriteAppearancePreset")) {
             workflow.cancelAppearancePresetConfirmation();
             ImGuiMCP::CloseCurrentPopup();
         }
@@ -2670,22 +2679,22 @@ void renderEditAppearance(
     }
 
     if (workflow.appearancePresetDeleteConfirmation() &&
-        !ImGuiMCP::IsPopupOpen("Delete Appearance Preset")) {
-        ImGuiMCP::OpenPopup("Delete Appearance Preset");
+        !ui::IsPopupOpen("Delete Appearance Preset")) {
+        ui::OpenPopup("Delete Appearance Preset");
     }
-    if (ImGuiMCP::BeginPopupModal("Delete Appearance Preset")) {
-        const auto message = std::format(
+    if (ui::BeginPopupModal("Delete Appearance Preset")) {
+        const auto message = translatedFormat(
             "Delete '{}' permanently?",
             hasSelectedAppearancePreset
                 ? appearancePresets[*selectedAppearancePreset].name
                 : std::string{});
-        ImGuiMCP::TextUnformatted(message.c_str());
-        if (ImGuiMCP::Button("Delete##ConfirmAppearancePreset")) {
+        ui::TextUnformatted(message.c_str());
+        if (ui::Button("Delete##ConfirmAppearancePreset")) {
             (void)workflow.confirmAppearancePresetDelete();
             ImGuiMCP::CloseCurrentPopup();
         }
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Cancel##DeleteAppearancePreset")) {
+        if (ui::Button("Cancel##DeleteAppearancePreset")) {
             workflow.cancelAppearancePresetConfirmation();
             ImGuiMCP::CloseCurrentPopup();
         }
@@ -2694,29 +2703,29 @@ void renderEditAppearance(
 
     ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
         !isAppearanceEditingEnabled(workflow.screen(), session));
-    ImGuiMCP::SeparatorText("Basic");
-    const bool colorChanged = ImGuiMCP::ColorEdit3(
+    ui::SeparatorText("Basic");
+    const bool colorChanged = ui::ColorEdit3(
         "Color", colorValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
     const bool alphaChanged =
-        ImGuiMCP::SliderFloat("Alpha", &alpha, 0.0F, 1.0F, "%.2f");
-    ImGuiMCP::SeparatorText("Material / Emission");
-    const bool glowChanged = ImGuiMCP::ColorEdit3(
+        ui::SliderFloat("Alpha", &alpha, 0.0F, 1.0F, "%.2f");
+    ui::SeparatorText("Material / Emission");
+    const bool glowChanged = ui::ColorEdit3(
         "Glow Color", glowValues, ImGuiMCP::ImGuiColorEditFlags_NoInputs);
-    const bool emissiveSliderChanged = ImGuiMCP::SliderFloat(
+    const bool emissiveSliderChanged = ui::SliderFloat(
         "Emission Strength", &emissiveMult, 0.0F, 10.0F, "%.2f");
     const bool emissiveInputChanged =
-        ImGuiMCP::InputFloat("Emission Strength Value", &emissiveMult, 0.0F, 0.0F, "%.3f");
+        ui::InputFloat("Emission Strength Value", &emissiveMult, 0.0F, 0.0F, "%.3f");
     const auto controlRanges = editAppearanceControlRanges();
-    const bool glossinessSliderChanged = ImGuiMCP::SliderFloat(
+    const bool glossinessSliderChanged = ui::SliderFloat(
         "Glossiness", &glossiness, 0.0F, controlRanges.glossinessMax, "%.2f",
         ImGuiMCP::ImGuiSliderFlags_Logarithmic);
     const bool glossinessInputChanged =
-        ImGuiMCP::InputFloat("Glossiness Value", &glossiness, 0.0F, 0.0F, "%.3f");
-    const bool specularSliderChanged = ImGuiMCP::SliderFloat(
+        ui::InputFloat("Glossiness Value", &glossiness, 0.0F, 0.0F, "%.3f");
+    const bool specularSliderChanged = ui::SliderFloat(
         "Specular Strength", &specularStrength, 0.0F,
         controlRanges.specularStrengthMax, "%.2f",
         ImGuiMCP::ImGuiSliderFlags_Logarithmic);
-    const bool specularInputChanged = ImGuiMCP::InputFloat(
+    const bool specularInputChanged = ui::InputFloat(
         "Specular Strength Value", &specularStrength, 0.0F, 0.0F, "%.3f");
     const EditAppearanceFrameInteraction frameInteraction{
         .appearanceChanged = colorChanged || alphaChanged || glowChanged ||
@@ -2748,11 +2757,11 @@ void renderEditAppearance(
                                                auto select) {
             const auto presentation = materialTextureSelectorPresentation(options, selectedPath, glow);
             if (!presentation.visible) return;
-            ImGuiMCP::TextUnformatted(label);
+            ui::TextUnformatted(tr(label));
             ImGuiMCP::SameLine();
             ImGuiMCP::BeginDisabled(!targetActionsEnabled ||
                 !isAppearanceEditingEnabled(workflow.screen(), workflow.editAppearance()));
-            if (ImGuiMCP::BeginCombo(presentation.widgetId.data(),
+            if (ui::BeginCombo(presentation.widgetId.data(),
                     presentation.currentLabel.data())) {
                 for (std::size_t index = 0; index < options.size(); ++index) {
                     const bool selected = options[index].path == selectedPath;
@@ -2761,7 +2770,7 @@ void renderEditAppearance(
                         (void)(workflow.*select)(index);
                     }
                     if (ImGuiMCP::IsItemHovered()) {
-                        ImGuiMCP::SetTooltip("%s", options[index].path.c_str());
+                        ui::SetTooltip("%s", options[index].path.c_str());
                     }
                     if (selected) ImGuiMCP::SetItemDefaultFocus();
                     ImGuiMCP::PopID();
@@ -2779,19 +2788,19 @@ void renderEditAppearance(
         if (session->edited.glow != 0 || !session->edited.glowTexture.empty() ||
             session->edited.emissiveMult != 1.0F) {
             ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted("Glow");
+            ui::TextUnformatted(tr("Glow"));
         }
         if (!session->edited.bump.empty()) {
             ImGuiMCP::SameLine();
-            ImGuiMCP::TextUnformatted("Bump");
+            ui::TextUnformatted(tr("Bump"));
         }
         if (shouldShowAppearanceTextureMetadata(session->edited.glowTexture)) {
-            ImGuiMCP::TextUnformatted("Glow Texture:");
+            ui::TextUnformatted(tr("Glow Texture:"));
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted(appearanceTextureMetadata(*session, true).data());
         }
         if (shouldShowAppearanceTextureMetadata(session->edited.bump)) {
-            ImGuiMCP::TextUnformatted("Bump Texture:");
+            ui::TextUnformatted(tr("Bump Texture:"));
             ImGuiMCP::SameLine();
             ImGuiMCP::TextUnformatted(appearanceTextureMetadata(*session, false).data());
         }
@@ -2849,9 +2858,9 @@ void renderEditAppearance(
                 ImGuiMCP::GetContentRegionAvail().y,
                 footerHeight));
             const auto* style = ImGuiMCP::GetStyle();
-            const float cancelButtonWidth = ImGuiMCP::CalcTextSize("Cancel").x +
+            const float cancelButtonWidth = ui::CalcTextSize("Cancel").x +
                 (style ? style->FramePadding.x * 2.0F : 16.0F);
-            const float closeButtonWidth = ImGuiMCP::CalcTextSize("Close").x +
+            const float closeButtonWidth = ui::CalcTextSize("Close").x +
                 (style ? style->FramePadding.x * 2.0F : 16.0F);
             const auto actions = livePreviewPresentation(
                 workflow.screen(), workflow.editAppearance());
@@ -2874,27 +2883,27 @@ void renderEditAppearance(
                 ImGuiMCP::TableNextRow();
                 ImGuiMCP::TableSetColumnIndex(0);
                 ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.save.enabled);
-                if (ImGuiMCP::Button("Save") && intent == EditAppearanceIntent::none) {
+                if (ui::Button("Save") && intent == EditAppearanceIntent::none) {
                     intent = EditAppearanceIntent::save;
                 }
                 ImGuiMCP::EndDisabled();
                 if (actions.retry.visible) {
                     ImGuiMCP::SameLine();
                     ImGuiMCP::BeginDisabled(!targetActionsEnabled || !actions.retry.enabled);
-                    if (ImGuiMCP::Button(actions.retryLabel.data()) && intent == EditAppearanceIntent::none) {
+                    if (ui::Button(actions.retryLabel.data()) && intent == EditAppearanceIntent::none) {
                         intent = EditAppearanceIntent::retry;
                     }
                     ImGuiMCP::EndDisabled();
                 }
                 ImGuiMCP::TableSetColumnIndex(1);
                 ImGuiMCP::BeginDisabled(!actions.cancel.enabled);
-                if (ImGuiMCP::Button("Cancel") && intent == EditAppearanceIntent::none) {
+                if (ui::Button("Cancel") && intent == EditAppearanceIntent::none) {
                     intent = EditAppearanceIntent::cancel;
                 }
                 ImGuiMCP::EndDisabled();
                 ImGuiMCP::TableSetColumnIndex(2);
                 ImGuiMCP::BeginDisabled(!actions.close.enabled);
-                if (ImGuiMCP::Button("Close") && intent == EditAppearanceIntent::none) {
+                if (ui::Button("Close") && intent == EditAppearanceIntent::none) {
                     intent = EditAppearanceIntent::close;
                 }
                 ImGuiMCP::EndDisabled();
@@ -2918,16 +2927,36 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
     runtime::HotkeyBinding& hotkey, runtime::MenuSideSetting& menuSide,
     runtime::ThumbnailCacheSetting& cacheSetting,
     NativeThumbnailRuntime& thumbnails, NativeCatalogBrowserModel& catalog,
-    const std::function<bool()>& clearSavedCameraViews) {
-    ImGuiMCP::TextUnformatted("Open SlaveTatsUI when you are ready to browse tattoos.");
-    ImGuiMCP::TextUnformatted(launcherModVersionLabel().data());
+    const std::function<bool()>& clearSavedCameraViews, runtime::LanguageSetting* language) {
+    if (language) {
+        localization::selectLanguage(language->language());
+        static bool languageSaveFailed = false;
+        const char* selectedLanguageName = language->language().c_str();
+        for (const auto& option : localization::catalog().languages())
+            if (option.code == language->language()) selectedLanguageName = option.name.c_str();
+        if (ui::BeginCombo("Language", selectedLanguageName)) {
+            for (const auto& candidate : localization::catalog().languages()) {
+                const bool selected = language->language() == candidate.code;
+                ImGuiMCP::PushID(candidate.code.c_str());
+                if (ImGuiMCP::Selectable(candidate.name.c_str(), selected))
+                    languageSaveFailed = !language->select(candidate.code);
+                if (selected) ImGuiMCP::SetItemDefaultFocus();
+                ImGuiMCP::PopID();
+            }
+            ImGuiMCP::EndCombo();
+        }
+        if (languageSaveFailed) ui::TextUnformatted(tr("Could not save the language setting."));
+        ui::TextWrapped("Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.");
+    }
+    ui::TextUnformatted(tr("Open SlaveTatsUI when you are ready to browse tattoos."));
+    ui::TextUnformatted(launcherModVersionLabel().data());
     const auto hotkeyLabel = hotkey.label();
     static bool hotkeySaveFailed = false;
-    if (ImGuiMCP::BeginCombo("Hotkey", hotkeyLabel.c_str())) {
+    if (ui::BeginCombo("Hotkey", tr(hotkeyLabel.c_str()))) {
         const auto selectedKey = hotkey.key();
         for (const auto& option : runtime::hotkeyOptions()) {
             const bool selected = option.key == selectedKey;
-            if (ImGuiMCP::Selectable(option.label.data(), selected)) {
+            if (ui::Selectable(option.label.data(), selected)) {
                 hotkeySaveFailed = !hotkey.select(option.key);
             }
             if (selected) {
@@ -2937,16 +2966,16 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         ImGuiMCP::EndCombo();
     }
     if (hotkeySaveFailed) {
-        ImGuiMCP::TextUnformatted("Could not save the hotkey setting.");
+        ui::TextUnformatted(tr("Could not save the hotkey setting."));
     }
     static bool menuSideSaveFailed = false;
     const auto selectedSide = menuSide.side();
-    if (ImGuiMCP::BeginCombo(
-            "Browser position", selectedSide == runtime::MenuSide::left ? "Left" : "Right")) {
+    if (ui::BeginCombo(
+            "Browser position", selectedSide == runtime::MenuSide::left ? tr("Left") : tr("Right"))) {
         for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
             const char* label = side == runtime::MenuSide::left ? "Left" : "Right";
             const bool selected = side == selectedSide;
-            if (ImGuiMCP::Selectable(label, selected)) {
+            if (ui::Selectable(label, selected)) {
                 menuSideSaveFailed = !menuSide.select(side);
             }
             if (selected) ImGuiMCP::SetItemDefaultFocus();
@@ -2954,7 +2983,7 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         ImGuiMCP::EndCombo();
     }
     if (menuSideSaveFailed) {
-        ImGuiMCP::TextUnformatted("Could not save the browser position.");
+        ui::TextUnformatted(tr("Could not save the browser position."));
     }
     static bool cameraOffsetSaveFailed = false;
     for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
@@ -2962,12 +2991,12 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         const char* label = side == runtime::MenuSide::left
             ? "Opening frame X offset (Left)"
             : "Opening frame X offset (Right)";
-        if (ImGuiMCP::SliderFloat(label, &offset, -0.15F, 0.15F, "%.2f")) {
+        if (ui::SliderFloat(label, &offset, -0.15F, 0.15F, "%.2f")) {
             cameraOffsetSaveFailed = !menuSide.setInitialCameraOffset(side, offset);
         }
     }
     if (cameraOffsetSaveFailed) {
-        ImGuiMCP::TextUnformatted("Could not save the initial camera position.");
+        ui::TextUnformatted(tr("Could not save the initial camera position."));
     }
     static bool cameraPanSaveFailed = false;
     for (const auto side : {runtime::MenuSide::left, runtime::MenuSide::right}) {
@@ -2976,21 +3005,21 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
             ? "Initial Pan X (Left)" : "Initial Pan X (Right)";
         const char* yLabel = side == runtime::MenuSide::left
             ? "Initial Pan Y (Left)" : "Initial Pan Y (Right)";
-        bool changed = ImGuiMCP::InputFloat(xLabel, &pan.x, 0.0F, 0.0F, "%.1f");
-        changed = ImGuiMCP::InputFloat(yLabel, &pan.y, 0.0F, 0.0F, "%.1f") || changed;
+        bool changed = ui::InputFloat(xLabel, &pan.x, 0.0F, 0.0F, "%.1f");
+        changed = ui::InputFloat(yLabel, &pan.y, 0.0F, 0.0F, "%.1f") || changed;
         if (changed) cameraPanSaveFailed = !menuSide.setInitialCameraPan(side, pan);
     }
     if (cameraPanSaveFailed) {
-        ImGuiMCP::TextUnformatted("Could not save the initial camera Pan.");
+        ui::TextUnformatted(tr("Could not save the initial camera Pan."));
     }
     if (clearSavedCameraViews) {
         static std::optional<bool> savedCameraViewsCleared;
-        if (ImGuiMCP::Button("Reset saved Player views"))
+        if (ui::Button("Reset saved Player views"))
             savedCameraViewsCleared = clearSavedCameraViews();
         if (savedCameraViewsCleared.has_value()) {
-            ImGuiMCP::TextUnformatted(*savedCameraViewsCleared
+            ui::TextUnformatted(tr(*savedCameraViewsCleared
                 ? "Saved Player views cleared. Initial framing applies next opening."
-                : "Unable to clear saved Player views.");
+                : "Unable to clear saved Player views."));
         }
     }
     auto limitState = thumbnails.diskCacheLimitState();
@@ -3005,7 +3034,7 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         limitState == ThumbnailCacheClearState::pending;
     ImGuiMCP::BeginDisabled(maintenanceBusy);
     const auto limitLabel = std::to_string(appliedLimit) + " MiB";
-    if (ImGuiMCP::BeginCombo("Thumbnail disk cache limit", limitLabel.c_str())) {
+    if (ui::BeginCombo("Thumbnail disk cache limit", limitLabel.c_str())) {
         for (const auto limit : runtime::ThumbnailCacheSetting::limitsMiB) {
             const auto label = std::to_string(limit) + " MiB";
             if (ImGuiMCP::Selectable(label.c_str(), limit == appliedLimit)) requestLimit(limit);
@@ -3013,20 +3042,20 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
         }
         ImGuiMCP::EndCombo();
     }
-    if (ImGuiMCP::Button("Reset to default##thumbnailDiskCacheLimit"))
+    if (ui::Button("Reset to default##thumbnailDiskCacheLimit"))
         requestLimit(runtime::ThumbnailCacheSetting::defaultLimitMiB);
     ImGuiMCP::EndDisabled();
     limitState = thumbnails.diskCacheLimitState();
     if (limitState == ThumbnailCacheClearState::pending)
-        ImGuiMCP::TextUnformatted("Applying thumbnail disk cache limit...");
+        ui::TextUnformatted(tr("Applying thumbnail disk cache limit..."));
     else if (limitState == ThumbnailCacheClearState::failed)
-        ImGuiMCP::TextUnformatted("Could not apply or save the disk cache limit. Select a limit to retry.");
+        ui::TextUnformatted(tr("Could not apply or save the disk cache limit. Select a limit to retry."));
     static bool cacheBuildUnavailable = false;
     auto buildStatus = thumbnails.diskCacheBuildStatus();
     auto clearState = thumbnails.diskCacheClearState();
     if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
         limitState != ThumbnailCacheClearState::pending &&
-        ImGuiMCP::Button("Build Thumbnail Cache")) {
+        ui::Button("Build Thumbnail Cache")) {
         auto paths = catalog.diskCacheBuildPaths();
         cacheBuildUnavailable = paths.empty();
         if (!cacheBuildUnavailable) {
@@ -3036,37 +3065,37 @@ bool OfficialMenuFrameworkAdapter::renderLauncher(
     }
     thumbnails.pumpDiskCacheBuild();
     if (buildStatus.active) {
-        ImGuiMCP::Text("Building Thumbnail Cache: %zu / %zu", buildStatus.completed,
+        ui::Text("Building Thumbnail Cache: %zu / %zu", buildStatus.completed,
             buildStatus.total);
-        ImGuiMCP::TextUnformatted("Please keep this menu open until the build is complete.");
+        ui::TextUnformatted(tr("Please keep this menu open until the build is complete."));
     } else if (buildStatus.total > 0) {
         if (buildStatus.failed == 0)
-            ImGuiMCP::TextUnformatted("Thumbnail Cache ready. You can open the Tattoo Browser.");
+            ui::TextUnformatted(tr("Thumbnail Cache ready. You can open the Tattoo Browser."));
         else
-            ImGuiMCP::Text("Thumbnail Cache build complete: %zu / %zu (%zu failed)",
+            ui::Text("Thumbnail Cache build complete: %zu / %zu (%zu failed)",
                 buildStatus.completed, buildStatus.total, buildStatus.failed);
     }
     if (cacheBuildUnavailable)
-        ImGuiMCP::TextUnformatted("No tattoo textures found. Thumbnail Cache was not built.");
-    ImGuiMCP::Text("Thumbnail Cache: %.1f / %u MiB used",
+        ui::TextUnformatted(tr("No tattoo textures found. Thumbnail Cache was not built."));
+    ui::Text("Thumbnail Cache: %.1f / %u MiB used",
         static_cast<double>(thumbnails.diskCacheBytes()) / (1024.0 * 1024.0),
         thumbnails.diskCacheLimitMiB());
     if (!buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
         limitState != ThumbnailCacheClearState::pending &&
-        ImGuiMCP::Button("Clear Thumbnail Cache")) {
+        ui::Button("Clear Thumbnail Cache")) {
         if (!thumbnails.requestDiskCacheClear())
             clearState = ThumbnailCacheClearState::failed;
         else
             clearState = thumbnails.diskCacheClearState();
     }
     if (clearState == ThumbnailCacheClearState::pending)
-        ImGuiMCP::TextUnformatted("Clearing thumbnail cache...");
+        ui::TextUnformatted(tr("Clearing thumbnail cache..."));
     else if (clearState == ThumbnailCacheClearState::failed)
-        ImGuiMCP::TextUnformatted("Could not clear the thumbnail cache.");
+        ui::TextUnformatted(tr("Could not clear the thumbnail cache."));
     else if (clearState == ThumbnailCacheClearState::succeeded)
-        ImGuiMCP::TextUnformatted("Thumbnail cache cleared.");
+        ui::TextUnformatted(tr("Thumbnail cache cleared."));
     return !buildStatus.active && clearState != ThumbnailCacheClearState::pending &&
-        limitState != ThumbnailCacheClearState::pending && ImGuiMCP::Button("Open Tattoo Browser");
+        limitState != ThumbnailCacheClearState::pending && ui::Button("Open Tattoo Browser");
 }
 
 void OfficialMenuFrameworkAdapter::renderFoundation(
@@ -3118,10 +3147,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 const char* hint = io->KeyAlt
                     ? "Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down"
                     : "Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom";
-                if (ImGuiMCP::CalcTextSize(hint).x * 0.65F + 16.0F <= frame.size.width) {
+                if (ui::CalcTextSize(hint).x * 0.65F + 16.0F <= frame.size.width) {
                     ImGuiMCP::ImDrawListManager::AddText(drawList,
                         ImGuiMCP::GetFont(), ImGuiMCP::GetFontSize() * 0.65F,
-                        {minimum.x + 8.0F, minimum.y + 8.0F}, 0xB0FFFFFF, hint);
+                        {minimum.x + 8.0F, minimum.y + 8.0F}, 0xB0FFFFFF, tr(hint));
                 }
             }
             const bool down = ImGuiMCP::IsMouseDown(0);
@@ -3145,16 +3174,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 const auto flags = ImGuiMCP::ImGuiWindowFlags_NoTitleBar |
                     ImGuiMCP::ImGuiWindowFlags_AlwaysAutoResize | ImGuiMCP::ImGuiWindowFlags_NoMove |
                     ImGuiMCP::ImGuiWindowFlags_NoSavedSettings;
-                if (ImGuiMCP::Begin("##SlaveTatsCameraTools", nullptr, flags)) {
+                if (ui::Begin("##SlaveTatsCameraTools", nullptr, flags)) {
                     ImGuiMCP::SetWindowFontScale(0.7F);
                     static int focusIndex = 0;
-                    constexpr const char* names[]{"Whole body", "Face", "Body", "Hands", "Feet"};
+                    const char* names[]{tr("Whole body"), tr("Face"), tr("Body"), tr("Hands"), tr("Feet")};
                     ImGuiMCP::SetNextItemWidth(120.0F);
-                    const bool changed = ImGuiMCP::Combo("##CameraFocus", &focusIndex, names, 5);
+                    const bool changed = ui::Combo("##CameraFocus", &focusIndex, names, 5);
                     ImGuiMCP::SameLine();
-                    const bool center = ImGuiMCP::Button("Center");
+                    const bool center = ui::Button("Center");
                     ImGuiMCP::SameLine();
-                    if (ImGuiMCP::Button("Reset View")) {
+                    if (ui::Button("Reset View")) {
                         input = {.reset = true, .frameCenterX = input.frameCenterX};
                         focusIndex = 0;
                     } else if (changed || center) {
@@ -3166,17 +3195,17 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         const auto pan = currentPan();
                         const auto initial = panSettings->initialCameraPan(side);
                         if (pan) {
-                            ImGuiMCP::Text("Current Pan X %.1f  Y %.1f", pan->x, pan->y);
-                            ImGuiMCP::Text("Initial Pan X %.1f  Y %.1f", initial.x, initial.y);
-                            if (ImGuiMCP::Button("Use current Pan as initial")) {
+                            ui::Text("Current Pan X %.1f  Y %.1f", pan->x, pan->y);
+                            ui::Text("Initial Pan X %.1f  Y %.1f", initial.x, initial.y);
+                            if (ui::Button("Use current Pan as initial")) {
                                 panSaveFailed = !panSettings->setInitialCameraPan(
                                     side, {pan->x, pan->y});
                             }
                             if (ImGuiMCP::IsItemHovered()) {
-                                ImGuiMCP::SetTooltip("Applies when this side has no remembered session view.");
+                                ui::SetTooltip("Applies when this side has no remembered session view.");
                             }
                             if (panSaveFailed) {
-                                ImGuiMCP::TextUnformatted("Could not save initial Pan.");
+                                ui::TextUnformatted(tr("Could not save initial Pan."));
                             }
                         }
                     }
@@ -3229,7 +3258,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         {layout.size.width, layout.size.height}, ImGuiMCP::ImGuiCond_Appearing);
     bool open = true;
     ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_WindowBorderSize, 0.0F);
-    ImGuiMCP::Begin(
+    ui::Begin(
         "Tattoo Browser##SlaveTatsUI",
         &open,
         ImGuiMCP::ImGuiWindowFlags_NoCollapse |
@@ -3246,16 +3275,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     }
     const auto targetLabel = formatSlotTargetLabel(
         workflow.actorTarget(), workflow.selectedArea(), workflow.targetSlot().value_or(-1));
-    ImGuiMCP::Text("Target: %s", targetLabel.c_str());
+    ui::Text("Target: %s", targetLabel.c_str());
 
-    if (ImGuiMCP::Button("Filters")) {
+    if (ui::Button("Filters")) {
         const auto filterButtonMin = ImGuiMCP::GetItemRectMin();
         const auto filterButtonMax = ImGuiMCP::GetItemRectMax();
         ImGuiMCP::SetNextWindowPos({filterButtonMin.x, filterButtonMax.y + 4.0F});
-        ImGuiMCP::OpenPopup("CatalogFilters");
+        ui::OpenPopup("CatalogFilters");
     }
     ImGuiMCP::SameLine();
-    if (ImGuiMCP::Button(backgroundMode == ThumbnailBackgroundMode::black
+    if (ui::Button(backgroundMode == ThumbnailBackgroundMode::black
                 ? "Thumbnail BG: Black"
                 : "Thumbnail BG: White")) {
         const auto nextMode = toggledThumbnailBackgroundMode(backgroundMode);
@@ -3267,10 +3296,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         }
     }
     ImGuiMCP::SameLine();
-    ImGuiMCP::Text("%zu tattoos", model.scrollPage().matchedEntries);
+    ui::Text("%zu tattoos", model.scrollPage().matchedEntries);
 
     if (backgroundSaveFailed)
-        ImGuiMCP::TextUnformatted("Could not save the thumbnail background.");
+        ui::TextUnformatted(tr("Could not save the thumbnail background."));
 
     constexpr std::size_t searchCapacity = 256;
     std::array<char, searchCapacity> searchBuffer{};
@@ -3278,11 +3307,11 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     const std::size_t searchLength = std::min(filter.search.size(), searchBuffer.size() - 1);
     std::copy_n(filter.search.data(), searchLength, searchBuffer.data());
     const auto snapshot = model.snapshot();
-    if (ImGuiMCP::BeginPopup("CatalogFilters")) {
+    if (ui::BeginPopup("CatalogFilters")) {
     std::vector<CatalogBrowserSourceOption> sourceOptions;
     std::vector<std::string> domainOptions;
     std::vector<const char*> domainLabels;
-    std::vector<const char*> sectionLabels{"All sections"};
+    std::vector<const char*> sectionLabels{tr("All sections")};
     int domainIndex = 0;
     int sourceIndex = 0;
     int sectionIndex = 0;
@@ -3294,7 +3323,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         domainOptions = buildCatalogBrowserDomainOptions(contextualFacets.domains);
         domainLabels.reserve(domainOptions.size());
         for (const auto& option : domainOptions) {
-            domainLabels.push_back(option.c_str());
+            domainLabels.push_back(domainLabels.empty() ? tr(option.c_str()) : option.c_str());
         }
         for (std::size_t index = 0; index < contextualFacets.domains.size(); ++index) {
             if (contextualFacets.domains[index] == filter.domain) {
@@ -3315,10 +3344,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     }
     if (domainLabels.empty()) {
         domainOptions = buildCatalogBrowserDomainOptions({});
-        domainLabels.push_back(domainOptions.front().c_str());
+        domainLabels.push_back(tr(domainOptions.front().c_str()));
     }
 
-    std::vector<const char*> sourceLabels{"All sources"};
+    std::vector<const char*> sourceLabels{tr("All sources")};
     sourceLabels.reserve(sourceOptions.size() + 1);
     for (const auto& source : sourceOptions) {
         sourceLabels.push_back(source.label.c_str());
@@ -3336,37 +3365,37 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Applied");
+        ui::TextUnformatted(tr("Applied"));
         ImGuiMCP::TableSetColumnIndex(1);
         bool appliedOnly = workflow.appliedOnly();
-        if (ImGuiMCP::Checkbox("Applied only", &appliedOnly)) {
+        if (ui::Checkbox("Applied only", &appliedOnly)) {
             workflow.setAppliedOnly(appliedOnly);
         }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Favorites");
+        ui::TextUnformatted(tr("Favorites"));
         ImGuiMCP::TableSetColumnIndex(1);
         bool favoritesOnly = workflow.favoritesOnly();
-        if (ImGuiMCP::Checkbox("Favorites only", &favoritesOnly)) {
+        if (ui::Checkbox("Favorites only", &favoritesOnly)) {
             workflow.setFavoritesOnly(favoritesOnly);
         }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Recent");
+        ui::TextUnformatted(tr("Recent"));
         ImGuiMCP::TableSetColumnIndex(1);
         bool recentlyUsedOnly = workflow.recentlyUsedOnly();
-        if (ImGuiMCP::Checkbox("Recently used only", &recentlyUsedOnly)) {
+        if (ui::Checkbox("Recently used only", &recentlyUsedOnly)) {
             workflow.setRecentlyUsedOnly(recentlyUsedOnly);
         }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Material");
+        ui::TextUnformatted(tr("Material"));
         ImGuiMCP::TableSetColumnIndex(1);
         const float materialRowRight =
             ImGuiMCP::GetCursorScreenPos().x + ImGuiMCP::GetContentRegionAvail().x;
@@ -3375,10 +3404,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             materialStyle ? materialStyle->ItemSpacing.x : 8.0F;
         const auto materialControlWidth = [](const char* label) {
             return ImGuiMCP::GetFrameHeightWithSpacing() +
-                ImGuiMCP::CalcTextSize(label).x;
+                ui::CalcTextSize(label).x;
         };
         bool glowOnly = workflow.glowOnly();
-        if (ImGuiMCP::Checkbox("Glow only", &glowOnly)) {
+        if (ui::Checkbox("Glow only", &glowOnly)) {
             workflow.setGlowOnly(glowOnly);
         }
         if (catalogControlFitsOnSameLine(
@@ -3389,7 +3418,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::SameLine();
         }
         bool bumpOnly = workflow.bumpOnly();
-        if (ImGuiMCP::Checkbox("Bump only", &bumpOnly)) {
+        if (ui::Checkbox("Bump only", &bumpOnly)) {
             workflow.setBumpOnly(bumpOnly);
         }
         if (catalogControlFitsOnSameLine(
@@ -3400,17 +3429,17 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             ImGuiMCP::SameLine();
         }
         bool glossOnly = workflow.glossOnly();
-        if (ImGuiMCP::Checkbox("Gloss only", &glossOnly)) {
+        if (ui::Checkbox("Gloss only", &glossOnly)) {
             workflow.setGlossOnly(glossOnly);
         }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Domain");
+        ui::TextUnformatted(tr("Domain"));
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
-        if (ImGuiMCP::Combo(
+        if (ui::Combo(
                 "##Domain",
                 &domainIndex,
                 domainLabels.data(),
@@ -3421,20 +3450,20 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Search");
+        ui::TextUnformatted(tr("Search"));
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
-        if (ImGuiMCP::InputText("##Search", searchBuffer.data(), searchBuffer.size())) {
+        if (ui::InputText("##Search", searchBuffer.data(), searchBuffer.size())) {
             model.setSearch(searchBuffer.data());
         }
 
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Source");
+        ui::TextUnformatted(tr("Source"));
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
-        if (ImGuiMCP::Combo(
+        if (ui::Combo(
                 "##Source",
                 &sourceIndex,
                 sourceLabels.data(),
@@ -3446,10 +3475,10 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         ImGuiMCP::TableNextRow();
         ImGuiMCP::TableSetColumnIndex(0);
         ImGuiMCP::AlignTextToFramePadding();
-        ImGuiMCP::TextUnformatted("Section");
+        ui::TextUnformatted(tr("Section"));
         ImGuiMCP::TableSetColumnIndex(1);
         ImGuiMCP::SetNextItemWidth(-1.0F);
-        if (ImGuiMCP::Combo(
+        if (ui::Combo(
                 "##Section",
                 &sectionIndex,
                 sectionLabels.data(),
@@ -3470,16 +3499,16 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         workflow.favoritesOnly(),
         workflow.recentlyUsedOnly());
     if (const auto* favoriteError = workflow.favoriteError()) {
-        ImGuiMCP::Text("Favorites: %s", favoriteError->message.c_str());
+        ui::Text("Favorites: %s", favoriteError->message.c_str());
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Retry favorite save")) {
+        if (ui::Button("Retry favorite save")) {
             (void)workflow.retryFavorite();
         }
     }
     if (const auto* recentError = workflow.recentlyUsedError()) {
-        ImGuiMCP::Text("Recently Used: %s", recentError->message.c_str());
+        ui::Text("Recently Used: %s", recentError->message.c_str());
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Button("Retry recent history")) {
+        if (ui::Button("Retry recent history")) {
             (void)workflow.retryRecentTattoo();
         }
     }
@@ -3503,7 +3532,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 ImGuiMCP::ImGuiChildFlags_None,
                 ImGuiMCP::ImGuiWindowFlags_NoScrollbar |
                     ImGuiMCP::ImGuiWindowFlags_NoScrollWithMouse)) {
-            ImGuiMCP::TextUnformatted(catalogBrowserEmptyMessage(emptyState).data());
+            ui::TextUnformatted(tr(catalogBrowserEmptyMessage(emptyState).data()));
         }
         ImGuiMCP::EndChild();
     } else {
@@ -3598,7 +3627,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     } else if (thumbnail) {
                         const auto label = catalogThumbnailStatusLabel(thumbnail->status);
                         if (!label.empty()) {
-                            ImGuiMCP::TextUnformatted(label.data());
+                            ui::TextUnformatted(tr(label.data()));
                         }
                     }
 
@@ -3608,11 +3637,11 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                     for (const auto label : materialLabels) {
                         materialLabelWidths.emplace_back(
                             label,
-                            ImGuiMCP::CalcTextSize(label.data()).x);
+                            ui::CalcTextSize(label.data()).x);
                     }
                     const float materialTextHeight = materialLabels.empty()
                         ? 0.0F
-                        : ImGuiMCP::CalcTextSize(materialLabels.front().data()).y;
+                        : ui::CalcTextSize(materialLabels.front().data()).y;
                     const auto materialBadges = calculateCatalogMaterialBadgeLayouts(
                         materialLabelWidths,
                         imageRegion.x,
@@ -3647,7 +3676,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                                     imageScreenOrigin.y + badge.textY,
                                 },
                                 0xFFFFFFFF,
-                                materialBadge.label.data());
+                                tr(materialBadge.label.data()));
                         }
                     }
                     if (!domainLabel.empty()) {
@@ -3695,7 +3724,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                 }
                 if (hovered) {
                     const auto tooltip = formatCatalogTattooTooltip(tattoo.name, inUseSlots);
-                    ImGuiMCP::SetTooltip("%s", tooltip.c_str());
+                    ui::SetTooltip("%s", tooltip.c_str());
                 }
                 if ((targetActionsEnabled || slotRuntime.catalogPreviewActive()) &&
                     ImGuiMCP::IsItemClicked()) {
@@ -3721,7 +3750,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
                         });
                     ImGuiMCP::TextUnformatted(displayName.c_str());
                     if (ImGuiMCP::IsItemHovered()) {
-                        ImGuiMCP::SetTooltip("%s", tattoo.name.c_str());
+                        ui::SetTooltip("%s", tattoo.name.c_str());
                     }
                 }
                 ImGuiMCP::EndChild();
@@ -3741,11 +3770,11 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     if (slotRuntime.catalogPreviewActive()) {
         const auto selected = slotRuntime.catalogPreviewSelection();
         if (const auto* error = slotRuntime.catalogPreviewError()) {
-            ImGuiMCP::TextWrapped("Preview: %s", error->message.c_str());
+            ui::TextWrapped("Preview: %s", error->message.c_str());
         } else if (selected) {
-            ImGuiMCP::Text("Selected: %s - not saved", selected->name.c_str());
+            ui::Text("Selected: %s - not saved", selected->name.c_str());
         } else {
-            ImGuiMCP::TextUnformatted("Click a tattoo to preview and select.");
+            ui::TextUnformatted(tr("Click a tattoo to preview and select."));
         }
         const auto displayed = slotRuntime.catalogPreviewDisplay();
         const auto ink = tattooColorComponents(displayed ? displayed->color : 0x000000);
@@ -3755,33 +3784,33 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         bool glossy = displayed &&
             (displayed->glossiness > 0.0F || displayed->specularStrength > 0.0F);
         ImGuiMCP::SetNextItemWidth(105.0F);
-        if (ImGuiMCP::ColorEdit3("Ink##CatalogPreview", inkValues,
+        if (ui::ColorEdit3("Ink##CatalogPreview", inkValues,
                 ImGuiMCP::ImGuiColorEditFlags_NoInputs)) {
             slotRuntime.setCatalogPreviewInk(tattooColorValue(
                 {inkValues[0], inkValues[1], inkValues[2]}));
         }
         ImGuiMCP::SameLine();
         ImGuiMCP::SetNextItemWidth(105.0F);
-        if (ImGuiMCP::ColorEdit3("Glow##CatalogPreview", glowValues,
+        if (ui::ColorEdit3("Glow##CatalogPreview", glowValues,
                 ImGuiMCP::ImGuiColorEditFlags_NoInputs)) {
             slotRuntime.setCatalogPreviewGlow(tattooColorValue(
                 {glowValues[0], glowValues[1], glowValues[2]}));
         }
         ImGuiMCP::SameLine();
-        if (ImGuiMCP::Checkbox("Glossy##CatalogPreview", &glossy)) {
+        if (ui::Checkbox("Glossy##CatalogPreview", &glossy)) {
             slotRuntime.setCatalogPreviewGlossy(glossy);
         }
     } else if (slotRuntime.catalogPreviewStarting()) {
-        ImGuiMCP::TextUnformatted("Preparing live preview...");
+        ui::TextUnformatted(tr("Preparing live preview..."));
     } else if (const auto* error = slotRuntime.catalogPreviewError()) {
-        ImGuiMCP::Text("Live preview unavailable: %s", error->message.c_str());
+        ui::Text("Live preview unavailable: %s", error->message.c_str());
     }
     const float horizontalButtonPadding =
         style ? style->FramePadding.x * 2.0F : 16.0F;
     const float cancelButtonWidth =
-        ImGuiMCP::CalcTextSize("Cancel").x + horizontalButtonPadding;
+        ui::CalcTextSize("Cancel").x + horizontalButtonPadding;
     const float closeButtonWidth =
-        ImGuiMCP::CalcTextSize("Close").x + horizontalButtonPadding;
+        ui::CalcTextSize("Close").x + horizontalButtonPadding;
     const float actionSpacing = style ? style->ItemSpacing.x : 8.0F;
     const float footerActionWidth =
         cancelButtonWidth + actionSpacing + closeButtonWidth;
@@ -3802,18 +3831,18 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
         if (slotRuntime.catalogPreviewActive()) {
             const auto selected = slotRuntime.catalogPreviewSelection();
             ImGuiMCP::BeginDisabled(!selected);
-            if (ImGuiMCP::Button("Save Tattoo")) (void)slotRuntime.saveCatalogPreview();
+            if (ui::Button("Save Tattoo")) (void)slotRuntime.saveCatalogPreview();
             ImGuiMCP::EndDisabled();
             ImGuiMCP::SameLine();
-            if (ImGuiMCP::Button("Undo##CatalogPreview")) slotRuntime.undoCatalogPreview();
+            if (ui::Button("Undo##CatalogPreview")) slotRuntime.undoCatalogPreview();
             if (slotRuntime.catalogPreviewError()) {
                 ImGuiMCP::SameLine();
-                if (ImGuiMCP::Button("Retry##CatalogPreview"))
+                if (ui::Button("Retry##CatalogPreview"))
                     slotRuntime.retryCatalogPreview();
             }
         } else if (!slotRuntime.catalogPreviewStarting() &&
                    slotRuntime.catalogPreviewError()) {
-            if (ImGuiMCP::Button("Retry Preview##CatalogPreviewBegin"))
+            if (ui::Button("Retry Preview##CatalogPreviewBegin"))
                 slotRuntime.retryCatalogPreview();
         }
 
@@ -3825,12 +3854,12 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
             actionSpacing);
         const float actionOriginX = ImGuiMCP::GetCursorPosX();
         ImGuiMCP::SetCursorPosX(actionOriginX + actionLayout.cancelX);
-        if (ImGuiMCP::Button("Cancel")) {
+        if (ui::Button("Cancel")) {
             if (!slotRuntime.closeCatalogPreview(false)) workflow.backToSlots();
         }
         ImGuiMCP::SameLine();
         ImGuiMCP::SetCursorPosX(actionOriginX + actionLayout.closeX);
-        if (ImGuiMCP::Button("Close")) {
+        if (ui::Button("Close")) {
             if (!slotRuntime.closeCatalogPreview(true)) open = false;
         }
         ImGuiMCP::EndTable();

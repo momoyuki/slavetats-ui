@@ -1,0 +1,249 @@
+# language-name: Chinese (Simplified)
+# English source text	Translation; UTF-8, \n = newline, \t = tab, \\ = backslash
+Saving or loading loadouts...	保存或载入配置...
+No loadouts saved.	无已存配置。
+Loadout limit reached. Overwrite, rename or delete an existing loadout.	已达配置上限。请覆盖、改名或删除现有配置。
+Loadout applied	配置已应用
+Preflight rejected	预检被拒绝
+Synchronization pending	同步待定
+Rollback synchronization pending	回滚同步待定
+Rollback complete	回滚完成
+Rollback incomplete	回滚不完整
+Loadout failed	配置失败
+{}: {}	{}: {}
+{} / Slot {}: {}	{} / 槽 {}: {}
+Apply Loadout	应用配置
+Rename	改名
+Overwrite	覆盖
+Delete	删除
+Save Loadout	保存配置
+Unnamed Actor	无名角色
+{} - {:.0f} units	{} - {:.0f} 单位
+Choose Follower	选择随从
+Choose NPC	选择NPC
+Scanning loaded Actors...	扫描已载入角色...
+No loaded followers found.	无已载入随从。
+No loaded NPC matches the search.	无已载入NPC匹配搜索。
+Target: None	目标: 无
+Target:\s	目标:\s
+Scanning nearby Actors...	扫描附近角色...
+No nearby Actor found	未找到附近角色
+Unavailable	不可用
+Current Slots / Loadouts	当前槽位 / 配置
+Current Slots / Loadouts / Preview	当前槽位 / 配置 / 预览
+Current Slots / Loadouts / Restore	当前槽位 / 配置 / 恢复
+Current Slots / Loadouts / Confirm Overwrite	当前槽位 / 配置 / 确认覆盖
+Current Slots / Loadouts / Confirm Delete	当前槽位 / 配置 / 确认删除
+Current Slots	当前槽位
+Current Slots / Slot Actions	当前槽位 / 槽位操作
+Current Slots / Browse	当前槽位 / 浏览
+Current Slots / Browse / Preview	当前槽位 / 浏览 / 预览
+Current Slots / Edit Appearance	当前槽位 / 编辑外观
+Current Slots / Slot Actions / Confirm Remove	当前槽位 / 槽位操作 / 确认移除
+BODY	身体
+FACE	脸部
+HANDS	双手
+FEET	双脚
+No active Actor	无当前角色
+{} / {} / Slot {}	{} / {} / 槽位 {}
+Retry Slot\s	重试槽位\s
+Apply to Slot\s	应用到槽位\s
+Save	存
+Preview pending...	预览待处理...
+Updating preview...	正在更新预览...
+Preview applied	已应用预览
+Restoring original appearance...	正在恢复原始外观...
+ -\s	 -\s
+Retry Restore Sync	重试恢复同步
+Retry Restore	重试恢复
+Retry Preview Sync	重试预览同步
+Retry Preview	重试预览
+Remove from Slot\s	从槽位移除\s
+Retry Remove Slot\s	重试移除槽\s
+Retry Sync Slot\s	重试同步槽\s
+Unlock tattoo	解锁纹身
+Lock tattoo	锁纹身
+All Domains	全部域
+Glow	发光
+Bump	凸
+Gloss	亮
+None	无
+Current (unlisted)	当前(未列出)
+No appearance presets saved.	尚未保存外观预设。
+20 preset limit reached	已达20预设上限
+Updating appearance presets...	正在更新外观预设...
+\nIn use: Slots\s	\n占用槽位:\s
+Loading	载入
+Missing	缺失
+Broken	损坏
+The tattoo catalog is empty. Refresh the catalog to browse tattoos.	纹身目录为空。刷新目录以浏览纹身。
+No tattoos match the current filters.	无纹身匹配当前筛选。
+No applied tattoos match the current filters.	无已应用纹身匹配当前筛选。
+No favorite tattoos match the current filters.	无收藏纹身匹配当前筛选。
+No favorite applied tattoos match the current filters.	无收藏的已应用纹身匹配当前筛选。
+No recently used tattoos match the current filters.	无最近使用纹身匹配当前筛选。
+No favorite recently used tattoos match the current filters.	无收藏的最近使用纹身匹配当前筛选。
+No applied recently used tattoos match the current filters.	无已应用的最近使用纹身匹配当前筛选。
+No favorite applied recently used tattoos match the current filters.	无收藏的已应用最近使用纹身匹配当前筛选。
+No thumbnail	无预览图
+Player	玩家
+Search	搜索
+Refresh NPC List	刷新NPC列表
+Close NPC Picker	关闭NPC选择
+Retry NPC Scan	重扫NPC
+Loadouts:\s	配置:\s
+Retry	重试
+Loadout	配置
+Select loadout	选择配置
+Load	载
+Save Current	保存当前
+Manage	管理
+Reading fresh Actor state...	读取最新角色状态...
+Tattoo Browser	纹身浏览
+Saved Tattoo Loadouts	已存纹身配置
+Save managed tattoos from all four areas. External overlays are omitted.	保存全部四个区域的受管纹身。外部覆盖将被忽略。
+Name	名
+Delete...	删除...
+Overwrite the selected loadout with the captured four-area state?	用捕获的四区域状态覆盖所选配置？
+Delete this saved loadout? Actor tattoos will remain unchanged.	删除此已保存配置？角色纹身将保持不变。
+Exact restore removes managed tattoos absent from this loadout.	精确恢复会移除本配置中不存在的受管纹身。
+Add: %zu / Replace: %zu / Remove: %zu	添加:%zu / 替换:%zu / 移除:%zu
+Appearance: %zu / Unchanged: %zu / Preserved: %zu	外观: %zu / 未变: %zu / 保留: %zu
+Preflight rejected. Resolve these conflicts and run Load again:	预检被拒绝。请解决冲突后重新载入:
+Restoring loadout... Please wait.	正在恢复配置...请稍候。
+Restore failed. The original managed tattoos were recovered and verified.	恢复失败。原始受管纹身已恢复并验证。
+Restore failed and recovery could not be verified. Inspect the affected slots.	恢复失败且无法验证恢复。请检查受影响槽位。
+Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.	返回前须刷新当前槽位。若刷新失败请用刷新槽位。
+Cancel	取消
+Close	关
+Back	返
+Retry Synchronization	重试同步
+Refresh Slots	刷新槽位
+Tattoos	纹身
+Refresh	刷新
+Loading tattoo slots...	载入纹身槽位...
+Slot %d	槽 %d
+Slot %d - Read Only: managed by another overlay mod	槽 %d - 只读: 由其他覆盖模组管理
+Slot %d - %s	槽 %d - %s
+Add a tattoo to Slot %d	向槽位%d添加纹身
+Loadouts	配置
+Prev	上
+Page	页
+Next	下
+Remove Tattoo?	移除纹身?
+Tattoo Slot Actions	纹身槽位操作
+Domain: %s	域: %s
+Removing tattoo...	移除中...
+This will clear the selected SlaveTats slot.	将清除所选SlaveTats槽位。
+Replace	替换
+Edit Appearance	编辑外观
+Remove	移除
+Preview Tattoo	预览纹身
+Applying tattoo...	应用中...
+Color	色
+Alpha	透
+Favorited	已收藏
+Favorite	收藏
+Favorites: %s	收藏: %s
+Retry favorite save	重试收藏保存
+Saving appearance...	保存外观中...
+Appearance Preset	外观预设
+Select preset	选择预设
+Preset	预设
+Save Preset	存预设
+Save Appearance Preset	保存外观预设
+Manage Appearance Preset	管理外观预设
+Appearance Presets: {}	外观预设: {}
+Save the current appearance values as:	将当前外观数值保存为:
+Overwrite Appearance Preset	覆盖外观预设
+Overwrite '{}' with the current appearance?	用当前外观覆盖 '{}'？
+Delete Appearance Preset	删除外观预设
+Delete '{}' permanently?	永久删除 '{}'？
+Basic	基
+Material / Emission	材质/发光
+Glow Color	发光色
+Emission Strength	发光强度
+Emission Strength Value	发光强度值
+Glossiness	光泽
+Glossiness Value	光泽值
+Specular Strength	高光强度
+Specular Strength Value	高光强度值
+Glow Texture	发光贴图
+Bump Texture	凹凸贴图
+Glow Texture:	发光贴图:
+Bump Texture:	凹凸贴图:
+Open SlaveTatsUI when you are ready to browse tattoos.	准备好浏览纹身时打开SlaveTatsUI。
+Hotkey	热键
+Could not save the hotkey setting.	无法保存热键设置。
+Browser position	浏览器位置
+Left	左
+Right	右
+Could not save the browser position.	无法保存浏览器位置。
+Opening frame X offset (Left)	打开框X偏移(左)
+Opening frame X offset (Right)	打开框X偏移(右)
+Could not save the initial camera position.	无法保存初始相机位置。
+Initial Pan X (Left)	初始平移X(左)
+Initial Pan X (Right)	初始平移X(右)
+Initial Pan Y (Left)	初始平移Y(左)
+Initial Pan Y (Right)	初始平移Y(右)
+Could not save the initial camera Pan.	无法保存初始相机平移。
+Build Thumbnail Cache	构建缩略图缓存
+Building Thumbnail Cache: %zu / %zu	构建缩略图缓存:%zu / %zu
+Please keep this menu open until the build is complete.	构建完成前请保持菜单打开。
+Thumbnail Cache ready. You can open the Tattoo Browser.	缩略图缓存就绪。可打开纹身浏览器。
+Thumbnail Cache build complete: %zu / %zu (%zu failed)	缩略图缓存构建完成:%zu / %zu (%zu 失败)
+No tattoo textures found. Thumbnail Cache was not built.	未找到纹身贴图。缩略图缓存未构建。
+Thumbnail Cache: %.1f MiB used	缩略图: 已用 %.1f MiB
+Clear Thumbnail Cache	清除缩略图缓存
+Clearing thumbnail cache...	清除缩略图缓存...
+Could not clear the thumbnail cache.	无法清除缩略图缓存。
+Thumbnail cache cleared.	缩略图缓存已清。
+Open Tattoo Browser	打开纹身库
+Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down	Alt+拖:平移/Alt+A/D:环绕/Alt+W/S:升降
+Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom	拖:转/Alt+拖:移/滚轮:缩放
+Whole body	全身
+Face	脸
+Body	身体
+Hands	手
+Feet	脚
+Center	中
+Reset View	复位
+Current Pan X %.1f  Y %.1f	当前 X %.1f  Y %.1f
+Initial Pan X %.1f  Y %.1f	初始 X %.1f  Y %.1f
+Use current Pan as initial	以当前平移为初始
+Applies when this side has no remembered session view.	当此侧无记忆会话视角时生效。
+Could not save initial Pan.	无法保存初始平移
+Target: %s	目标: %s
+Filters	筛选
+Thumbnail BG: Black	缩略图底色:黑
+Thumbnail BG: White	缩略图底色:白
+%zu tattoos	%zu 纹身
+All sections	全部分类
+All sources	全来源
+Applied	已用
+Applied only	仅已用
+Favorites	收藏
+Favorites only	仅收藏
+Recent	最近
+Recently used only	仅最近使用
+Material	材质
+Glow only	仅发光
+Bump only	仅凹凸
+Gloss only	仅光泽
+Domain	域
+Source	来源
+Section	分类
+Recently Used: %s	最近使用: %s
+Retry recent history	重试最近记录
+Preview: %s	预览: %s
+Selected: %s - not saved	已选: %s - 未保存
+Click a tattoo to preview and select.	点击纹身以预览并选择。
+Ink	墨色
+Glossy	光泽
+Preparing live preview...	准备实时预览...
+Live preview unavailable: %s	实时预览不可用: %s
+Save Tattoo	存纹身
+Undo	撤销
+Language	语言
+Could not save the language setting.	无法保存语言设置。
+Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.	请在 SKSE Menu Framework 设置中启用中文、韩文和日文字形，并选择兼容的字体。

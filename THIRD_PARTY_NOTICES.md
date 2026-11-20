@@ -33,3 +33,11 @@ metadata.
 
 Copies of third-party license texts and notices supplied with those projects
 remain authoritative for their respective code.
+
+## Simplified Chinese UI wording
+
+The initial Simplified Chinese catalog adapts UI wording from
+[MonetND/slavetats-ui](https://github.com/MonetND/slavetats-ui), revision
+`073bfedc9a96b9a381e4d3b76e30f2d16a1ff0fd`, under this project's GPL-3.0-or-later
+license. The localization loader, language selector and Korean/Japanese catalogs
+are new work; no Chinese-fork runtime changes are incorporated.

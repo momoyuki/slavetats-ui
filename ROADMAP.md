@@ -276,6 +276,24 @@ and [active plan](docs/superpowers/plans/active/2026-10-31-browser-preference-pe
 
 ---
 
+## UI localization — language switching
+
+**Status:** Implementation proposed; Windows CI and in-game acceptance pending.
+
+Add a launcher language selector for English, Simplified Chinese, Korean and
+Japanese, with persisted selection, external UTF-8 catalogs and English
+fallback. Keep runtime identifiers and pack/user content unchanged. Font glyphs
+remain owned by SKSE Menu Framework. This user-requested presentation feature
+is separate from Beta 2 release preparation.
+
+**Plan:** [Language switching](docs/superpowers/plans/active/2026-11-02-language-switching.md)
+
+Acceptance on Windows: build Debug/Release, run CTest and release-tool tests,
+switch all four languages and restart to verify persistence; inspect CJK fonts,
+long labels, popup actions, filters, previews and actor/pack names in game.
+
+---
+
 ## Future UI settings to evaluate
 
 These are candidates, not committed milestones. Evaluate them against the

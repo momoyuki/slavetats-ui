@@ -1,0 +1,249 @@
+# language-name: Korean
+# English source text	Translation; UTF-8, \n = newline, \t = tab, \\ = backslash
+Saving or loading loadouts...	구성을 저장하거나 불러오는 중...
+No loadouts saved.	저장된 구성이 없습니다.
+Loadout limit reached. Overwrite, rename or delete an existing loadout.	구성 개수 제한에 도달했습니다. 기존 구성을 덮어쓰거나 이름을 바꾸거나 삭제하세요.
+Loadout applied	구성 적용 완료
+Preflight rejected	사전 검사 거부됨
+Synchronization pending	동기화 대기 중
+Rollback synchronization pending	롤백 동기화 대기 중
+Rollback complete	롤백 완료
+Rollback incomplete	롤백 미완료
+Loadout failed	구성 적용 실패
+{}: {}	{}: {}
+{} / Slot {}: {}	{} / 슬롯 {}: {}
+Apply Loadout	구성 적용
+Rename	이름 변경
+Overwrite	덮어쓰기
+Delete	삭제
+Save Loadout	구성 저장
+Unnamed Actor	이름 없는 액터
+{} - {:.0f} units	{} - {:.0f} 단위
+Choose Follower	동료 선택
+Choose NPC	NPC 선택
+Scanning loaded Actors...	로드된 액터 검색 중...
+No loaded followers found.	로드된 동료가 없습니다.
+No loaded NPC matches the search.	검색과 일치하는 로드된 NPC가 없습니다.
+Target: None	대상: 없음
+Target:\s	대상:\s
+Scanning nearby Actors...	주변 액터 검색 중...
+No nearby Actor found	주변 액터를 찾지 못했습니다
+Unavailable	사용 불가
+Current Slots / Loadouts	현재 슬롯 / 구성
+Current Slots / Loadouts / Preview	현재 슬롯 / 구성 / 미리보기
+Current Slots / Loadouts / Restore	현재 슬롯 / 구성 / 복원
+Current Slots / Loadouts / Confirm Overwrite	현재 슬롯 / 구성 / 덮어쓰기 확인
+Current Slots / Loadouts / Confirm Delete	현재 슬롯 / 구성 / 삭제 확인
+Current Slots	현재 슬롯
+Current Slots / Slot Actions	현재 슬롯 / 슬롯 작업
+Current Slots / Browse	현재 슬롯 / 찾아보기
+Current Slots / Browse / Preview	현재 슬롯 / 찾아보기 / 미리보기
+Current Slots / Edit Appearance	현재 슬롯 / 외형 편집
+Current Slots / Slot Actions / Confirm Remove	현재 슬롯 / 슬롯 작업 / 제거 확인
+BODY	몸
+FACE	얼굴
+HANDS	손
+FEET	발
+No active Actor	활성 액터 없음
+{} / {} / Slot {}	{} / {} / 슬롯 {}
+Retry Slot\s	슬롯 재시도\s
+Apply to Slot\s	적용할 슬롯\s
+Save	저장
+Preview pending...	미리보기 대기 중...
+Updating preview...	미리보기 갱신 중...
+Preview applied	미리보기 적용됨
+Restoring original appearance...	원래 외형 복원 중...
+ -\s	 -\s
+Retry Restore Sync	복원 동기화 재시도
+Retry Restore	복원 재시도
+Retry Preview Sync	미리보기 동기화 재시도
+Retry Preview	미리보기 재시도
+Remove from Slot\s	제거할 슬롯\s
+Retry Remove Slot\s	제거 재시도 슬롯\s
+Retry Sync Slot\s	동기화 재시도 슬롯\s
+Unlock tattoo	문신 잠금 해제
+Lock tattoo	문신 잠금
+All Domains	모든 도메인
+Glow	발광
+Bump	범프
+Gloss	광택
+None	없음
+Current (unlisted)	현재 값 (목록에 없음)
+No appearance presets saved.	저장된 외형 프리셋이 없습니다.
+20 preset limit reached	프리셋 20개 제한에 도달했습니다
+Updating appearance presets...	외형 프리셋 갱신 중...
+\nIn use: Slots\s	\n사용 중인 슬롯\s
+Loading	로드 중
+Missing	없음
+Broken	손상됨
+The tattoo catalog is empty. Refresh the catalog to browse tattoos.	문신 목록이 비어 있습니다. 목록을 새로고침하세요.
+No tattoos match the current filters.	현재 필터와 일치하는 문신이 없습니다.
+No applied tattoos match the current filters.	현재 필터와 일치하는 적용된 문신이 없습니다.
+No favorite tattoos match the current filters.	현재 필터와 일치하는 즐겨찾기 문신이 없습니다.
+No favorite applied tattoos match the current filters.	현재 필터와 일치하는 적용된 즐겨찾기 문신이 없습니다.
+No recently used tattoos match the current filters.	현재 필터와 일치하는 최근 사용 문신이 없습니다.
+No favorite recently used tattoos match the current filters.	현재 필터와 일치하는 즐겨찾기의 최근 사용 문신이 없습니다.
+No applied recently used tattoos match the current filters.	현재 필터와 일치하는 적용된 최근 사용 문신이 없습니다.
+No favorite applied recently used tattoos match the current filters.	현재 필터와 일치하는 적용된 즐겨찾기의 최근 사용 문신이 없습니다.
+No thumbnail	썸네일 없음
+Player	플레이어
+Search	검색
+Refresh NPC List	NPC 목록 새로고침
+Close NPC Picker	NPC 선택 닫기
+Retry NPC Scan	NPC 검색 재시도
+Loadouts:\s	구성:\s
+Retry	재시도
+Loadout	구성
+Select loadout	구성 선택
+Load	불러오기
+Save Current	현재 상태 저장
+Manage	관리
+Reading fresh Actor state...	최신 액터 상태 읽는 중...
+Tattoo Browser	문신 브라우저
+Saved Tattoo Loadouts	저장된 문신 구성
+Save managed tattoos from all four areas. External overlays are omitted.	네 부위의 관리 대상 문신을 저장합니다. 외부 오버레이는 제외됩니다.
+Name	이름
+Delete...	삭제...
+Overwrite the selected loadout with the captured four-area state?	선택한 구성을 캡처한 네 부위 상태로 덮어쓸까요?
+Delete this saved loadout? Actor tattoos will remain unchanged.	저장된 구성을 삭제할까요? 액터의 문신은 유지됩니다.
+Exact restore removes managed tattoos absent from this loadout.	정확한 복원은 이 구성에 없는 관리 대상 문신을 제거합니다.
+Add: %zu / Replace: %zu / Remove: %zu	추가: %zu / 교체: %zu / 제거: %zu
+Appearance: %zu / Unchanged: %zu / Preserved: %zu	외형: %zu / 변경 없음: %zu / 보존: %zu
+Preflight rejected. Resolve these conflicts and run Load again:	사전 검사가 거부되었습니다. 충돌을 해결한 뒤 다시 불러오세요:
+Restoring loadout... Please wait.	구성 복원 중... 기다려 주세요.
+Restore failed. The original managed tattoos were recovered and verified.	복원에 실패했습니다. 원래 관리 대상 문신을 복구하고 확인했습니다.
+Restore failed and recovery could not be verified. Inspect the affected slots.	복원에 실패했으며 복구를 확인하지 못했습니다. 해당 슬롯을 확인하세요.
+Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.	돌아가기 전에 현재 슬롯을 새로고침해야 합니다. 실패하면 슬롯 새로고침을 사용하세요.
+Cancel	취소
+Close	닫기
+Back	뒤로
+Retry Synchronization	동기화 재시도
+Refresh Slots	슬롯 새로고침
+Tattoos	문신
+Refresh	새로고침
+Loading tattoo slots...	문신 슬롯 로드 중...
+Slot %d	슬롯 %d
+Slot %d - Read Only: managed by another overlay mod	슬롯 %d - 읽기 전용: 다른 오버레이 모드에서 관리 중
+Slot %d - %s	슬롯 %d - %s
+Add a tattoo to Slot %d	슬롯 %d에 문신 추가
+Loadouts	구성
+Prev	이전
+Page	페이지
+Next	다음
+Remove Tattoo?	문신을 제거할까요?
+Tattoo Slot Actions	문신 슬롯 작업
+Domain: %s	도메인: %s
+Removing tattoo...	문신 제거 중...
+This will clear the selected SlaveTats slot.	선택한 SlaveTats 슬롯을 비웁니다.
+Replace	교체
+Edit Appearance	외형 편집
+Remove	제거
+Preview Tattoo	문신 미리보기
+Applying tattoo...	문신 적용 중...
+Color	색상
+Alpha	불투명도
+Favorited	즐겨찾기에 추가됨
+Favorite	즐겨찾기
+Favorites: %s	즐겨찾기: %s
+Retry favorite save	즐겨찾기 저장 재시도
+Saving appearance...	외형 저장 중...
+Appearance Preset	외형 프리셋
+Select preset	프리셋 선택
+Preset	프리셋
+Save Preset	프리셋 저장
+Save Appearance Preset	외형 프리셋 저장
+Manage Appearance Preset	외형 프리셋 관리
+Appearance Presets: {}	외형 프리셋: {}
+Save the current appearance values as:	현재 외형 값을 저장할 이름:
+Overwrite Appearance Preset	외형 프리셋 덮어쓰기
+Overwrite '{}' with the current appearance?	'{}'을(를) 현재 외형으로 덮어쓸까요?
+Delete Appearance Preset	외형 프리셋 삭제
+Delete '{}' permanently?	'{}'을(를) 영구적으로 삭제할까요?
+Basic	기본
+Material / Emission	재질 / 발광
+Glow Color	발광 색상
+Emission Strength	발광 강도
+Emission Strength Value	발광 강도 값
+Glossiness	광택도
+Glossiness Value	광택도 값
+Specular Strength	반사 강도
+Specular Strength Value	반사 강도 값
+Glow Texture	발광 텍스처
+Bump Texture	범프 텍스처
+Glow Texture:	발광 텍스처:
+Bump Texture:	범프 텍스처:
+Open SlaveTatsUI when you are ready to browse tattoos.	문신을 살펴보려면 SlaveTatsUI를 여세요.
+Hotkey	단축키
+Could not save the hotkey setting.	단축키 설정을 저장하지 못했습니다.
+Browser position	브라우저 위치
+Left	왼쪽
+Right	오른쪽
+Could not save the browser position.	브라우저 위치를 저장하지 못했습니다.
+Opening frame X offset (Left)	시작 화면 X 오프셋 (왼쪽)
+Opening frame X offset (Right)	시작 화면 X 오프셋 (오른쪽)
+Could not save the initial camera position.	초기 카메라 위치를 저장하지 못했습니다.
+Initial Pan X (Left)	초기 이동 X (왼쪽)
+Initial Pan X (Right)	초기 이동 X (오른쪽)
+Initial Pan Y (Left)	초기 이동 Y (왼쪽)
+Initial Pan Y (Right)	초기 이동 Y (오른쪽)
+Could not save the initial camera Pan.	초기 카메라 이동 값을 저장하지 못했습니다.
+Build Thumbnail Cache	썸네일 캐시 만들기
+Building Thumbnail Cache: %zu / %zu	썸네일 캐시 생성 중: %zu / %zu
+Please keep this menu open until the build is complete.	생성이 끝날 때까지 메뉴를 열어 두세요.
+Thumbnail Cache ready. You can open the Tattoo Browser.	썸네일 캐시가 준비되었습니다. 문신 브라우저를 열 수 있습니다.
+Thumbnail Cache build complete: %zu / %zu (%zu failed)	썸네일 캐시 생성 완료: %zu / %zu (실패 %zu)
+No tattoo textures found. Thumbnail Cache was not built.	문신 텍스처가 없어 썸네일 캐시를 만들지 않았습니다.
+Thumbnail Cache: %.1f MiB used	썸네일 캐시: %.1f MiB 사용 중
+Clear Thumbnail Cache	썸네일 캐시 비우기
+Clearing thumbnail cache...	썸네일 캐시 비우는 중...
+Could not clear the thumbnail cache.	썸네일 캐시를 비우지 못했습니다.
+Thumbnail cache cleared.	썸네일 캐시를 비웠습니다.
+Open Tattoo Browser	문신 브라우저 열기
+Alt+Drag: Pan | Alt+A/D: Orbit | Alt+W/S: Up/Down	Alt+드래그: 이동 | Alt+A/D: 회전 | Alt+W/S: 위/아래
+Drag: Rotate | Alt+Drag: Pan | Wheel: Zoom	드래그: 회전 | Alt+드래그: 이동 | 휠: 확대/축소
+Whole body	전신
+Face	얼굴
+Body	몸
+Hands	손
+Feet	발
+Center	중앙
+Reset View	시점 초기화
+Current Pan X %.1f  Y %.1f	현재 이동 X %.1f  Y %.1f
+Initial Pan X %.1f  Y %.1f	초기 이동 X %.1f  Y %.1f
+Use current Pan as initial	현재 이동 값을 초기값으로 사용
+Applies when this side has no remembered session view.	이쪽에 기억된 세션 시점이 없을 때 적용됩니다.
+Could not save initial Pan.	초기 이동 값을 저장하지 못했습니다.
+Target: %s	대상: %s
+Filters	필터
+Thumbnail BG: Black	썸네일 배경: 검정
+Thumbnail BG: White	썸네일 배경: 흰색
+%zu tattoos	문신 %zu개
+All sections	모든 섹션
+All sources	모든 소스
+Applied	적용됨
+Applied only	적용된 문신만
+Favorites	즐겨찾기
+Favorites only	즐겨찾기만
+Recent	최근 사용
+Recently used only	최근 사용 문신만
+Material	재질
+Glow only	발광만
+Bump only	범프만
+Gloss only	광택만
+Domain	도메인
+Source	소스
+Section	섹션
+Recently Used: %s	최근 사용: %s
+Retry recent history	최근 기록 재시도
+Preview: %s	미리보기: %s
+Selected: %s - not saved	선택됨: %s - 저장되지 않음
+Click a tattoo to preview and select.	문신을 클릭하여 미리보고 선택하세요.
+Ink	잉크
+Glossy	광택
+Preparing live preview...	실시간 미리보기 준비 중...
+Live preview unavailable: %s	실시간 미리보기 사용 불가: %s
+Save Tattoo	문신 저장
+Undo	실행 취소
+Language	언어
+Could not save the language setting.	언어 설정을 저장하지 못했습니다.
+Enable Chinese, Korean and Japanese glyphs and choose a compatible font in SKSE Menu Framework settings.	SKSE Menu Framework 설정에서 중국어, 한국어, 일본어 글리프를 활성화하고 호환되는 글꼴을 선택하세요.
