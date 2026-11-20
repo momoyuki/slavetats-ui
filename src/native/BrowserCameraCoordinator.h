@@ -35,6 +35,8 @@ private:
     bool m_open{};
     bool m_scheduled{};
     bool m_resetRequested{};
+    // Game-thread session state mirrored under m_mutex for render-thread refresh.
+    bool m_cameraActive{};
     bool m_menuOnRight{true};
     std::uint32_t m_targetFormId{};
     std::uint64_t m_revision{};

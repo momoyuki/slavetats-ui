@@ -106,3 +106,12 @@ words (`STUITH6` plus zero terminator), so disk reload never crops again. Origin
 DDS files are unchanged. Memory/cache budgets remain unchanged. BC7 full-level
 CPU decode is temporary and capped at16M pixels; this trades first-build work for
 retained motif detail. In-game quality/performance acceptance remains pending.
+
+## Performance follow-up — 2026-11-07
+
+The browser performance design supersedes the synchronous thumbnail scheduling
+and BC7 mip description above. One owned worker performs bounded DDS processing,
+disk cache work and D3D11 device resource creation; engine archive reads remain
+scheduled on SKSE. Supported single 2D thumbnails fit 192 pixels across formats.
+The full-resolution crop preserves small motifs; BC7 uses a bounded RGBA scratch
+without source-sized crop/premultiplication copies. Cached representations use v8.

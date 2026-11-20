@@ -18,6 +18,7 @@ enum class TextureResolveError {
     invalidPath,
     notFound,
     readFailed,
+    temporarilyUnavailable,
 };
 
 using core::TextureResource;

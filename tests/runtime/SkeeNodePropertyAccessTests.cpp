@@ -26,6 +26,7 @@ using Value = std::variant<std::int32_t, float, std::string>;
 
 struct FakeProperties {
     std::map<Key, Value> values;
+    std::map<Key, int> writes;
 
     SkeeNodePropertyBindings bindings() {
         return {
@@ -52,16 +53,19 @@ struct FakeProperties {
             },
             .setInt = [this](const CatalogPreviewVisualTarget&, std::uint16_t key,
                           std::uint8_t index, std::int32_t value) {
+                ++writes[{key, index}];
                 values[{key, index}] = value;
                 return true;
             },
             .setFloat = [this](const CatalogPreviewVisualTarget&, std::uint16_t key,
                             std::uint8_t index, float value) {
+                ++writes[{key, index}];
                 values[{key, index}] = value;
                 return true;
             },
             .setString = [this](const CatalogPreviewVisualTarget&, std::uint16_t key,
                              std::uint8_t index, const std::string& value) {
+                ++writes[{key, index}];
                 values[{key, index}] = value;
                 return true;
             },
@@ -93,6 +97,37 @@ void writesThenCapturesAllTypedProperties() {
     const auto captured = access.capture(target);
     expect(captured && *captured == expected,
         "capture should recover all texture and scalar properties");
+}
+
+void writesOnlyChangedPropertiesAndRecoversPartialFailure() {
+    FakeProperties fake;
+    const CatalogPreviewVisualTarget target{1, 2, 3, 4};
+    auto bindings = fake.bindings();
+    SkeeNodePropertyAccess access(bindings);
+    auto desired = expectedSnapshot();
+    expect(access.write(target, desired), "initial full write succeeds");
+    fake.writes.clear();
+    expect(access.write(target, desired) && fake.writes.empty(), "identical material must issue no writes");
+    desired.alpha = 0.25F;
+    desired.glow = 0;
+    desired.emissiveMult = 0.0F;
+    expect(access.write(target, desired), "scalar-only update succeeds");
+    expect(fake.writes.size() == 3 && !fake.writes.contains({9, 0}) &&
+        !fake.writes.contains({9, 1}) && !fake.writes.contains({9, 2}),
+        "scalar edits must not reset any texture property");
+    fake.writes.clear();
+    desired.diffuse = "replacement.dds";
+    desired.glossiness = 42.0F;
+    bindings.setFloat = [](const CatalogPreviewVisualTarget&, std::uint16_t, std::uint8_t, float) {
+        return false;
+    };
+    expect(!SkeeNodePropertyAccess(bindings).write(target, desired), "partial failure must be reported");
+    expect(fake.values[{9, 0}] == Value(desired.diffuse), "texture write preceded scalar failure");
+    fake.writes.clear();
+    expect(access.write(target, desired), "retry recovers partial property writes");
+    expect(fake.writes.size() == 1 && fake.writes.contains({2, 0xFF}),
+        "retry must inspect live properties and write only failed scalar");
+    expect(access.capture(target) == desired, "all fields must match after recovery");
 }
 
 void rejectsIncompleteTypedSnapshot() {
@@ -156,6 +191,7 @@ void stopsWritingAfterFirstFailure() {
 }  // namespace
 
 int main() {
+    writesOnlyChangedPropertiesAndRecoversPartialFailure();
     readsDiffuseWithoutOtherProperties();
     writesThenCapturesAllTypedProperties();
     rejectsIncompleteTypedSnapshot();

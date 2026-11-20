@@ -76,6 +76,25 @@ void updatesPreserveExistingAndUnknownKeys() {
         "expected independent updates to preserve existing and unknown keys");
 }
 
+void unchangedUpdatesPreserveFileBytesAndReadFailures() {
+    TemporaryDirectory directory;
+    const auto path = directory.path() / "SlaveTatsUI.json";
+    constexpr std::string_view original = "{ \"menuSide\": \"left\", \"unknown\": 12 }";
+    { std::ofstream output(path); output << original; }
+    stui::runtime::PluginConfigFile file(path);
+    const auto unchanged = file.update([](nlohmann::json& config) -> stui::runtime::ConfigUpdateResult {
+        config["menuSide"] = "left";
+        return {};
+    });
+    expect(unchanged && readBytes(path) == original,
+        "unchanged update must not atomically rewrite existing bytes");
+    { std::ofstream output(path); output << "invalid"; }
+    expect(!file.update([](nlohmann::json& config) -> stui::runtime::ConfigUpdateResult {
+        config["menuSide"] = "left";
+        return {};
+    }), "same selection must still report a subsequent persistence read failure");
+}
+
 void malformedFileIsReportedWithoutOverwritingBytes() {
     TemporaryDirectory directory;
     const auto path = directory.path() / "SlaveTatsUI.json";
@@ -114,6 +133,7 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("unchanged update preserves bytes and reports read failures", unchangedUpdatesPreserveFileBytesAndReadFailures);
     failures += run("missing file reads without creating", missingFileReadsAsEmptyObjectWithoutCreatingIt);
     failures += run("updates preserve existing and unknown keys", updatesPreserveExistingAndUnknownKeys);
     failures += run("malformed file preserves bytes", malformedFileIsReportedWithoutOverwritingBytes);

@@ -41,31 +41,46 @@ void NativeCatalogBrowserModel::refresh() {
     }
 
     m_snapshot = std::move(next);
+    m_contextualFacetsDirty = true;
     resetFilter();
     query();
 }
 
 void NativeCatalogBrowserModel::setSearch(std::string value) {
+    if (m_filter.search == value) {
+        return;
+    }
     m_filter.search = std::move(value);
     m_filter.pageIndex = 0;
     query();
 }
 
 void NativeCatalogBrowserModel::setDomain(std::string value) {
+    if (m_filter.domain == value) {
+        return;
+    }
     m_filter.domain = std::move(value);
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
 
 void NativeCatalogBrowserModel::setSourceId(std::string value) {
+    if (m_filter.sourceId == value) {
+        return;
+    }
     m_filter.sourceId = std::move(value);
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
 
 void NativeCatalogBrowserModel::setSection(std::string value) {
+    if (m_filter.section == value) {
+        return;
+    }
     m_filter.section = std::move(value);
     m_filter.pageIndex = 0;
     reconcileContextualFilters();
@@ -73,8 +88,12 @@ void NativeCatalogBrowserModel::setSection(std::string value) {
 }
 
 void NativeCatalogBrowserModel::setArea(std::string value) {
+    if (m_filter.area == value) {
+        return;
+    }
     m_filter.area = std::move(value);
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -88,6 +107,7 @@ void NativeCatalogBrowserModel::setAppliedOnly(bool value) {
         ? std::optional(m_appliedTattooIdentities)
         : std::nullopt;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -103,6 +123,7 @@ void NativeCatalogBrowserModel::setAppliedTattooIdentities(
     }
     m_filter.appliedIdentities = m_appliedTattooIdentities;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -116,6 +137,7 @@ void NativeCatalogBrowserModel::setFavoritesOnly(const bool value) {
         ? std::optional(m_favoriteIdentities)
         : std::nullopt;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -128,6 +150,7 @@ void NativeCatalogBrowserModel::setFavoriteIdentities(
     m_favoriteIdentities = std::move(identities);
     if (m_favoritesOnly) {
         m_filter.favoriteIdentities = m_favoriteIdentities;
+        m_contextualFacetsDirty = true;
         reconcileContextualFilters();
         query();
     }
@@ -142,6 +165,7 @@ void NativeCatalogBrowserModel::setRecentlyUsedOnly(const bool value) {
         ? std::optional(m_recentTattooIdentities)
         : std::nullopt;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -154,6 +178,7 @@ void NativeCatalogBrowserModel::setRecentTattooIdentities(
     m_recentTattooIdentities = std::move(identities);
     if (m_recentlyUsedOnly) {
         m_filter.recentIdentities = m_recentTattooIdentities;
+        m_contextualFacetsDirty = true;
         reconcileContextualFilters();
         query();
     }
@@ -165,6 +190,7 @@ void NativeCatalogBrowserModel::setGlowOnly(const bool value) {
     }
     m_filter.glowOnly = value;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -175,6 +201,7 @@ void NativeCatalogBrowserModel::setBumpOnly(const bool value) {
     }
     m_filter.bumpOnly = value;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -185,6 +212,7 @@ void NativeCatalogBrowserModel::setGlossOnly(const bool value) {
     }
     m_filter.glossOnly = value;
     m_filter.pageIndex = 0;
+    m_contextualFacetsDirty = true;
     reconcileContextualFilters();
     query();
 }
@@ -195,7 +223,7 @@ void NativeCatalogBrowserModel::previousPage() {
     }
 
     --m_filter.pageIndex;
-    query();
+    updatePage();
 }
 
 void NativeCatalogBrowserModel::nextPage() {
@@ -204,12 +232,18 @@ void NativeCatalogBrowserModel::nextPage() {
     }
 
     ++m_filter.pageIndex;
-    query();
+    updatePage();
 }
 
 void NativeCatalogBrowserModel::setPageNumber(std::size_t oneBasedPage) {
-    m_filter.pageIndex = oneBasedPage == 0 ? 0 : oneBasedPage - 1;
-    query();
+    const auto requested = oneBasedPage == 0 ? 0 : oneBasedPage - 1;
+    const auto clamped = m_page.pageCount == 0 ? 0
+        : std::min(requested, m_page.pageCount - 1);
+    if (m_filter.pageIndex == clamped) {
+        return;
+    }
+    m_filter.pageIndex = clamped;
+    updatePage();
 }
 
 const repository::TattooFilter& NativeCatalogBrowserModel::filter() const noexcept {
@@ -228,10 +262,14 @@ std::size_t NativeCatalogBrowserModel::scrollRevision() const noexcept {
     return m_scrollRevision;
 }
 
-repository::TattooFacets NativeCatalogBrowserModel::contextualFacets() const {
-    return m_snapshot
-        ? m_snapshot->repository.contextualFacets(m_filter)
-        : repository::TattooFacets{};
+const repository::TattooFacets& NativeCatalogBrowserModel::contextualFacets() const {
+    if (m_contextualFacetsDirty) {
+        m_contextualFacets = m_snapshot
+            ? m_snapshot->repository.contextualFacets(m_filter)
+            : repository::TattooFacets{};
+        m_contextualFacetsDirty = false;
+    }
+    return m_contextualFacets;
 }
 
 repository::TattooCatalogSnapshot NativeCatalogBrowserModel::snapshot() const noexcept {
@@ -311,12 +349,13 @@ void NativeCatalogBrowserModel::reconcileContextualFilters() {
         return;
     }
 
-    auto facets = m_snapshot->repository.contextualFacets(m_filter);
+    const auto& facets = contextualFacets();
     if (!m_filter.domain.empty() &&
         !containsFolded(facets.domains, m_filter.domain,
             [](const std::string& domain) -> std::string_view { return domain; })) {
         m_filter.domain.clear();
-        facets = m_snapshot->repository.contextualFacets(m_filter);
+        m_contextualFacetsDirty = true;
+        (void)contextualFacets();
     }
     if (!m_filter.sourceId.empty() &&
         !containsFolded(facets.sources, m_filter.sourceId,
@@ -324,7 +363,8 @@ void NativeCatalogBrowserModel::reconcileContextualFilters() {
                 return source.sourceId;
             })) {
         m_filter.sourceId.clear();
-        facets = m_snapshot->repository.contextualFacets(m_filter);
+        m_contextualFacetsDirty = true;
+        (void)contextualFacets();
     }
     if (!m_filter.section.empty() &&
         !containsFolded(facets.sections, m_filter.section,
@@ -341,12 +381,28 @@ void NativeCatalogBrowserModel::query() {
         return;
     }
 
-    m_page = m_snapshot->repository.query(m_filter);
     auto scrollFilter = m_filter;
     scrollFilter.pageIndex = 0;
     scrollFilter.pageSize = std::numeric_limits<std::size_t>::max();
     m_scrollPage = m_snapshot->repository.query(scrollFilter);
-    m_filter.pageIndex = m_page.pageIndex;
+    updatePage();
+}
+
+void NativeCatalogBrowserModel::updatePage() {
+    const auto matched = m_scrollPage.matchedEntries;
+    const auto count = matched / kPageSize + (matched % kPageSize != 0 ? 1 : 0);
+    const auto index = count == 0 ? 0 : std::min(m_filter.pageIndex, count - 1);
+    const auto begin = index * kPageSize;
+    const auto end = begin + std::min(kPageSize, matched - begin);
+    m_page = repository::TattooPage{
+        .entries = {m_scrollPage.entries.begin() + begin, m_scrollPage.entries.begin() + end},
+        .totalEntries = m_scrollPage.totalEntries,
+        .matchedEntries = matched,
+        .pageIndex = index,
+        .pageSize = kPageSize,
+        .pageCount = count,
+    };
+    m_filter.pageIndex = index;
     m_filter.pageSize = kPageSize;
 }
 

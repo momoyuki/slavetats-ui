@@ -18,10 +18,12 @@ TextureBytesResult readLooseBytes(const std::filesystem::path& path) {
         return std::unexpected(TextureResolveError::readFailed);
     }
 
-    std::vector<std::uint8_t> bytes{
-        std::istreambuf_iterator<char>(stream),
-        std::istreambuf_iterator<char>()};
-    if (stream.bad()) {
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size > 128ULL * 1024 * 1024)
+        return std::unexpected(TextureResolveError::readFailed);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    if (!stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size))) {
         return std::unexpected(TextureResolveError::readFailed);
     }
     return bytes;

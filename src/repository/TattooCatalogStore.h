@@ -5,6 +5,7 @@
 #include <atomic>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <system_error>
 
@@ -18,6 +19,10 @@ class TattooCatalogStore {
 public:
     [[nodiscard]] TattooCatalogRefreshResult refresh(
         const std::filesystem::path& sourceDirectory);
+    // The scheduler owner must join its work before this store is destroyed.
+    void refreshAsync(std::filesystem::path sourceDirectory,
+        const std::function<void(std::function<void()>)>& scheduler,
+        std::function<void(TattooCatalogRefreshResult)> complete);
     [[nodiscard]] TattooCatalogSnapshot snapshot() const noexcept;
 
 private:

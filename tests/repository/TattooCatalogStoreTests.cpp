@@ -4,6 +4,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -121,8 +122,28 @@ int run(std::string_view name, Test&& test) {
 
 }  // namespace
 
+void scheduledRefreshPublishesOnlyAfterWorkerExecutes() {
+    TemporarySourceDirectory directory;
+    directory.write("Marks.json", R"([{"name":"Rose","section":"Flowers","texture":"rose.dds","area":"BODY"}])");
+    TattooCatalogStore store;
+    std::function<void()> scheduled;
+    bool completed = false;
+    store.refreshAsync(directory.path(), [&](auto task) { scheduled = std::move(task); },
+        [&](auto result) { completed = result.has_value(); });
+    expect(!store.snapshot() && !completed && bool(scheduled), "startup must return before parsing/publishing catalog");
+    scheduled();
+    expect(completed && store.snapshot()->repository.query().totalEntries == 1,
+        "worker must publish complete catalog atomically");
+    const auto old = store.snapshot();
+    store.refreshAsync(directory.path() / "missing", [&](auto task) { scheduled = std::move(task); },
+        [&](auto result) { completed = result.has_value(); });
+    scheduled();
+    expect(!completed && store.snapshot() == old, "failed async refresh preserves last catalog");
+}
+
 int main() {
     int failures = 0;
+    failures += run("startup schedules catalog refresh", scheduledRefreshPublishesOnlyAfterWorkerExecutes);
     failures += run(
         "publishes immutable snapshot after refresh",
         publishesImmutableSnapshotAfterRefresh);

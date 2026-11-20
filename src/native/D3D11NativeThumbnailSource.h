@@ -5,6 +5,7 @@
 #include "textures/TextureResolver.h"
 #include "textures/ThumbnailDiskCache.h"
 
+#include <atomic>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -63,6 +64,7 @@ public:
 
 private:
     bool m_available;
+    std::atomic<std::uintmax_t> m_cachedDiskBytes{};
     textures::TextureResolver m_resolver;
     textures::D3D11TextureManager m_manager;
     textures::ThumbnailDiskCache m_revisionCache;

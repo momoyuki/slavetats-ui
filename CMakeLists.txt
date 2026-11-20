@@ -344,6 +344,11 @@ if(BUILD_TESTING)
     target_link_libraries(TattooLoadoutStoreTests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME TattooLoadoutStoreTests COMMAND TattooLoadoutStoreTests)
 
+    add_executable(NativeThumbnailWorkerTests tests/native/NativeThumbnailWorkerTests.cpp)
+    target_include_directories(NativeThumbnailWorkerTests PRIVATE src)
+    add_test(NAME NativeThumbnailWorkerTests COMMAND NativeThumbnailWorkerTests)
+    set_tests_properties(NativeThumbnailWorkerTests PROPERTIES TIMEOUT 30)
+
     add_executable(NativeThumbnailRuntimeTests
         src/textures/TextureResolver.cpp
         src/native/NativeThumbnailController.cpp

@@ -12,6 +12,24 @@
 #include <vector>
 
 int main() {
+    for (const auto format : {DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_BC1_UNORM}) {
+        DirectX::ScratchImage image;
+        if (FAILED(image.Initialize2D(format, 1024, 512, 1, 1))) return 1;
+        std::memset(image.GetPixels(), 255, image.GetPixelsSize());
+        DirectX::Blob blob;
+        if (FAILED(DirectX::SaveToDDSMemory(image.GetImages(), image.GetImageCount(),
+                image.GetMetadata(), DirectX::DDS_FLAGS_NONE, blob))) return 1;
+        const auto cached = stui::textures::makeCachedThumbnailDds({
+            static_cast<const std::uint8_t*>(blob.GetBufferPointer()), blob.GetBufferSize()});
+        DirectX::TexMetadata metadata{};
+        if (!cached || FAILED(DirectX::GetMetadataFromDDSMemory(cached->data(),
+                cached->size(), DirectX::DDS_FLAGS_NONE, metadata)) ||
+            metadata.width > 192 || metadata.height > 192 || metadata.mipLevels != 1) {
+            std::cerr << "FAIL RGBA/BC1 fallback must fit 192px\n";
+            return 1;
+        }
+    }
+
     std::array<std::uint8_t, 16 * 16 * 4> sparse{};
     for (std::size_t y = 6; y < 10; ++y) {
         for (std::size_t x = 6; x < 10; ++x) sparse[(y * 16 + x) * 4 + 3] = 255;
@@ -45,7 +63,7 @@ int main() {
     }
 
     // A narrow motif must keep source detail before the full canvas is reduced.
-    for (const auto format : {DXGI_FORMAT_BC3_UNORM, DXGI_FORMAT_BC7_UNORM}) {
+    for (const auto format : {DXGI_FORMAT_BC3_UNORM, DXGI_FORMAT_BC7_UNORM, DXGI_FORMAT_BC1_UNORM}) {
         DirectX::ScratchImage detail;
         if (FAILED(detail.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, 512, 512, 1, 1)))
             return 1;
@@ -97,6 +115,24 @@ int main() {
     if (FAILED(deviceResult)) {
         std::cerr << "FAIL could not create WARP D3D11 device\n";
         return 1;
+    }
+
+    // Upload and disk preparation must enforce the same bound for fallback formats.
+    for (const auto format : {DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_BC1_UNORM}) {
+        DirectX::ScratchImage fallback;
+        if (FAILED(fallback.Initialize2D(format, 1024, 512, 1, 1))) return 1;
+        std::memset(fallback.GetPixels(), 255, fallback.GetPixelsSize());
+        DirectX::Blob encoded;
+        if (FAILED(DirectX::SaveToDDSMemory(fallback.GetImages(), fallback.GetImageCount(),
+                fallback.GetMetadata(), DirectX::DDS_FLAGS_NONE, encoded))) return 1;
+        const auto uploaded = stui::textures::uploadDdsTexture(device.Get(), {
+            static_cast<const std::uint8_t*>(encoded.GetBufferPointer()), encoded.GetBufferSize()});
+        if (!uploaded || uploaded->width != 192 || uploaded->height != 96 ||
+            uploaded->byteSize > 192 * 192 * 4) {
+            std::cerr << "FAIL fallback GPU texture must fit thumbnail bound\n";
+            return 1;
+        }
     }
 
     DirectX::ScratchImage source;

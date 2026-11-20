@@ -246,3 +246,15 @@ missing storage; broader support needs exact structural material/flag restoratio
 with independent tests. The current node probe reads these facts without calling
 SKEE properties or creating missing nodes. A version2Detected log is only an ABI
 probe result and does not enable preview or establish save/load safety.
+
+## Performance follow-up — 2026-11-07
+
+The user approved removing periodic 500 ms catalog Preview repaint/revalidation.
+Idle selection now schedules no paint. Explicit selection/appearance changes still
+validate and paint; Save and Undo/Close preserve their safety checks. An unrelated
+overlay overwrite is not automatically recovered while idle. The one-second
+Edit Appearance live preview remains. See the browser performance design.
+
+Explicitly clicking the already-selected card requests a validation/paint attempt
+again, superseding the original same-candidate no-op rule. Live-property equality
+still avoids redundant SKEE writes; no idle timer is reintroduced.

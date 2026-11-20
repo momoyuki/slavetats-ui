@@ -31,6 +31,7 @@
 #define SMOOTHCAM_API_COMMONLIB
 #include "SmoothCamAPI.h"
 #include "textures/ExactStreamReader.h"
+#include "textures/ScheduledTextureArchiveReader.h"
 
 #include <algorithm>
 #include <array>
@@ -43,6 +44,8 @@ using namespace stui;
 namespace {
 
 repository::TattooCatalogStore g_tattooCatalogStore;
+// Declared after the store so pending scans join before store destruction.
+std::unique_ptr<native::NativeThumbnailWorker> g_catalogWorker;
 runtime::ApplicationRuntime g_applicationRuntime;
 runtime::skee::OverrideInterface* g_externalProbeInterface{};
 native::NativeCatalogBrowserModel g_nativeCatalogBrowser(
@@ -177,10 +180,11 @@ native::NativeSlotWorkflowRuntime g_nativeSlotWorkflowRuntime(
     },
     [](const core::CatalogPreviewPaintRequest& request) {
         auto result = g_applicationRuntime.service().paintCatalogPreview(request);
-        logger::info("[CatalogPreviewTrace] paint actor={:08X} slot={} candidate='{}' result={}",
+        logger::debug("[CatalogPreviewTrace] paint actor={:08X} slot={} candidate='{}' result={}",
             request.context.actorFormId, request.context.slot,
             request.candidate ? request.candidate->name : std::string("<restore>"),
             result ? "ok" : "failed");
+        if (!result) logger::warn("SlaveTatsUI: catalog preview failed: {}", result.error().message);
         return result;
     },
     [](const core::CatalogPreviewRestoreRequest& request) {
@@ -336,31 +340,34 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                 const auto sourceDirectory = std::filesystem::path(
                     executablePath.data(), executablePath.data() + pathLength).parent_path()
                     / L"Data" / repository::kTattooSourceRelativeDirectory;
-                auto catalog = g_tattooCatalogStore.refresh(sourceDirectory);
-
-                if (!catalog) {
-                    logger::warn(
-                        "SlaveTatsUI: effective JSON scan failed for '{}': {}",
-                        sourceDirectory.string(),
-                        catalog.error().message());
-                } else {
-                    logger::info(
-                        "SlaveTatsUI: loaded {} tattoo definitions from {} sources ({} issues)",
-                        (*catalog)->repository.query().totalEntries,
-                        (*catalog)->sourceCount,
-                        (*catalog)->issues.size());
-                    for (const auto& issue : (*catalog)->issues) {
-                        if (issue.entryIndex) {
+                if (!g_catalogWorker) g_catalogWorker = std::make_unique<native::NativeThumbnailWorker>();
+                g_tattooCatalogStore.refreshAsync(sourceDirectory,
+                    [](auto task) { g_catalogWorker->submit(std::move(task)); },
+                    [sourceDirectory](auto catalog) {
+                        if (!catalog) {
                             logger::warn(
-                                "SlaveTatsUI: source '{}' entry {} skipped: {}",
-                                issue.sourceId, *issue.entryIndex, issue.message);
+                                "SlaveTatsUI: effective JSON scan failed for '{}': {}",
+                                sourceDirectory.string(),
+                                catalog.error().message());
                         } else {
-                            logger::warn(
-                                "SlaveTatsUI: source '{}' skipped: {}",
-                                issue.sourceId, issue.message);
+                            logger::info(
+                                "SlaveTatsUI: loaded {} tattoo definitions from {} sources ({} issues)",
+                                (*catalog)->repository.query().totalEntries,
+                                (*catalog)->sourceCount,
+                                (*catalog)->issues.size());
+                            for (const auto& issue : (*catalog)->issues) {
+                                if (issue.entryIndex) {
+                                    logger::warn(
+                                        "SlaveTatsUI: source '{}' entry {} skipped: {}",
+                                        issue.sourceId, *issue.entryIndex, issue.message);
+                                } else {
+                                    logger::warn(
+                                        "SlaveTatsUI: source '{}' skipped: {}",
+                                        issue.sourceId, issue.message);
+                                }
+                            }
                         }
-                    }
-                }
+                    });
             } catch (const std::exception& error) {
                 logger::warn(
                     "SlaveTatsUI: effective JSON scan aborted without blocking UI: {}",
@@ -383,7 +390,8 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                 ? reinterpret_cast<ID3D11Device*>(renderer->GetRuntimeData().forwarder)
                 : nullptr;
 
-            if (textureRoot.empty() || !device || !taskInterface) {
+            if (textureRoot.empty() || !device || !taskInterface ||
+                (device->GetCreationFlags() & D3D11_CREATE_DEVICE_SINGLETHREADED) != 0) {
                 g_nativeThumbnailRuntime = makeUnavailableNativeThumbnailRuntime(textureRoot);
                 if (!g_nativeThumbnailRuntimeUnavailableLogged) {
                     logger::warn(
@@ -391,11 +399,8 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                     g_nativeThumbnailRuntimeUnavailableLogged = true;
                 }
             } else {
-                auto source = std::make_unique<native::D3D11NativeThumbnailSource>(
-                    textureRoot,
-                    device,
-                    64,
-                    std::chrono::minutes(2),
+                auto archiveReader = std::make_shared<textures::ScheduledTextureArchiveReader>(
+                    [taskInterface](auto task) { taskInterface->AddTask(std::move(task)); },
                     [](std::string_view resourcePath) {
                         const std::string path(resourcePath);
                         RE::BSResourceNiBinaryStream stream(path.c_str());
@@ -409,7 +414,13 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                                 std::unexpected(textures::TextureResolveError::readFailed));
                         }
                         return textures::TextureBytesResult(std::move(*bytes));
-                    },
+                    });
+                auto source = std::make_unique<native::D3D11NativeThumbnailSource>(
+                    textureRoot,
+                    device,
+                    64,
+                    std::chrono::minutes(2),
+                    [archiveReader](std::string_view path) { return archiveReader->read(path); },
                     [](std::string_view texturePath, native::NativeThumbnailFailureStage stage) {
                         std::string_view stageName = "exception";
                         if (stage == native::NativeThumbnailFailureStage::resolve) {
@@ -428,7 +439,7 @@ static void onSKSEMessage(SKSE::MessagingInterface::Message* msg) {
                     [taskInterface](native::NativeThumbnailTask task) {
                         taskInterface->AddTask(std::move(task));
                     },
-                    [] { return textures::TextureCacheClock::now(); });
+                    [] { return textures::TextureCacheClock::now(); }, true);
                 if (!g_nativeThumbnailRuntime->requestDiskCacheLimit(g_thumbnailCacheSetting->limitMiB())) {
                     logger::warn("SlaveTatsUI: could not schedule stored thumbnail disk cache limit");
                 }
@@ -505,8 +516,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse) {
         g_thumbnailDiskCacheDirectory = pluginDir / "SlaveTatsUI" / "ThumbnailCache";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
         auto log  = std::make_shared<spdlog::logger>("SlaveTatsUI", std::move(sink));
-        log->set_level(spdlog::level::debug);
-        log->flush_on(spdlog::level::debug);
+        log->set_level(spdlog::level::info);
+        log->flush_on(spdlog::level::err);
         spdlog::set_default_logger(std::move(log));
     } catch (...) {}
 

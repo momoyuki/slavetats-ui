@@ -331,3 +331,9 @@ Preserve the 192-pixel maximum and cache budgets while cropping visible source
 content before reduction. The user promoted this follow-up while localization
 acceptance continues in a separate chat. See
 `docs/superpowers/plans/active/2026-11-02-thumbnail-clarity.md`.
+
+## Approved follow-up — Browser performance (2026-11-07)
+
+User authorized a codebase-wide performance follow-up independently of PR #23.
+See [design](docs/superpowers/specs/2026-11-07-browser-performance-design.md) and
+[plan](docs/superpowers/plans/active/2026-11-07-browser-performance.md). Implementation and automated validation are complete locally; commit/PR approval and in-game acceptance remain pending.
