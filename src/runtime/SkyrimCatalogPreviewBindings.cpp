@@ -209,7 +209,7 @@ void collectExternalTextures(core::TattooSlots& slots, skee::OverrideInterface* 
                 }
             }
         }
-        SKSE::log::info("[ExternalTextureProbe] actor={:08X} node='{}' geometry={} lighting={} busy={} property='{}' override='{}' material='{}' comparison={} (case/separator comparison; source image only)",
+        SKSE::log::debug("[ExternalTextureProbe] actor={:08X} node='{}' geometry={} lighting={} busy={} property='{}' override='{}' material='{}' comparison={} (case/separator comparison; source image only)",
             target.actorFormId, target.nodeName, geometry != nullptr, lighting, busy,
             property.value_or("<unavailable>"), registered.value_or("<unavailable>"),
             materialPath.value_or("<unavailable>"), static_cast<int>(native::compareExternalPaths(property, materialPath)));

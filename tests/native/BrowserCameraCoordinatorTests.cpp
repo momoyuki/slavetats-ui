@@ -34,6 +34,31 @@ public:
     void restore() override { ++restored; }
     void clearRememberedViews() override { ++cleared; }
 };
+void idleUnsupportedTargetsDoNotScheduleRefresh() {
+    FakePort port;
+    std::vector<std::function<void()>> tasks;
+    stui::native::BrowserCameraCoordinator coordinator(port,
+        [&tasks](std::function<void()> task) { tasks.push_back(std::move(task)); });
+    coordinator.setOpen(true);
+    tasks.back()();
+    auto count = tasks.size();
+    coordinator.refresh();
+    expect(tasks.size() == count, "no target must not schedule periodic camera work");
+    coordinator.setTarget(0x1234);
+    tasks.back()();
+    count = tasks.size();
+    coordinator.refresh();
+    expect(tasks.size() == count, "inactive NPC must not schedule periodic camera work");
+    coordinator.setTarget(0x14);
+    tasks.back()();
+    coordinator.setTarget(0x1234);
+    tasks.back()();
+    expect(port.restored == 1, "switching to NPC must release the Player lease");
+    count = tasks.size();
+    coordinator.refresh();
+    expect(tasks.size() == count, "released Player lease must not keep NPC refresh alive");
+}
+
 void panAndResetCommandsSurviveCoalescing() {
     FakePort port;
     std::vector<std::function<void()>> tasks;
@@ -190,6 +215,7 @@ int main() {
             expect(!coordinator.clearSavedViews([] { return false; }),
                 "failed persistence must be reported to launcher");
         }
+        idleUnsupportedTargetsDoNotScheduleRefresh();
         staleOpeningCannotFocusWrongActor();
         periodicValidationRestoresUnloadedNpc();
         staleTargetAfterCloseCannotReopenOldNpc();

@@ -187,7 +187,6 @@ private:
     bool m_catalogPreviewCloseRequested{};
     bool m_catalogPreviewCloseMenu{};
     std::uint64_t m_catalogPreviewEpoch{};
-    std::optional<std::chrono::steady_clock::time_point> m_catalogPreviewLastPaint;
     std::mutex m_favoriteCompletionMutex;
     std::vector<std::pair<std::uint64_t, runtime::FavoriteResult>> m_favoriteCompletions;
     std::mutex m_recentTattooCompletionMutex;

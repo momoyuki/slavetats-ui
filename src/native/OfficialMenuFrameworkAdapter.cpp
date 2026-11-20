@@ -3315,6 +3315,7 @@ void OfficialMenuFrameworkAdapter::renderFoundation(
     int domainIndex = 0;
     int sourceIndex = 0;
     int sectionIndex = 0;
+    // Keep widget label pointers valid if a filter mutates the model in this frame.
     const auto contextualFacets = model.contextualFacets();
 
     if (snapshot) {

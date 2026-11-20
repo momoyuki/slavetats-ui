@@ -52,6 +52,12 @@ void failedExactReadReturnsAnError() {
     expect(!result.has_value(), "expected failed stream read to return an error");
 }
 
+void oversizedReadDoesNotTouchStream() {
+    ExactBooleanStream stream({});
+    const auto result = stui::textures::readExactBytes(stream, 128U * 1024 * 1024 + 1);
+    expect(!result && stream.requestedCount == 0, "oversized DDS must fail before allocation/read");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -68,6 +74,7 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("bounds archive allocation", oversizedReadDoesNotTouchStream);
     failures += run("boolean stream result returns every byte", booleanReadResultStillReturnsEveryByte);
     failures += run("failed exact read returns an error", failedExactReadReturnsAnError);
     return failures == 0 ? 0 : 1;

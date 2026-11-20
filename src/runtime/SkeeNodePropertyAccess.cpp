@@ -75,15 +75,27 @@ bool SkeeNodePropertyAccess::write(
         !std::isfinite(value.glossiness) || !std::isfinite(value.specularStrength)) {
         return false;
     }
-    return m_bindings.setString(target, kTexture, kDiffuseTexture, value.diffuse) &&
-        m_bindings.setString(target, kTexture, kNormalTexture, value.normal) &&
-        m_bindings.setString(target, kTexture, kGlowTexture, value.glowTexture) &&
-        m_bindings.setInt(target, kTint, kScalar, value.tint) &&
-        m_bindings.setFloat(target, kAlpha, kScalar, value.alpha) &&
-        m_bindings.setInt(target, kEmissiveColor, kScalar, value.glow) &&
-        m_bindings.setFloat(target, kEmissiveMultiplier, kScalar, value.emissiveMult) &&
-        m_bindings.setFloat(target, kGlossiness, kScalar, value.glossiness) &&
-        m_bindings.setFloat(target, kSpecularStrength, kScalar, value.specularStrength);
+    // Read live properties for every paint/recovery, never a cached Actor material.
+    // A failed partial write is retried from its actual state on the next call.
+    const auto current = capture(target);
+    return ((current && current->diffuse == value.diffuse) ||
+            m_bindings.setString(target, kTexture, kDiffuseTexture, value.diffuse)) &&
+        ((current && current->normal == value.normal) ||
+            m_bindings.setString(target, kTexture, kNormalTexture, value.normal)) &&
+        ((current && current->glowTexture == value.glowTexture) ||
+            m_bindings.setString(target, kTexture, kGlowTexture, value.glowTexture)) &&
+        ((current && current->tint == value.tint) ||
+            m_bindings.setInt(target, kTint, kScalar, value.tint)) &&
+        ((current && current->alpha == value.alpha) ||
+            m_bindings.setFloat(target, kAlpha, kScalar, value.alpha)) &&
+        ((current && current->glow == value.glow) ||
+            m_bindings.setInt(target, kEmissiveColor, kScalar, value.glow)) &&
+        ((current && current->emissiveMult == value.emissiveMult) ||
+            m_bindings.setFloat(target, kEmissiveMultiplier, kScalar, value.emissiveMult)) &&
+        ((current && current->glossiness == value.glossiness) ||
+            m_bindings.setFloat(target, kGlossiness, kScalar, value.glossiness)) &&
+        ((current && current->specularStrength == value.specularStrength) ||
+            m_bindings.setFloat(target, kSpecularStrength, kScalar, value.specularStrength));
 }
 
 }  // namespace stui::runtime

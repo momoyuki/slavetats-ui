@@ -289,6 +289,16 @@ void redirectedLoosePathFallsBackToArchiveResolution() {
         "expected canonical resource path after loose redirection");
 }
 
+void rejectsOversizedLooseFileBeforeRead() {
+    TemporaryDirectory directory;
+    directory.write("huge.dds", {});
+    fs::resize_file(directory.path() / "huge.dds", 128ULL * 1024 * 1024 + 1);
+    TextureResolver resolver(directory.path());
+    const auto result = resolver.resolveLoose("huge.dds");
+    expect(!result && result.error() == TextureResolveError::readFailed,
+        "oversized loose DDS must fail before allocating file contents");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -305,6 +315,7 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("bounds loose texture allocations", rejectsOversizedLooseFileBeforeRead);
     failures += run("normalizes relative texture path", normalizesRelativeTattooTexturePath);
     failures += run("rejects paths outside tattoo root", rejectsPathsOutsideTattooRoot);
     failures += run("separates typed resource identities", separatesTypedResourceIdentities);

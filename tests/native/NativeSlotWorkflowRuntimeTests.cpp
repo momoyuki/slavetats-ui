@@ -187,14 +187,33 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     runtime.pump(); runNext();
     runtime.selectCatalogPreview(mark);
     runtime.pump(); runNext();
-    now += 499ms;
+    for (const auto elapsed : {499ms, 1ms, 5000ms, 30000ms}) {
+        now += elapsed;
+        runtime.pump();
+        expect(scheduled.empty() && paints == 2,
+            "idle selected catalog preview must not schedule automatic repaint at or after 500ms");
+    }
+    runtime.selectCatalogPreview(mark);
     runtime.pump();
-    expect(scheduled.empty(), "selected preview should not repaint before refresh interval");
-    now += 1ms;
-    runtime.pump();
-    expect(scheduled.size() == 1, "selected preview should schedule a bounded repaint");
+    expect(scheduled.size() == 1 && paints == 2,
+        "explicit click on the same selected card must schedule overwrite recovery");
     runNext();
-    expect(paints == 3, "refresh should check the same preview after 500ms");
+    expect(paints == 3, "same-card click must repaint without an automatic timer");
+    now += 5s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 3,
+        "same-card recovery must not enable idle polling");
+    runtime.setCatalogPreviewInk(0xABCDEF);
+    runtime.pump();
+    expect(scheduled.size() == 1 && paints == 3,
+        "explicit Ink edit must still schedule a game-thread preview paint");
+    runNext();
+    expect(paints == 4 && runtime.catalogPreviewSelection()->color == 0xABCDEF,
+        "explicit edit must paint the selected preview draft");
+    now += 5s;
+    runtime.pump();
+    expect(scheduled.empty() && paints == 4,
+        "explicit edit must not restart periodic repaint");
     expect(runtime.saveCatalogPreview(), "pinned tattoo should queue Save");
     runtime.pump(); runNext();
     expect(commits == 1 && runtime.catalogPreviewActive() &&
@@ -225,8 +244,8 @@ void catalogPreviewSerializesSelectionCloseAndSave() {
     runtime.pump(); runNext();
     now += 2s;
     runtime.pump();
-    expect(scheduled.empty() && paints == 3,
-        "completed Save must stop periodic preview paint");
+    expect(scheduled.empty() && paints == 4,
+        "completed Save must leave no idle preview paint");
 
     expect(model.selectSlot(0), "slot should reopen before world invalidation");
     runtime.pump();

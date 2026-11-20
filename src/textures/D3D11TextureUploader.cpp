@@ -14,7 +14,7 @@ namespace stui::textures {
 namespace {
 
 // DDS reserved header words identify our already-framed cache representation.
-constexpr std::array<std::uint8_t, 8> kFramedThumbnailTag{'S', 'T', 'U', 'I', 'T', 'H', '6', 0};
+constexpr std::array<std::uint8_t, 8> kFramedThumbnailTag{'S', 'T', 'U', 'I', 'T', 'H', '8', 0};
 
 D3D11Texture::UvBounds finishVisibleBounds(
     std::size_t left, std::size_t top, std::size_t right, std::size_t bottom,
@@ -166,25 +166,24 @@ bool makeBc3Thumbnail(const DirectX::Image& source, DirectX::ScratchImage& thumb
     return true;
 }
 
-bool makeBc7Thumbnail(const DirectX::ScratchImage& source,
+bool makeGenericThumbnail(const DirectX::ScratchImage& source,
     DirectX::ScratchImage& thumbnail, D3D11Texture::UvBounds& visibleBounds) {
-    constexpr std::size_t maxThumbnailSize = 192;
-    constexpr std::size_t maxSourcePixels = 4096 * 4096;
     const auto* first = source.GetImage(0, 0, 0);
-    if (!first || (first->format != DXGI_FORMAT_BC7_UNORM &&
-            first->format != DXGI_FORMAT_BC7_UNORM_SRGB) ||
-        (first->width <= maxThumbnailSize && first->height <= maxThumbnailSize) ||
-        first->height == 0 || first->width > maxSourcePixels / first->height)
-        return false;
-
-    // Determine the crop from the original level; small motifs disappear in mips.
-    const auto* selected = first;
-    const auto outputFormat = selected->format == DXGI_FORMAT_BC7_UNORM_SRGB
+    if (!first || (first->width <= 192 && first->height <= 192)) return false;
+    const auto outputFormat = DirectX::IsSRGB(first->format)
         ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-    DirectX::ScratchImage decompressed;
-    if (FAILED(DirectX::Decompress(*selected, outputFormat, decompressed)))
-        return false;
-    const auto* rgba = decompressed.GetImage(0, 0, 0);
+    // Preflight limits source pixels to 16M: at most one 64MiB RGBA scratch.
+    // No source-sized crop or premultiplication copies are needed.
+    DirectX::ScratchImage converted;
+    const auto* rgba = first;
+    if (DirectX::IsCompressed(first->format)) {
+        if (FAILED(DirectX::Decompress(*first, outputFormat, converted))) return false;
+        rgba = converted.GetImage(0, 0, 0);
+    } else if (first->format != outputFormat) {
+        if (FAILED(DirectX::Convert(*first, outputFormat, DirectX::TEX_FILTER_DEFAULT,
+                0.5F, converted))) return false;
+        rgba = converted.GetImage(0, 0, 0);
+    }
     if (!rgba) return false;
     const auto crop = visibleAlphaBounds({rgba->pixels, rgba->slicePitch},
         rgba->width, rgba->height, rgba->rowPitch);
@@ -194,27 +193,38 @@ bool makeBc7Thumbnail(const DirectX::ScratchImage& source,
         static_cast<std::size_t>(crop.right * rgba->width) - left);
     const auto cropHeight = std::max<std::size_t>(1,
         static_cast<std::size_t>(crop.bottom * rgba->height) - top);
-    DirectX::ScratchImage cropped;
-    if (FAILED(cropped.Initialize2D(outputFormat, cropWidth, cropHeight, 1, 1)))
-        return false;
-    auto* cropImage = cropped.GetImage(0, 0, 0);
-    if (!cropImage) return false;
-    for (std::size_t y = 0; y < cropHeight; ++y)
-        std::memcpy(cropImage->pixels + y * cropImage->rowPitch,
-            rgba->pixels + (top + y) * rgba->rowPitch + left * 4, cropWidth * 4);
-    const auto longestSide = std::max(cropWidth, cropHeight);
-    if (longestSide > maxThumbnailSize) {
-        const auto width = std::max<std::size_t>(1, cropWidth * maxThumbnailSize / longestSide);
-        const auto height = std::max<std::size_t>(1, cropHeight * maxThumbnailSize / longestSide);
-        DirectX::ScratchImage premultiplied, resized;
-        if (FAILED(DirectX::PremultiplyAlpha(*cropImage, DirectX::TEX_PMALPHA_DEFAULT,
-                premultiplied)) || FAILED(DirectX::Resize(*premultiplied.GetImage(0, 0, 0),
-                width, height, DirectX::TEX_FILTER_TRIANGLE |
-                    DirectX::TEX_FILTER_FORCE_NON_WIC, resized)) ||
-            FAILED(DirectX::PremultiplyAlpha(*resized.GetImage(0, 0, 0),
-                DirectX::TEX_PMALPHA_REVERSE, thumbnail))) return false;
-    } else {
-        thumbnail = std::move(cropped);
+    const auto longest = std::max(cropWidth, cropHeight);
+    const auto target = std::min<std::size_t>(192, longest);
+    const auto width = std::max<std::size_t>(1, cropWidth * target / longest);
+    const auto height = std::max<std::size_t>(1, cropHeight * target / longest);
+    if (FAILED(thumbnail.Initialize2D(outputFormat, width, height, 1, 1))) return false;
+    struct Accumulator {
+        std::uint64_t red{}, green{}, blue{}, alpha{}, count{};
+    };
+    std::vector<Accumulator> values(width * height);
+    for (std::size_t y = 0; y < cropHeight; ++y) {
+        for (std::size_t x = 0; x < cropWidth; ++x) {
+            const auto* pixel = rgba->pixels + (top + y) * rgba->rowPitch + (left + x) * 4;
+            auto& value = values[(y * height / cropHeight) * width + x * width / cropWidth];
+            value.red += pixel[0] * pixel[3];
+            value.green += pixel[1] * pixel[3];
+            value.blue += pixel[2] * pixel[3];
+            value.alpha += pixel[3];
+            ++value.count;
+        }
+    }
+    auto* output = thumbnail.GetImage(0, 0, 0);
+    std::memset(output->pixels, 0, output->slicePitch);
+    for (std::size_t y = 0; y < height; ++y) {
+        for (std::size_t x = 0; x < width; ++x) {
+            const auto& value = values[y * width + x];
+            if (!value.alpha) continue;
+            auto* pixel = output->pixels + y * output->rowPitch + x * 4;
+            pixel[0] = static_cast<std::uint8_t>(value.red / value.alpha);
+            pixel[1] = static_cast<std::uint8_t>(value.green / value.alpha);
+            pixel[2] = static_cast<std::uint8_t>(value.blue / value.alpha);
+            pixel[3] = static_cast<std::uint8_t>(value.alpha / value.count);
+        }
     }
     visibleBounds = {};
     return true;
@@ -231,8 +241,9 @@ std::optional<std::vector<std::uint8_t>> makeCachedThumbnailDds(
     DirectX::ScratchImage thumbnail;
     D3D11Texture::UvBounds bounds;
     if (!makeBc3Thumbnail(*first, thumbnail, bounds) &&
-        !makeBc7Thumbnail(*decoded, thumbnail, bounds)) {
-        if (ddsBytes.size() <= 2 * 1024 * 1024)
+        !makeGenericThumbnail(*decoded, thumbnail, bounds)) {
+        if (first->width <= 192 && first->height <= 192 &&
+            ddsBytes.size() <= 2 * 1024 * 1024)
             return std::vector<std::uint8_t>(ddsBytes.begin(), ddsBytes.end());
         return std::nullopt;
     }
@@ -344,7 +355,9 @@ D3D11TextureResult uploadDdsTexture(
     D3D11Texture::UvBounds reducedBounds;
     const bool reduced = firstImage &&
         (makeBc3Thumbnail(*firstImage, thumbnail, reducedBounds) ||
-            makeBc7Thumbnail(*decoded, thumbnail, reducedBounds));
+            makeGenericThumbnail(*decoded, thumbnail, reducedBounds));
+    if (!reduced && (metadata.width > 192 || metadata.height > 192))
+        return std::unexpected(D3D11TextureError::invalidData);
     const HRESULT result = DirectX::CreateShaderResourceView(
         device,
         reduced ? thumbnail.GetImages() : decoded->GetImages(),

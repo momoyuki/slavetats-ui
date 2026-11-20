@@ -12,10 +12,21 @@ namespace stui::native {
 NativeThumbnailRuntime::NativeThumbnailRuntime(
     std::unique_ptr<NativeThumbnailTextureSource> source,
     NativeThumbnailScheduler scheduler,
-    NativeThumbnailNow now)
+    NativeThumbnailNow now, bool background)
     : m_source(std::move(source)),
       m_scheduler(std::move(scheduler)),
-      m_now(std::move(now)) {}
+      m_now(std::move(now)),
+      m_worker(background ? std::make_unique<NativeThumbnailWorker>() : nullptr) {}
+
+NativeThumbnailRuntime::~NativeThumbnailRuntime() {
+    m_stopping.store(true);
+    m_worker.reset();
+}
+
+void NativeThumbnailRuntime::dispatch(NativeThumbnailTask task) {
+    if (m_worker) m_worker->submit(std::move(task));
+    else m_scheduler(std::move(task));
+}
 
 void NativeThumbnailRuntime::synchronize(
     repository::TattooCatalogSnapshot snapshot,
@@ -58,7 +69,9 @@ void NativeThumbnailRuntime::pump() {
         }
     }
     if (shouldPrune) {
-        m_source->pruneExpired(currentTime);
+        if (m_worker) {
+            try { dispatch([this, currentTime] { m_source->pruneExpired(currentTime); }); } catch (...) {}
+        } else m_source->pruneExpired(currentTime);
     }
 
     if (!m_source->available()) {
@@ -88,7 +101,7 @@ void NativeThumbnailRuntime::pump() {
             std::unexpected(NativeThumbnailFailure::broken);
         try {
             const auto current = [this, capturedRequest] {
-                return m_controller.isCurrent(capturedRequest);
+                return !m_stopping.load() && m_controller.isCurrent(capturedRequest);
             };
             result = capturedRequest.resource
                 ? m_source->load(*capturedRequest.resource, current, m_now())
@@ -99,7 +112,7 @@ void NativeThumbnailRuntime::pump() {
     };
 
     try {
-        m_scheduler(std::move(task));
+        dispatch(std::move(task));
     } catch (...) {
         complete(std::unexpected(NativeThumbnailFailure::broken));
     }
@@ -139,7 +152,7 @@ bool NativeThumbnailRuntime::requestDiskCacheLimit(
         m_limitState = ThumbnailCacheClearState::pending;
     }
     try {
-        m_scheduler([this, limitMiB, previous, persist = std::move(persist)] {
+        dispatch([this, limitMiB, previous, persist = std::move(persist)] {
             bool applied = false;
             bool succeeded = false;
             try {
@@ -187,7 +200,7 @@ bool NativeThumbnailRuntime::requestDiskCacheClear() {
         m_clearState = ThumbnailCacheClearState::pending;
     }
     try {
-        m_scheduler([this] {
+        dispatch([this] {
             bool succeeded = false;
             try { succeeded = clearDiskCacheNow(); } catch (...) {}
             std::scoped_lock lock(m_buildMutex);
@@ -250,7 +263,7 @@ void NativeThumbnailRuntime::pumpDiskCacheBuild() {
         if (m_buildStatus.completed == m_buildStatus.total)
             m_buildStatus.active = false;
     };
-    try { m_scheduler(std::move(task)); }
+    try { dispatch(std::move(task)); }
     catch (...) {
         std::scoped_lock lock(m_buildMutex);
         if (generation != m_buildGeneration) return;

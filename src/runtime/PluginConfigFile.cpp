@@ -41,12 +41,17 @@ ConfigUpdateResult PluginConfigFile::update(const ConfigEdit& edit) {
     if (!config) {
         return std::unexpected(std::move(config.error()));
     }
+    const auto original = *config;
     if (auto edited = edit(*config); !edited) {
         return std::unexpected(std::move(edited.error()));
     }
     if (m_path.empty() || !m_path.is_absolute()) {
         return std::unexpected(error("Configuration path must be absolute."));
     }
+
+    // Compare persisted data after reading and validating the edit so a repeated
+    // preference selection cannot conceal a malformed or unavailable config.
+    if (*config == original) return {};
 
     const auto temporaryPath = temporaryPathFor(m_path);
     {

@@ -1,9 +1,11 @@
 #pragma once
 
 #include "native/NativeThumbnailController.h"
+#include "native/NativeThumbnailWorker.h"
 #include "textures/TextureCache.h"
 #include "core/TextureResource.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -60,7 +62,8 @@ public:
     NativeThumbnailRuntime(
         std::unique_ptr<NativeThumbnailTextureSource> source,
         NativeThumbnailScheduler scheduler,
-        NativeThumbnailNow now);
+        NativeThumbnailNow now, bool background = false);
+    ~NativeThumbnailRuntime();
 
     void synchronize(
         repository::TattooCatalogSnapshot snapshot,
@@ -84,6 +87,7 @@ public:
     [[nodiscard]] std::uintmax_t diskCacheBytes() const;
 
 private:
+    void dispatch(NativeThumbnailTask task);
     [[nodiscard]] bool clearDiskCacheNow();
     std::unique_ptr<NativeThumbnailTextureSource> m_source;
     NativeThumbnailScheduler m_scheduler;
@@ -98,6 +102,9 @@ private:
     std::uint32_t m_diskCacheLimitMiB{256};
     bool m_buildInFlight{};
     std::uint64_t m_buildGeneration{};
+    std::atomic_bool m_stopping{};
+    // Must join before controller/source members are destroyed.
+    std::unique_ptr<NativeThumbnailWorker> m_worker;
 };
 
 }  // namespace stui::native

@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <exception>
+#include <future>
+#include <thread>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -488,6 +490,36 @@ void schedulesTypedExternalResource() {
     expect(fixture.source->typedPaths == std::vector<std::string>{image->path()}, "source must receive the typed identity");
     expect(fixture.runtime->views().front().status == NativeThumbnailStatus::ready, "completion must publish the image");
 }
+void backgroundRuntimeUsesOwnedWorker() {
+    struct State { std::promise<std::thread::id> loaded; };
+    struct Source final : NativeThumbnailTextureSource {
+        std::shared_ptr<State> state;
+        explicit Source(std::shared_ptr<State> value) : state(std::move(value)) {}
+        std::shared_ptr<D3D11Texture> find(std::string_view, TextureCacheTimePoint) override { return {}; }
+        NativeThumbnailLoadResult load(std::string_view, const NativeThumbnailCancellationCheck& current,
+            TextureCacheTimePoint) override {
+            if (!current()) return std::unexpected(NativeThumbnailFailure::cancelled);
+            state->loaded.set_value(std::this_thread::get_id()); return readyTexture();
+        }
+        void pruneExpired(TextureCacheTimePoint) override {}
+        void clear() override {}
+        bool available() const noexcept override { return true; }
+    };
+    auto state = std::make_shared<State>();
+    auto loaded = state->loaded.get_future();
+    int schedulerCalls = 0;
+    NativeThumbnailRuntime runtime(std::make_unique<Source>(state),
+        [&](auto) { ++schedulerCalls; }, [] { return TextureCacheTimePoint{}; }, true);
+    const NativeThumbnailEpoch epoch = std::make_shared<int>(1);
+    const std::vector<std::string> paths{"one.dds"};
+    runtime.synchronize(epoch, paths);
+    runtime.pump();
+    expect(loaded.wait_for(2s) == std::future_status::ready,
+        "background runtime must run thumbnail work without invoking engine scheduler");
+    expect(loaded.get() != std::this_thread::get_id() && schedulerCalls == 0,
+        "thumbnail source work must be on the owned worker");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -504,6 +536,7 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("background runtime owns off-thread loading", backgroundRuntimeUsesOwnedWorker);
     failures += run("schedules typed external resource", schedulesTypedExternalResource);
     failures += run("failed rollback reports actual budget", failedRollbackReportsActualAppliedBudget);
     failures += run("limit changes are scheduled exclusive and retryable", limitChangesAreScheduledExclusiveAndRetryable);

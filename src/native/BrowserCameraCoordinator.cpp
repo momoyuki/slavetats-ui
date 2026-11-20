@@ -76,7 +76,7 @@ void BrowserCameraCoordinator::control(const BrowserCameraMotion& motion) {
 void BrowserCameraCoordinator::refresh() {
     {
         const std::scoped_lock lock(m_mutex);
-        if (!m_open) return;
+        if (!m_open || (m_targetFormId != 0x14 && !m_cameraActive)) return;
         ++m_revision;
     }
     scheduleIfNeeded();
@@ -141,6 +141,7 @@ void BrowserCameraCoordinator::drain() {
         }
         {
             const std::scoped_lock lock(m_mutex);
+            m_cameraActive = m_session.active();
             if (m_revision == revision) {
                 m_scheduled = false;
                 return;

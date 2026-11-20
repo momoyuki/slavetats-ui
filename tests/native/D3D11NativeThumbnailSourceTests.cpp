@@ -1,5 +1,6 @@
 #include "native/D3D11NativeThumbnailSource.h"
 #include "textures/ThumbnailDiskCache.h"
+#include "textures/ScheduledTextureArchiveReader.h"
 
 #include <DirectXTex.h>
 #include <d3d11.h>
@@ -602,6 +603,48 @@ void nullDeviceConstructsUnavailablePlaceholderSourceWithoutArchiveRead() {
     expect(!archiveRead, "expected unavailable source to skip archive reads");
 }
 
+void transientArchiveDelayRemainsRetryable() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeDds(2, 3);
+    bool delayed = true;
+    stui::textures::ScheduledTextureArchiveReader reader(
+        [&](auto task) { if (!delayed) task(); },
+        [&](auto) { return TextureBytesResult(dds); }, 5ms);
+    auto source = makeSource(directory.path(), device.Get(), [&](auto path) { return reader.read(path); });
+    const auto first = source->load("delayed.dds", [] { return true; }, {});
+    expect(!first && first.error() == NativeThumbnailFailure::cancelled,
+        "scheduler delay must be retryable, not negative-cached as broken DDS");
+    delayed = false;
+    expect(source->load("delayed.dds", [] { return true; }, {}).has_value(), "retry must load the valid texture");
+}
+
+void renderLookupDoesNotWaitForDiskWork() {
+    TemporaryDirectory directory;
+    const auto device = createDevice();
+    const auto dds = makeDds(2, 3);
+    std::promise<void> entered, release;
+    auto ready = entered.get_future();
+    auto gate = release.get_future().share();
+    auto source = std::make_unique<D3D11NativeThumbnailSource>(
+        directory.path(), device.Get(), 12, 2min,
+        [&](std::string_view) { return TextureBytesResult(dds); },
+        stui::native::NativeThumbnailFailureObserver{}, directory.path() / "cache",
+        [&](auto, auto stage, double) {
+            if (stage == stui::native::NativeThumbnailTimingStage::diskLookup) {
+                entered.set_value(); gate.wait();
+            }
+        });
+    auto loading = std::async(std::launch::async, [&] { return source->load("busy.dds", [] { return true; }, {}); });
+    ready.wait();
+    auto lookup = std::async(std::launch::async, [&] { return source->find("other.dds", {}); });
+    const bool nonblocking = lookup.wait_for(100ms) == std::future_status::ready;
+    release.set_value();
+    lookup.get();
+    expect(loading.get().has_value(), "background fixture must load");
+    expect(nonblocking, "render lookup must not wait for disk/decode work");
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -618,6 +661,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("transient archive delay is retryable", transientArchiveDelayRemainsRetryable);
+    failures += run("render lookup does not wait for disk work", renderLookupDoesNotWaitForDiskWork);
     failures += run("disk lookup serializes limit pruning", diskLookupSerializesLimitPruning);
     failures += run("loose file wins without archive read", looseFileWinsWithoutArchiveRead);
     failures += run("loose miss falls back to canonical archive path", looseMissFallsBackToCanonicalArchivePath);

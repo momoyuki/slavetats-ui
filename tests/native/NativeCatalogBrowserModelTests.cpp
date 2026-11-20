@@ -386,6 +386,65 @@ void materialFiltersComposeAndPersistAcrossCatalogRefresh() {
         "expected disabling material filters to restore legacy entries");
 }
 
+void unchangedFiltersAndPaginationReuseGallery() {
+    auto current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    model.setArea("Body");
+    model.setSection("Marks");
+    model.nextPage();
+    const auto revision = model.scrollRevision();
+    const auto* galleryEntries = model.scrollPage().entries.data();
+    model.setSearch("");
+    model.setDomain("");
+    model.setSourceId("");
+    model.setSection("Marks");
+    model.setArea("Body");
+    model.setPageNumber(2);
+    expect(model.scrollRevision() == revision && model.page().pageIndex == 1,
+        "expected identical filters and page to preserve gallery revision and page");
+    model.nextPage();
+    model.setPageNumber(999);
+    expect(model.scrollRevision() == revision &&
+            model.scrollPage().entries.data() == galleryEntries &&
+            model.page().entries.size() == 1,
+        "expected pagination to slice the existing gallery without rebuilding it");
+}
+
+void contextualFacetsReuseStorageAcrossUnrelatedChanges() {
+    auto current = catalogWithEntries(13);
+    NativeCatalogBrowserModel model([&current] { return current; });
+    model.refresh();
+    const auto& first = model.contextualFacets();
+    const auto& second = model.contextualFacets();
+    expect(&first == &second, "expected stable cached facet reference");
+    const auto* domains = first.domains.data();
+    model.setSearch("Entry");
+    model.setSection("Marks");
+    model.nextPage();
+    expect(model.contextualFacets().domains.data() == domains,
+        "expected search, section and pagination to preserve facet storage");
+    model.setArea("Face");
+    expect(model.contextualFacets().domains.empty(),
+        "expected area change to invalidate cached facets");
+    model.setArea("Body");
+    expect(!model.contextualFacets().domains.empty(), "expected area facets restored");
+    model.setFavoriteIdentities({stui::repository::favoriteIdentity(current->repository.query().entries.front())});
+    model.setFavoritesOnly(true);
+    expect(model.contextualFacets().sections.size() == 1,
+        "expected favorites facet intersection");
+    model.setFavoriteIdentities({});
+    expect(model.contextualFacets().sections.empty(), "expected changed favorite identities to invalidate facets");
+    model.setFavoritesOnly(false);
+    model.setGlowOnly(true);
+    expect(model.contextualFacets().domains.empty(), "expected material filter to invalidate facets");
+    model.setGlowOnly(false);
+    current = nullptr;
+    model.refresh();
+    expect(model.contextualFacets().domains.empty(), "expected null snapshot to clear facets");
+
+}
+
 template <class Test>
 int run(std::string_view name, Test&& test) {
     try {
@@ -402,6 +461,8 @@ int run(std::string_view name, Test&& test) {
 
 int main() {
     int failures = 0;
+    failures += run("unchanged filters reuse gallery", unchangedFiltersAndPaginationReuseGallery);
+    failures += run("facets reuse cached storage", contextualFacetsReuseStorageAcrossUnrelatedChanges);
     failures += run("displays six entries per page", displaysSixEntriesPerPage);
     failures += run("cache build loads catalog before browsing", cacheBuildPathsLoadCatalogBeforeBrowsing);
     failures += run("gallery contains all filtered matches", galleryContainsAllFilteredMatchesWithoutChangingPagedView);
