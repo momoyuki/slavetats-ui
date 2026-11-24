@@ -1,22 +1,22 @@
 # language-name: Korean
 # English source text	Translation; UTF-8, \n = newline, \t = tab, \\ = backslash
-Saving or loading loadouts...	구성을 저장하거나 불러오는 중...
-No loadouts saved.	저장된 구성이 없습니다.
-Loadout limit reached. Overwrite, rename or delete an existing loadout.	구성 개수 제한에 도달했습니다. 기존 구성을 덮어쓰거나 이름을 바꾸거나 삭제하세요.
-Loadout applied	구성 적용 완료
+Saving or loading loadouts...	프리셋을 저장하거나 불러오는 중...
+No loadouts saved.	저장된 프리셋이 없습니다.
+Loadout limit reached. Overwrite, rename or delete an existing loadout.	프리셋 개수 제한에 도달했습니다. 기존 프리셋을 덮어쓰거나 이름을 바꾸거나 삭제하세요.
+Loadout applied	프리셋 적용 완료
 Preflight rejected	사전 검사 거부됨
 Synchronization pending	동기화 대기 중
 Rollback synchronization pending	롤백 동기화 대기 중
 Rollback complete	롤백 완료
 Rollback incomplete	롤백 미완료
-Loadout failed	구성 적용 실패
+Loadout failed	프리셋 적용 실패
 {}: {}	{}: {}
 {} / Slot {}: {}	{} / 슬롯 {}: {}
-Apply Loadout	구성 적용
+Apply Loadout	프리셋 적용
 Rename	이름 변경
 Overwrite	덮어쓰기
 Delete	삭제
-Save Loadout	구성 저장
+Save Loadout	프리셋 저장
 Unnamed Actor	이름 없는 액터
 {} - {:.0f} units	{} - {:.0f} 단위
 Choose Follower	동료 선택
@@ -29,11 +29,11 @@ Target:\s	대상:\s
 Scanning nearby Actors...	주변 액터 검색 중...
 No nearby Actor found	주변 액터를 찾지 못했습니다
 Unavailable	사용 불가
-Current Slots / Loadouts	현재 슬롯 / 구성
-Current Slots / Loadouts / Preview	현재 슬롯 / 구성 / 미리보기
-Current Slots / Loadouts / Restore	현재 슬롯 / 구성 / 복원
-Current Slots / Loadouts / Confirm Overwrite	현재 슬롯 / 구성 / 덮어쓰기 확인
-Current Slots / Loadouts / Confirm Delete	현재 슬롯 / 구성 / 삭제 확인
+Current Slots / Loadouts	현재 슬롯 / 프리셋
+Current Slots / Loadouts / Preview	현재 슬롯 / 프리셋 / 미리보기
+Current Slots / Loadouts / Restore	현재 슬롯 / 프리셋 / 복원
+Current Slots / Loadouts / Confirm Overwrite	현재 슬롯 / 프리셋 / 덮어쓰기 확인
+Current Slots / Loadouts / Confirm Delete	현재 슬롯 / 프리셋 / 삭제 확인
 Current Slots	현재 슬롯
 Current Slots / Slot Actions	현재 슬롯 / 슬롯 작업
 Current Slots / Browse	현재 슬롯 / 찾아보기
@@ -91,26 +91,26 @@ Search	검색
 Refresh NPC List	NPC 목록 새로고침
 Close NPC Picker	NPC 선택 닫기
 Retry NPC Scan	NPC 검색 재시도
-Loadouts:\s	구성:\s
+Loadouts:\s	프리셋:\s
 Retry	재시도
-Loadout	구성
-Select loadout	구성 선택
+Loadout	프리셋
+Select loadout	프리셋 선택
 Load	불러오기
 Save Current	현재 상태 저장
 Manage	관리
 Reading fresh Actor state...	최신 액터 상태 읽는 중...
 Tattoo Browser	문신 브라우저
-Saved Tattoo Loadouts	저장된 문신 구성
+Saved Tattoo Loadouts	저장된 문신 프리셋
 Save managed tattoos from all four areas. External overlays are omitted.	네 부위의 관리 대상 문신을 저장합니다. 외부 오버레이는 제외됩니다.
 Name	이름
 Delete...	삭제...
-Overwrite the selected loadout with the captured four-area state?	선택한 구성을 캡처한 네 부위 상태로 덮어쓸까요?
-Delete this saved loadout? Actor tattoos will remain unchanged.	저장된 구성을 삭제할까요? 액터의 문신은 유지됩니다.
-Exact restore removes managed tattoos absent from this loadout.	정확한 복원은 이 구성에 없는 관리 대상 문신을 제거합니다.
+Overwrite the selected loadout with the captured four-area state?	선택한 프리셋을 캡처한 네 부위 상태로 덮어쓸까요?
+Delete this saved loadout? Actor tattoos will remain unchanged.	저장된 프리셋을 삭제할까요? 액터의 문신은 유지됩니다.
+Exact restore removes managed tattoos absent from this loadout.	정확한 복원은 이 프리셋에 없는 관리 대상 문신을 제거합니다.
 Add: %zu / Replace: %zu / Remove: %zu	추가: %zu / 교체: %zu / 제거: %zu
 Appearance: %zu / Unchanged: %zu / Preserved: %zu	외형: %zu / 변경 없음: %zu / 보존: %zu
 Preflight rejected. Resolve these conflicts and run Load again:	사전 검사가 거부되었습니다. 충돌을 해결한 뒤 다시 불러오세요:
-Restoring loadout... Please wait.	구성 복원 중... 기다려 주세요.
+Restoring loadout... Please wait.	프리셋 복원 중... 기다려 주세요.
 Restore failed. The original managed tattoos were recovered and verified.	복원에 실패했습니다. 원래 관리 대상 문신을 복구하고 확인했습니다.
 Restore failed and recovery could not be verified. Inspect the affected slots.	복원에 실패했으며 복구를 확인하지 못했습니다. 해당 슬롯을 확인하세요.
 Current Slots must refresh before returning. Use Refresh Slots if the refresh fails.	돌아가기 전에 현재 슬롯을 새로고침해야 합니다. 실패하면 슬롯 새로고침을 사용하세요.
@@ -126,7 +126,7 @@ Slot %d	슬롯 %d
 Slot %d - Read Only: managed by another overlay mod	슬롯 %d - 읽기 전용: 다른 오버레이 모드에서 관리 중
 Slot %d - %s	슬롯 %d - %s
 Add a tattoo to Slot %d	슬롯 %d에 문신 추가
-Loadouts	구성
+Loadouts	프리셋
 Prev	이전
 Page	페이지
 Next	다음
