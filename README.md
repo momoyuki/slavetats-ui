@@ -174,6 +174,7 @@ Language affects presentation only. Actor names, tattoo/pack names, domains,
 paths and user-named presets/loadouts keep their original contents. Runtime
 and dependency error details/logs may remain in English. Korean and Japanese
 wording is an initial translation and welcomes native-speaker review.
+RockSilde revised the Korean loadout wording to the more familiar preset term.
 
 ### Add another language without rebuilding
 
