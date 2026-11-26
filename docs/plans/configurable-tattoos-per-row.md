@@ -1,8 +1,36 @@
 # Plan: configurable tattoos per row
 
-This is a plan only. It does not change the game. A later change can implement it.
+This is a plan only. It does not change the game. Implementation waits until the owner says to start, on the local development machine.
 
-Read this from the top. Phase 1 is the player setting for how many tattoo cards sit on one row. Phase 2 is the thumbnail-resolution and cache-size work. Phase 2 is written down so the two stay compatible, but it is **not decided and must not be implemented** until the owner picks the open questions at the end of that section.
+Read this from the top. Phase 1 is the player setting for how many tattoo cards sit on one row. Phase 2 is the thumbnail-resolution and cache-size work. The owner answered the Phase 2 direction on 2026-11-26. Those answers are in [Handoff](#handoff-for-the-local-development-machine). They override the older "ask first" recommendations later in this file. Still do not write the feature until the owner says start.
+
+## Handoff for the local development machine
+
+Cloud session `bc-6de1b84b-4800-5e13-940b-8aac3d8f8352` stopped after the plan and these decisions. No self-hosted worker was connected, so this branch is the handoff. Continue from draft PR https://github.com/momoyuki/slavetats-ui/pull/27 on branch `cursor/configurable-tattoos-per-row-plan-8352`.
+
+Do not implement yet. The next session should read this file, confirm the decisions below, and wait for the owner to say start. When they do, implement on this branch. Do not open a second plan.
+
+### Owner decisions, 2026-11-26
+
+1. **Match the resolution the game is actually rendering**, when that size can be read. It can. `OfficialMenuFrameworkAdapter::renderFoundation` already reads `ImGui::GetMainViewport()->Size`, and `calculateFoundationLayout` turns that into the browser panel (about 46.6% of the width). Card pixels are that content width divided by the per-row count. This is the game's backbuffer, not a second Windows DPI scale. Keep `dpiScale` at 1 unless a later in-game test shows the swapchain is stretched onto a denser panel and the cards are still soft at a matching tier.
+
+2. **The thumbnail tier stays adjustable.** Auto-select the smallest of 192, 256, 384, and 512 that is at least the current card size. The launcher must still let the player move that tier up or down. Recompute the automatic tier when the viewport size or the per-row count changes, and only when the browser is opened again (`ImGuiCond_Appearing` already applies the panel size then). A manual choice sticks until the player sets it back to automatic.
+
+3. **The disk-cache limit is automatic.** Do not ask the player to pick a MiB value. Set the limit from the active tier and the number of installed tattoo textures. The existing Clear Thumbnail Cache button remains the reset. Large libraries may use more disk. The owner accepts that, because the source tattoos are already large, and wants the work spent on a sensible thumbnail size instead.
+
+4. **Smooth, low-friction browsing wins over maximum sharpness.** If the tier that covers the card cannot keep about one screen of pictures in the current 16 MiB GPU cache, step down one tier instead of growing the files. 384-pixel pictures fit about 28 in that budget, which covers a 4-per-row screen. 512-pixel pictures fit about 16 and are the wrong default when smoothness matters. 1440p with 4 per row is about a 300-pixel card, so 384 is the automatic tier there and about 1,500 square RGBA files need about 844 MiB, which the existing 1024 MiB choice can hold. A 512-pixel library of 1,500 files needs about 1,500 MiB and does not fit today's maximum. In that case step the tier down. Extend `ThumbnailCacheSetting::limitsMiB` only if a tier the player explicitly chose still cannot be stored. Apply the limit through the existing `requestDiskCacheLimit` path, off the render thread.
+
+5. **Keep the current stutter rules.** One background worker job at a time. Do not decode on the render thread. Do not rebuild a failed thumbnail on every frame. A tier change uses a new cache key (`thumbnail-v8:` and `STUITH8` both move). Schedule the existing clear and the existing background build. Do not reuse a smaller DDS as the new tier.
+
+Phase 1 (the per-row setting, square cards, saved integer) and Phase 2 (automatic tier from the live viewport, manual override, automatic disk limit) are one design now. Phase 1 must still not change the 192-pixel files by itself if it is ever split out. The owner asked for them together so the larger cards stay sharp enough without hitching.
+
+### What to do when the owner says start
+
+1. Re-read this file and the code references before editing.
+2. Implement the per-row setting and the thumbnail tier together, with the disk limit derived from the tier.
+3. Leave Current Slots at four columns. The shared thumbnail cache will still get the new tier, which the owner accepted by making the cache automatic for the whole thumbnail pipeline.
+4. Add the tests named in Phase 1, plus tests that the tier follows viewport width and per-row count, that a manual tier is kept, and that an illegal or missing config falls back without deleting other JSON keys.
+5. Do not merge the draft PR until the owner has reviewed an in-game pass at 1080p, 1440p, and 4K.
 
 The owner is learning this codebase. Each step says what to change and why that step exists. Do the steps in order. Do not start with the slider: the setting has to exist before the screen can save it.
 
@@ -23,7 +51,7 @@ Suggested setting for Phase 1:
 | Phase | What it does | When |
 | --- | --- | --- |
 | Phase 1 | Let the player choose 3–8 cards per row. Card width comes from the panel width divided by that count. Thumbnail files stay 192 pixels. The disk-cache limit stays whatever the player already saved (default 256 MiB). | First implementation, after this plan is accepted. |
-| Phase 2 | Choose a thumbnail size that matches the card on screen, and a disk budget that can hold the library without hitching while scrolling. | Later. The owner decides the questions in [Phase 2](#phase-2--thumbnail-resolution-and-cache-size). Do not code it as part of Phase 1. |
+| Phase 2 | Choose a thumbnail tier from the live game resolution and the per-row count, let the player override it, and set the disk-cache limit automatically. | Decided in direction on 2026-11-26. See [Handoff](#handoff-for-the-local-development-machine). Implement only when the owner says start, together with Phase 1. |
 
 Phase 1 will make cards larger than the 192-pixel picture stored on disk. ImGui will stretch that picture. Stretching a small picture into a big card looks soft. That softness is expected until Phase 2. Do not "fix" it in Phase 1 by changing the cache.
 
@@ -281,7 +309,7 @@ Close and reopen the Tattoo Browser after each resolution change. The panel size
 
 ## Phase 2 — thumbnail resolution and cache size
 
-**Status: decide later. Do not implement this section with Phase 1.**
+**Status: direction decided on 2026-11-26. Do not implement until the owner says start.** The decisions are in the [Handoff](#handoff-for-the-local-development-machine). This section is the investigation those decisions sit on. Where it still says "recommendation, not a decision", the handoff wins.
 
 Phase 1 answers "how many cards". Phase 2 answers "how many pixels are stored for each card, and how much disk and GPU memory that costs". They have to be chosen together. A bigger card with a 192-pixel picture looks soft. A sharper picture of every tattoo can miss the disk limit, and scrolling then has to build pictures on the fly. That is the stutter we have to avoid.
 
@@ -408,7 +436,9 @@ One screen of a 4-per-row grid is on the order of 12–20 pictures, plus the one
 
 ### Should the cache limit be chosen automatically?
 
-**Recommendation, not a decision:** do not silently rewrite `thumbnailDiskCacheLimitMiB`.
+**Owner decision:** yes. Set `thumbnailDiskCacheLimitMiB` from the active tier and the installed texture count. Do not ask the player to confirm a MiB number. Clear Thumbnail Cache stays. The note below is the earlier recommendation and is kept so the disk cost is still visible. It does not override the handoff. If the needed size is above 1024 MiB, step the thumbnail tier down for smoothness before extending the legal limits.
+
+**Earlier recommendation, superseded:** do not silently rewrite `thumbnailDiskCacheLimitMiB`.
 
 The limit is already a player setting. Applying it deletes oldest files on a worker (`setMaxBytes` → `prune`). Raising it automatically can fill a disk the player did not offer. Lowering it deletes cache files they may have spent a long build creating.
 
@@ -442,17 +472,17 @@ What not to do: do not rebuild the library synchronously inside `renderFoundatio
 
 Current Slots and external-slot thumbnails go through this same source. A higher tier makes those pictures sharper too, and they spend the same disk and GPU budgets. Phase 2 is not "the browser only", even though Phase 1's column count is.
 
-### Phase 2 open questions for the owner
+### Phase 2 questions, with the owner's answers
 
-These block implementation. The recommendation under each one is a default to argue with, not a decision.
+Answered on 2026-11-26. The handoff is the source of truth. The old recommendation text under each number stays as design notes.
 
-1. **Which card is the thumbnail supposed to match?** The largest card the settings allow (3 per row on 4K, about 600 pixels, which this tier list cannot fully cover), or the common case (4 per row on 1440p, about 300 pixels, so 256 or 384)? Recommendation: match the current backbuffer and the current per-row count, and rebuild when either changes, instead of always storing 512 for everyone.
+1. **Which card is the thumbnail supposed to match?** Owner: the card on the resolution the game is rendering now, and the player can still override the tier. The largest possible card (3 per row on 4K, about 600 pixels) is not the stored size for everyone. Detail: 4K with 3 per row is about 600 pixels, which this tier list cannot fully cover. 1440p with 4 per row is about 300 pixels, so 384. Match the current backbuffer and the current per-row count, and rebuild when either changes, instead of always storing 512.
 
 2. **Is `dpiScale` ever anything but 1?** Recommendation: match backbuffer pixels only, unless a real setup is found where the swapchain is stretched onto a higher-DPI panel and the cards look soft even at a matching tier.
 
 3. **One tier for the whole library, or several sizes on disk?** Recommendation: one tier. Two sizes would double the key space and the prune logic. The player does not browse at two resolutions at once.
 
-4. **May Phase 2 raise the disk limit by itself?** Recommendation: no. Show the estimated MiB and let the player apply the smallest of 256 / 512 / 1024 that fits. If 512-pixel storage of 1,500 tattoos is required, the owner first has to extend the legal limits, because 1024 MiB holds only about 1,024 of those files.
+4. **May Phase 2 raise the disk limit by itself?** Owner: yes. Set it automatically from the tier and the library size. Clear Thumbnail Cache is the player's reset. If the result is above 1024 MiB, step the tier down so scrolling stays smooth before extending `ThumbnailCacheSetting::limitsMiB`. The old note was to show the estimate and wait for a click. That confirm step is not what the owner asked for.
 
 5. **Is 1,500 the library to plan for?** Recommendation: measure the owner's catalog (`diskCacheBuildPaths` size, and the real bytes of a 192-pixel cache folder) before locking a tier. Cropped tattoos will be under the square upper bound. A 3,000-tattoo list does not fit the 384-pixel row of the table inside 1024 MiB.
 
